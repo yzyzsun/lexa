@@ -8,6 +8,7 @@
   #include <stdlib.h>
   #include <string.h>
   
+  FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_6__(i64, i64);
   FAST_SWITCH_DECORATOR
   i64 __choice_stub_lifted_7___flip(i64 *, i64, i64);
@@ -118,6 +119,7 @@
     }));
   }
   
+  FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_6__(i64 __env__, i64 choice_stub) {
     return (({
       i64 n = (i64)(((i64 *)__env__)[0]);

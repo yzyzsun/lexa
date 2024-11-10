@@ -29,3 +29,7 @@ type typedef = {
   type_name : var;
   type_cons : (var * type_expr list) list
 }
+
+type c_annotation =
+  | CAFastSwitch
+  | CANone
