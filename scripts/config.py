@@ -11,6 +11,8 @@ with open('/proc/cpuinfo') as f:
             break
 if "i5-13600K" in cpu_model:
     bench_CPUs = ["0", "2", "4", "6", "8", "10"]
+elif "7700X" in cpu_model:
+    bench_CPUs = ["0", "1", "2", "3", "4", "5"]
 else:
     # list all the physical cores
     bench_CPUs = list(range(psutil.cpu_count()))

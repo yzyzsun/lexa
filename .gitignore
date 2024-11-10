@@ -58,3 +58,4 @@ parser.conflicts
 
 .direnv
 node_modules/
+misc/
