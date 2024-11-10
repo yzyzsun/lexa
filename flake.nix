@@ -32,7 +32,7 @@
         packages.science = pkgs.callPackage ./nix/SciencePlots.nix { };
         devShell = with pkgs; mkShell {
           shellHook = ''
-            export PATH=${self}:$PATH
+            export PATH=$PWD:$PATH
           '';
           FONTCONFIG_FILE = makeFontsConf { 
             fontDirectories = [ self.packages.${system}.jetbrains-mono libertine ];

@@ -327,7 +327,7 @@ int64_t floatRand() {
 
 DEBUG_ATTRIBUTE
 int64_t floatPi() {
-  return boxFloat(M_PI);
+  return boxFloat(3.14159265358979323846);
 }
 
 DEBUG_ATTRIBUTE

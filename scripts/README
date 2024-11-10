@@ -13,6 +13,6 @@ python plots.py --quick
 
 Command to get runtime of all benchmarks
 ```
-python bench.py --quick
+python bench.py --quick --all-systems
 # Result file saved at runtimes.csv
 ```
