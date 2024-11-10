@@ -51,7 +51,7 @@ and t = (* expressions AFTER closure conversion *)
   }
 
 type top_level =
-  | TLAbs of var * var list * t
+  | TLAbs of c_annotation * var * var list * t
   | TLEffSig of var * var list
   | TLObj of var * var list * hdl list
   | TLType of typedef list

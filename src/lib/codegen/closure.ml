@@ -95,7 +95,17 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
     let obj_lifted_name = gen_lifted_name stub in
     let fvs = free_var e in
     let body_fv_opened = open_env (Varset.to_list fvs) handle_body' in
-    let lifted_body = TLAbs (body_lifted_name, ["__env__"; stub], body_fv_opened) in
+    let annotation = if (List.exists 
+      (fun x -> (match x with
+        | HDef -> false
+        | _ -> true))
+      (List.map (fun ({ op_anno; _} : Syntax.hdl) -> op_anno)
+        handler_defs))
+    then
+      CAFastSwitch (* If one of the handler is not TR, use preserve_none *)
+    else CANone in
+    
+    let lifted_body = TLAbs (annotation, body_lifted_name, ["__env__"; stub], body_fv_opened) in
     extra_toplevels := lifted_body :: !extra_toplevels;
 
     let convert_hdl ({op_anno; op_name; op_params; op_body} : Syntax.hdl) =
@@ -115,7 +125,7 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
     let func_fvs = Varset.(diff (free_var body) (of_list params)) in
     let fresh_name = gen_lifted_name "fun" in
     let body_fv_opened = open_env (Varset.to_list func_fvs) body' in
-    let lifted_func = TLAbs (fresh_name, "__env__" :: params, body_fv_opened) in
+    let lifted_func = TLAbs (CANone, fresh_name, "__env__" :: params, body_fv_opened) in
     extra_toplevels := lifted_func :: !extra_toplevels;
     Closure {entry = fresh_name; fv = func_fvs}
   | Syntax.Recdef (funs, e) ->
@@ -132,7 +142,7 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
       let body' = convert_expr body Varset.(union (of_list names) env) in
       let body' = open_env (Varset.to_list fv) body' in
       let params' = "__env__" :: params in
-      let lifted_func = TLAbs (entry, params', body') in
+      let lifted_func = TLAbs (CANone, entry, params', body') in
       extra_toplevels := lifted_func :: !extra_toplevels;
       (name, clo) in
     Recdef (List.map convert_fun funs, convert_expr e Varset.(union (of_list names) env))
@@ -170,11 +180,11 @@ let closure_convert_toplevels (tls : Syntax.top_level list) =
     match tl with
     | Syntax.TLAbs (name, params, body) ->
       if name = "main" then
-        TLAbs (name, params, convert_expr body (Varset.of_list params))
+        TLAbs (CANone, name, params, convert_expr body (Varset.of_list params))
       else
         let lifted_name = (List.assoc name !toplevel_lifted_name_map) in
         toplevel_closures := (name, lifted_name) :: !toplevel_closures;
-        TLAbs (lifted_name, ("__env__" :: params), convert_expr body (Varset.of_list params))
+        TLAbs (CANone, lifted_name, ("__env__" :: params), convert_expr body (Varset.of_list params))
     | Syntax.TLEffSig (name, dcls) ->
       TLEffSig (name, dcls)
     | Syntax.TLType typedefs -> TLType typedefs

@@ -8,8 +8,10 @@
   #include <stdlib.h>
   #include <string.h>
   
+  FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_11__(i64, i64);
   i64 __exn_stub_lifted_12___throw(i64 *, i64);
+  FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_13__(i64, i64);
   FAST_SWITCH_DECORATOR
   i64 __process_stub_lifted_14___fork(i64 *, i64, i64);
@@ -261,6 +263,7 @@
     }));
   }
   
+  FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_13__(i64 __env__, i64 process_stub) {
     return (({
       i64 f = (i64)(((i64 *)__env__)[0]);
@@ -292,6 +295,7 @@
     }));
   }
   
+  FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_11__(i64 __env__, i64 exn_stub) {
     return (({
       i64 driver = (i64)(((i64 *)__env__)[0]);

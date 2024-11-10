@@ -8,6 +8,7 @@
   #include <stdlib.h>
   #include <string.h>
   
+  FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_5__(i64, i64);
   FAST_SWITCH_DECORATOR
   i64 __state2_stub_lifted_6___set(i64 *, i64, i64);
@@ -150,6 +151,7 @@
     }));
   }
   
+  FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_5__(i64 __env__, i64 state2_stub) {
     return (({
       i64 countdown = (i64)(((i64 *)__env__)[0]);

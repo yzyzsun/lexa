@@ -10,6 +10,7 @@
   
   static i64 __handle_body_lifted_14__(i64, i64);
   i64 __emit_stub_lifted_15___emit(i64 *, i64);
+  FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_16__(i64, i64);
   i64 __stop_stub_lifted_17___stop(i64 *, i64);
   static i64 __handle_body_lifted_18__(i64, i64);
@@ -302,6 +303,7 @@
     }));
   }
   
+  FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_16__(i64 __env__, i64 stop_stub) {
     return (({
       i64 action = (i64)(((i64 *)__env__)[0]);

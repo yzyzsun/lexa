@@ -9,6 +9,7 @@
   #include <string.h>
   
   static i64 __list_max_rec_lifted_10__(i64, i64, i64);
+  FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_11__(i64, i64);
   FAST_SWITCH_DECORATOR
   i64 __choice_stub_lifted_12___choose(i64 *, i64, i64);
@@ -265,6 +266,7 @@
     }));
   }
   
+  FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_11__(i64 __env__, i64 choice_stub) {
     return (({
       i64 append = (i64)(((i64 *)__env__)[0]);

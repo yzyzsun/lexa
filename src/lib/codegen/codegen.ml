@@ -92,10 +92,6 @@ type c_type =
   | CTVoidPP (* void** *)
   | CTCharP (* char* *)
 
-type c_annotation =
-  | CAFastSwitch
-  | CANone
-
 type c_keyword =
 | CKStatic
 | CKNone
@@ -390,7 +386,7 @@ let rec fun_type_pass (toplevel : top_level list) : fun_type_env =
   in
   match toplevel with
   | [] -> []
-  | (TLAbs (_, _, t)) :: tail ->
+  | (TLAbs (_, _, _, t)) :: tail ->
     get_handle_bodies t @ (fun_type_pass tail)
   | _ :: tail -> fun_type_pass tail
 
@@ -408,7 +404,7 @@ let type_con_map_pass (toplevels : top_level list) : unit =
 
 let gen_top_level (tl : top_level) =
   match tl with 
-  | TLAbs (name, params, body) ->
+  | TLAbs (annotation, name, params, body) ->
     cur_toplevel := name;
     let toplevel_func_closure = get_toplevel_func_env !env in
     let rec init_closures l = (match l with
@@ -429,10 +425,10 @@ return((int)__res__);}|}
       (init_closures toplevel_func_closure) (gen_expr body)
     else
       let cdec = 
-        CDec (CANone, CKStatic, CTI64, name, (List.map (fun _ -> CTI64) params)) in
+        CDec (annotation, CKStatic, CTI64, name, (List.map (fun _ -> CTI64) params)) in
       c_decs := (name, cdec) :: !c_decs;
       let cdef =
-        CDef (CANone, CKStatic, CTI64, name, (List.map (fun p -> (CTI64, p)) params), body) in
+        CDef (annotation, CKStatic, CTI64, name, (List.map (fun p -> (CTI64, p)) params), body) in
       gen_c_def cdef ~do_tail:true
       (* sprintf "i64 %s(%s) {\nreturn(%s);\n}\n" name (genParams params) (gen_expr body) *)
   | TLEffSig (sig_name, sig_methods) ->
