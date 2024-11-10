@@ -102,7 +102,7 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
       (List.map (fun ({ op_anno; _} : Syntax.hdl) -> op_anno)
         handler_defs))
     then
-      CAFastSwitch (* If one of the handler is not TR, use preserve_none *)
+      CANoneLocalComeFrom (* If one of the handler is not TR, use preserve_none *)
     else CANone in
     
     let lifted_body = TLAbs (annotation, body_lifted_name, ["__env__"; stub], body_fv_opened) in

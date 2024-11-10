@@ -97,10 +97,10 @@ type c_keyword =
 | CKNone
 
 type c_dec = 
-  | CDec of c_annotation * c_keyword * c_type * var * c_type list
+  | CDec of funcAnno * c_keyword * c_type * var * c_type list
 
 type c_def = 
-  | CDef of c_annotation * c_keyword * c_type * var * (c_type * var) list * Syntax__Closure.t
+  | CDef of funcAnno * c_keyword * c_type * var * (c_type * var) list * Syntax__Closure.t
 
 let c_decs : (var * c_dec) list ref = ref []
 
@@ -116,10 +116,20 @@ let gen_c_type = function
 | CTCharP -> "char*"
 
 let gen_c_annotation = function
-| CAFastSwitch -> "FAST_SWITCH_DECORATOR\n"
+| CANoneLocalComeFrom -> "FAST_SWITCH_DECORATOR\n"
+| CANoneLocalGoto -> "FAST_SWITCH_DECORATOR\n"
 | CANone -> ""
 
-let rec gen_c_def ?(do_tail = false) (def : c_def) : string = 
+
+let rec gen_c_body_expr (do_tail : bool) (body : Syntax__Closure.t) (ann : funcAnno) : string =
+  let expr = gen_expr body ~is_tail:(!tail_call_opt && do_tail) in
+  match ann with
+  | CANoneLocalComeFrom -> 
+    (* C compiler does not know that handled body may return non-locally,
+      and may over-optimize. Add a dummy assembly to prevent that. *)
+    sprintf "({i64 out = %s; __asm__(\"\":\"+r\"(out)); out;})" expr
+  | _ -> expr
+and gen_c_def ?(do_tail = false) (def : c_def) : string = 
   match def with
   | CDef (annotation, keyword, t_return, name, params, body) ->
     sprintf "%s%s %s %s(%s) {\nreturn(%s);\n}\n" 
@@ -128,7 +138,7 @@ let rec gen_c_def ?(do_tail = false) (def : c_def) : string =
       (gen_c_type t_return) 
       name 
       (gen_params params)
-      (gen_expr body ~is_tail:(!tail_call_opt && do_tail))
+      (gen_c_body_expr do_tail body annotation)
 
 and gen_c_dec (dec : c_dec) : string =
   match dec with
@@ -440,7 +450,7 @@ return((int)__res__);}|}
       let annotation = (match op_anno with
       | HDef -> CANone
       | HExc -> CANone
-      | _ -> CAFastSwitch) in
+      | _ -> CANoneLocalGoto) in
       let hdl_name = obj_name ^ "_" ^ op_name in
       let c_def = CDef (annotation, CKNone, CTI64, hdl_name, concated_params, op_body) in
       let c_dec = CDec (annotation, CKNone, CTI64, hdl_name, (List.map (fun (a, _) -> a) concated_params)) in
