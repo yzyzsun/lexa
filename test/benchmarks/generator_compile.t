@@ -210,22 +210,26 @@
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_7__(i64 __env__, i64 yield_stub) {
     return (({
-      i64 f = (i64)(((i64 *)__env__)[0]);
-      ({
-        (({
-          closure_t *__clo__ = (closure_t *)f;
-          i64 __f__ = (i64)(__clo__->func_pointer);
-          i64 __env__ = (i64)(__clo__->env);
-          ((i64(*)(i64, i64))__f__)(__env__, yield_stub);
-        }));
-        (({
-          __generator_t__ *__t__ =
-              (__generator_t__ *)xmalloc(sizeof(__generator_t__));
-          __t__->tag = Empty;
+      i64 out = ({
+        i64 f = (i64)(((i64 *)__env__)[0]);
+        ({
+          (({
+            closure_t *__clo__ = (closure_t *)f;
+            i64 __f__ = (i64)(__clo__->func_pointer);
+            i64 __env__ = (i64)(__clo__->env);
+            ((i64(*)(i64, i64))__f__)(__env__, yield_stub);
+          }));
+          (({
+            __generator_t__ *__t__ =
+                (__generator_t__ *)xmalloc(sizeof(__generator_t__));
+            __t__->tag = Empty;
   
-          (i64) __t__;
-        }));
+            (i64) __t__;
+          }));
+        });
       });
+      __asm__("" : "+r"(out));
+      out;
     }));
   }
   

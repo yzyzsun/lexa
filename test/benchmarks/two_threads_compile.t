@@ -266,19 +266,23 @@
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_13__(i64 __env__, i64 process_stub) {
     return (({
-      i64 f = (i64)(((i64 *)__env__)[0]);
-      ({
-        i64 job_queue = (i64)(((i64 *)__env__)[1]);
+      i64 out = ({
+        i64 f = (i64)(((i64 *)__env__)[0]);
         ({
-          i64 spawn = (i64)(((i64 *)__env__)[2]);
-          (({
-            closure_t *__clo__ = (closure_t *)f;
-            i64 __f__ = (i64)(__clo__->func_pointer);
-            i64 __env__ = (i64)(__clo__->env);
-            ((i64(*)(i64, i64))__f__)(__env__, process_stub);
-          }));
+          i64 job_queue = (i64)(((i64 *)__env__)[1]);
+          ({
+            i64 spawn = (i64)(((i64 *)__env__)[2]);
+            (({
+              closure_t *__clo__ = (closure_t *)f;
+              i64 __f__ = (i64)(__clo__->func_pointer);
+              i64 __env__ = (i64)(__clo__->env);
+              ((i64(*)(i64, i64))__f__)(__env__, process_stub);
+            }));
+          });
         });
       });
+      __asm__("" : "+r"(out));
+      out;
     }));
   }
   
@@ -298,21 +302,25 @@
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_11__(i64 __env__, i64 exn_stub) {
     return (({
-      i64 driver = (i64)(((i64 *)__env__)[0]);
-      ({
-        i64 job_queue = (i64)(((i64 *)__env__)[1]);
+      i64 out = ({
+        i64 driver = (i64)(((i64 *)__env__)[0]);
         ({
-          i64 queueDeqExn = (i64)(((i64 *)__env__)[2]);
+          i64 job_queue = (i64)(((i64 *)__env__)[1]);
           ({
-            i64 k = (i64)(((i64(*)(i64, i64, i64))__queueDeqExn_lifted_1__)(
-                (i64)0, (i64)job_queue, (i64)exn_stub));
+            i64 queueDeqExn = (i64)(((i64 *)__env__)[2]);
             ({
-              (FINAL_THROW(k, 0));
-              (((i64(*)(i64, i64))__driver_lifted_4__)((i64)0, (i64)job_queue));
+              i64 k = (i64)(((i64(*)(i64, i64, i64))__queueDeqExn_lifted_1__)(
+                  (i64)0, (i64)job_queue, (i64)exn_stub));
+              ({
+                (FINAL_THROW(k, 0));
+                (((i64(*)(i64, i64))__driver_lifted_4__)((i64)0, (i64)job_queue));
+              });
             });
           });
         });
       });
+      __asm__("" : "+r"(out));
+      out;
     }));
   }
   

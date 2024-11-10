@@ -30,6 +30,7 @@ type typedef = {
   type_cons : (var * type_expr list) list
 }
 
-type c_annotation =
-  | CAFastSwitch
+type funcAnno =
+  | CANoneLocalComeFrom (* abortive or general handled body. Control can come back to caller non-locally *)
+  | CANoneLocalGoto (* general handler. Control goes to a different stack. *)
   | CANone

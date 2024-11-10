@@ -269,34 +269,38 @@
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_11__(i64 __env__, i64 choice_stub) {
     return (({
-      i64 append = (i64)(((i64 *)__env__)[0]);
-      ({
-        i64 explore = (i64)(((i64 *)__env__)[1]);
+      i64 out = ({
+        i64 append = (i64)(((i64 *)__env__)[0]);
         ({
-          i64 state = (i64)(((i64 *)__env__)[2]);
+          i64 explore = (i64)(((i64 *)__env__)[1]);
           ({
-            i64 tre = (i64)(((i64 *)__env__)[3]);
-            (({
-              i64 __arg_0__ =
-                  (i64)(((i64(*)(i64, i64, i64, i64))__explore_lifted_5__)(
-                      (i64)0, (i64)state, (i64)tre, (i64)choice_stub));
-              i64 __arg_1__ = (i64)(({
+            i64 state = (i64)(((i64 *)__env__)[2]);
+            ({
+              i64 tre = (i64)(((i64 *)__env__)[3]);
+              (({
+                i64 __arg_0__ =
+                    (i64)(((i64(*)(i64, i64, i64, i64))__explore_lifted_5__)(
+                        (i64)0, (i64)state, (i64)tre, (i64)choice_stub));
+                i64 __arg_1__ = (i64)(({
+                  __list_t__ *__t__ = (__list_t__ *)xmalloc(sizeof(__list_t__));
+                  __t__->tag = Nil;
+  
+                  (i64) __t__;
+                }));
+  
                 __list_t__ *__t__ = (__list_t__ *)xmalloc(sizeof(__list_t__));
-                __t__->tag = Nil;
+                __t__->tag = Cons;
+                __t__->Cons[0] = __arg_0__;
+                __t__->Cons[1] = __arg_1__;
   
                 (i64) __t__;
               }));
-  
-              __list_t__ *__t__ = (__list_t__ *)xmalloc(sizeof(__list_t__));
-              __t__->tag = Cons;
-              __t__->Cons[0] = __arg_0__;
-              __t__->Cons[1] = __arg_1__;
-  
-              (i64) __t__;
-            }));
+            });
           });
         });
       });
+      __asm__("" : "+r"(out));
+      out;
     }));
   }
   

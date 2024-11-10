@@ -122,15 +122,19 @@
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_6__(i64 __env__, i64 choice_stub) {
     return (({
-      i64 n = (i64)(((i64 *)__env__)[0]);
-      ({
-        i64 s = (i64)(((i64 *)__env__)[1]);
+      i64 out = ({
+        i64 n = (i64)(((i64 *)__env__)[0]);
         ({
-          i64 triple = (i64)(((i64 *)__env__)[2]);
-          (((i64(*)(i64, i64, i64, i64))__triple_lifted_2__)(
-              (i64)0, (i64)n, (i64)s, (i64)choice_stub));
+          i64 s = (i64)(((i64 *)__env__)[1]);
+          ({
+            i64 triple = (i64)(((i64 *)__env__)[2]);
+            (((i64(*)(i64, i64, i64, i64))__triple_lifted_2__)(
+                (i64)0, (i64)n, (i64)s, (i64)choice_stub));
+          });
         });
       });
+      __asm__("" : "+r"(out));
+      out;
     }));
   }
   
