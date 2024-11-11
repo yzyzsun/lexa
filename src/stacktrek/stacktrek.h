@@ -17,19 +17,26 @@ typedef struct {
   void *func;
 } handler_def_t;
 
+// For single-shot handlers, the exchanger stores either the parent's sp
+// or resumption's sp.
+// For multi-shot handlers, since there could be multiple copies of 
+// resumptions that share the same header, they need a separate
+// way of storing the resumption's sp. This is done by allocating
+// a resumption_t for each resumption.
+// resumption_t's rsp_sp stores the resumption's sp, and its
+// exchanger_ptr stores the address of the shared exchanger.
+// NOTE: the resumption k that the handler receives
+// is either the bottom half of header_t or resumption_t.
 typedef struct {
-  // HACK: sp_exchanger stores the address of _sp_exchanger. We use this indirection
-  // to convince the compiler that this struct is immutable, so optimization such as
-  // argpromotion can proceed.
   handler_def_t* defs;
   i64* env;
-  void* _sp_exchanger[1];
-  void** sp_exchanger;
-} meta_t;
+  void* exchanger;
+  void** exchanger_ptr;
+} header_t;
 
 typedef struct {
     void* rsp_sp;
-    void** ctx_sp;
+    void** exchanger_ptr;
 } resumption_t;
 
 #define ARG_N(_0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, N, ...) N
@@ -38,65 +45,69 @@ typedef struct {
 __attribute__((noinline, preserve_none))
 i64 RAISE_M(i64 env, i64 arg, i64 exc, i64 func) {
     resumption_t* k = (resumption_t*)xmalloc(sizeof(resumption_t));
-    k->ctx_sp = (void**)exc;
-    __asm__ (
-        "popq %%rax\n\t" // Pop the dummy slot that is used to align the stack. It is inserted by the compiler, and is needed because of the malloc call. We pop it off because we want to expose the return address
-        "movq 8(%%rdx), %%r8\n\t" // Get the exchanger from the resumption
-        "movq 0(%%r8), %%rax\n\t" // Get the context stack from the exchanger
-        "movq %%rsp, 0(%%r8)\n\t" // Save the current stack pointer to the exchanger. Later when switching back, just need to run a ret
-        "movq %%rsp, 0(%%rdx)\n\t" // Save the current stack pointer to the resumption
-        "movq %%rax, %%rsp\n\t" // Switch to the context stack
-        "jmpq *%%rcx\n\t" // Call the handler, the first three arguments are already in the right registers
-        :: "D"(env), "S"(arg), "d"(k), "c"(func)
+    k->exchanger_ptr = (void**)exc;
+    i64 dummyreg;
+    __asm__ __volatile__ (
+        "popq %[temp]\n\t" // Pop the dummy slot that is used to align the stack. It is inserted by the compiler, and is needed because of the malloc call. We pop it off because we want to expose the return address
+        "movq 0(%[exc]), %[temp]\n\t" // Get the context stack from the exchanger
+        "movq %%rsp, 0(%[exc])\n\t" // Save the current stack pointer to the exchanger. Later when switching back, just need to run a ret
+        "movq %%rsp, 0(%[k])\n\t" // Save the current stack pointer to the resumption
+        "movq %[temp], %%rsp\n\t" // Switch to the context stack
+        "jmpq *%[func]\n\t" // Call the handler, the first three arguments are already in the right registers
+        : [temp]"=&r"(dummyreg)
+        : "D"(env), "S"(arg), [k]"d"(k), [func]"c"(func), [exc]"r"(exc)
     );
 }
 
 __attribute__((noinline, preserve_none))
 i64 RAISE_M_2(i64 env, i64 arg0, i64 arg1, i64 exc, i64 func) {
     resumption_t* k = (resumption_t*)xmalloc(sizeof(resumption_t));
-    k->ctx_sp = (void**)exc;
-    __asm__ (
-        "popq %%rax\n\t" // Pop the dummy slot that is used to align the stack. It is inserted by the compiler, and is needed because of the malloc call. We pop it off because we want to expose the return address
-        "movq 8(%%rcx), %%r8\n\t" // Get the exchanger from the resumption
-        "movq 0(%%r8), %%rax\n\t" // Get the context stack from the exchanger
-        "movq %%rsp, 0(%%r8)\n\t" // Save the current stack pointer to the exchanger. Later when switching back, just need to run a ret
-        "movq %%rsp, 0(%%rcx)\n\t" // Save the current stack pointer to the resumption
-        "movq %%rax, %%rsp\n\t" // Switch to the context stack
-        "jmpq *%%rbx\n\t" // Call the handler, the first three arguments are already in the right registers
-        :: "D"(env), "S"(arg0), "d"(arg1), "c"(k), "b"(func)
+    k->exchanger_ptr = (void**)exc;
+    i64 dummyreg;
+    __asm__ __volatile__ (
+        "popq %[temp]\n\t" // Pop the dummy slot that is used to align the stack. It is inserted by the compiler, and is needed because of the malloc call. We pop it off because we want to expose the return address
+        "movq 0(%[exc]), %[temp]\n\t" // Get the context stack from the exchanger
+        "movq %%rsp, 0(%[exc])\n\t" // Save the current stack pointer to the exchanger. Later when switching back, just need to run a ret
+        "movq %%rsp, 0(%[k])\n\t" // Save the current stack pointer to the resumption
+        "movq %[temp], %%rsp\n\t" // Switch to the context stack
+        "jmpq *%[func]\n\t" // Call the handler, the first three arguments are already in the right registers
+        : [temp]"=&r"(dummyreg)
+        : "D"(env), "S"(arg0), "d"(arg1), [k]"c"(k), [func]"r"(func), [exc]"r"(exc)
     );
 }
 
 __attribute__((noinline, preserve_none))
 i64 RAISE_M_3(i64 env, i64 arg0, i64 arg1, i64 arg2, i64 exc, i64 func) {
     resumption_t* k = (resumption_t*)xmalloc(sizeof(resumption_t));
-    k->ctx_sp = (void**)exc;
-    __asm__ (
-        "popq %%r8\n\t" // Pop the dummy slot that is used to align the stack. It is inserted by the compiler, and is needed because of the malloc call. We pop it off because we want to expose the return address
-        "movq 8(%%rbx), %%r8\n\t" // Get the exchanger from the resumption
-        "movq 0(%%r8), %%r9\n\t" // Get the context stack from the exchanger
-        "movq %%rsp, 0(%%r8)\n\t" // Save the current stack pointer to the exchanger. Later when switching back, just need to run a ret
-        "movq %%rsp, 0(%%rbx)\n\t" // Save the current stack pointer to the resumption
-        "movq %%r9, %%rsp\n\t" // Switch to the context stack
-        "movq %%rbx, %%r8\n\t" // move argument to register
-        "jmpq *%%rax\n\t" // Call the handler, the first three arguments are already in the right registers
-        :: "D"(env), "S"(arg0), "d"(arg1), "c"(arg2), "b"(k), "a"(func)
+    k->exchanger_ptr = (void**)exc;
+    i64 dummyreg;
+    __asm__ __volatile__ (
+        "popq %[temp]\n\t" // Pop the dummy slot that is used to align the stack. It is inserted by the compiler, and is needed because of the malloc call. We pop it off because we want to expose the return address
+        "movq 0(%[exc]), %[temp]\n\t" // Get the context stack from the exchanger
+        "movq %%rsp, 0(%[exc])\n\t" // Save the current stack pointer to the exchanger. Later when switching back, just need to run a ret
+        "movq %%rsp, 0(%[k])\n\t" // Save the current stack pointer to the resumption
+        "movq %[temp], %%rsp\n\t" // Switch to the context stack
+        "movq %[k], %%r8\n\t" // move argument to register
+        "jmpq *%[func]\n\t" // Call the handler, the first three arguments are already in the right registers
+        : [temp]"=&r"(dummyreg)
+        : "D"(env), "S"(arg0), "d"(arg1), "c"(arg2), [k]"r"(k), [func]"r"(func), [exc]"r"(exc)
     );
 }
 
 __attribute__((noinline, preserve_none))
 i64 RAISE_M_0(i64 env, i64 exc, i64 func) {
     resumption_t* k = (resumption_t*)xmalloc(sizeof(resumption_t));
-    k->ctx_sp = (void**)exc;
-    __asm__ (
-        "popq %%rax\n\t" // Pop the dummy slot that is used to align the stack. It is inserted by the compiler, and is needed because of the malloc call. We pop it off because we want to expose the return address
-        "movq 8(%%rsi), %%r8\n\t" // Get the exchanger from the resumption
-        "movq 0(%%r8), %%rax\n\t" // Get the context stack from the exchanger
-        "movq %%rsp, 0(%%r8)\n\t" // Save the current stack pointer to the exchanger. Later when switching back, just need to run a ret
-        "movq %%rsp, 0(%%rsi)\n\t" // Save the current stack pointer to the resumption
-        "movq %%rax, %%rsp\n\t" // Switch to the context stack
-        "jmpq *%%rdx\n\t" // Call the handler, the first three arguments are already in the right registers
-        :: "D"(env), "S"(k), "d"(func)
+    k->exchanger_ptr = (void**)exc;
+    i64 dummyreg;
+    __asm__ __volatile__(
+        "popq %[temp]\n\t" // Pop the dummy slot that is used to align the stack. It is inserted by the compiler, and is needed because of the malloc call. We pop it off because we want to expose the return address
+        "movq 0(%[exc]), %[temp]\n\t" // Get the context stack from the exchanger
+        "movq %%rsp, 0(%[exc])\n\t" // Save the current stack pointer to the exchanger. Later when switching back, just need to run a ret
+        "movq %%rsp, 0(%[k])\n\t" // Save the current stack pointer to the resumption
+        "movq %[temp], %%rsp\n\t" // Switch to the context stack
+        "jmpq *%[func]\n\t" // Call the handler, the first three arguments are already in the right registers
+        : [temp]"=&r"(dummyreg)
+        : "D"(env), [k]"S"(k), [func]"r"(func), [exc]"r"(exc)
     );
 }
 
@@ -155,9 +166,9 @@ i64 RAISE_ABORT(i64 env, i64 arg, i64 exc, i64 func) {
     );
     free_stack_on_abort(curr_sp, target_sp);
     __asm__ (
-        "movq %2, %%rsp\n\t"
-        "jmpq *%3\n\t"
-        :: "D"(env), "S"(arg), "r"(target_sp), "r"(func)
+        "movq %[tsp], %%rsp\n\t"
+        "jmpq *%[func]\n\t"
+        :: "D"(env), "S"(arg), [tsp]"r"(target_sp), [func]"r"(func)
     ); 
 }
 
@@ -171,9 +182,9 @@ i64 RAISE_ABORT_2(i64 env, i64 arg0, i64 arg1, i64 exc, i64 func) {
     );
     free_stack_on_abort(curr_sp, target_sp);
     __asm__ (
-        "movq %3, %%rsp\n\t"
-        "jmpq *%4\n\t"
-        :: "D"(env), "S"(arg0), "d"(arg1), "r"(target_sp), "r"(func)
+        "movq %[tsp], %%rsp\n\t"
+        "jmpq *%[func]\n\t"
+        :: "D"(env), "S"(arg0), "d"(arg1), [tsp]"r"(target_sp), [func]"r"(func)
     ); 
 }
 
@@ -187,9 +198,9 @@ i64 RAISE_ABORT_3(i64 env, i64 arg0, i64 arg1, i64 arg2, i64 exc, i64 func) {
     );
     free_stack_on_abort(curr_sp, target_sp);
     __asm__ (
-        "movq %4, %%rsp\n\t"
-        "jmpq *%5\n\t"
-        :: "D"(env), "S"(arg0), "d"(arg1), "c"(arg2), "r"(target_sp), "r"(func)
+        "movq %[tsp], %%rsp\n\t"
+        "jmpq *%[func]\n\t"
+        :: "D"(env), "S"(arg0), "d"(arg1), "c"(arg2), [tsp]"r"(target_sp), [func]"r"(func)
     ); 
 }
 
@@ -203,9 +214,9 @@ i64 RAISE_ABORT_0(i64 env, i64 exc, i64 func) {
     );
     free_stack_on_abort(curr_sp, target_sp);
     __asm__ (
-        "movq %1, %%rsp\n\t"
-        "jmpq *%2\n\t"
-        :: "D"(env), "r"(target_sp), "r"(func)
+        "movq %[tsp], %%rsp\n\t"
+        "jmpq *%[func]\n\t"
+        :: "D"(env), [tsp]"r"(target_sp), [func]"r"(func)
     ); 
 }
 
@@ -234,7 +245,7 @@ i64 ENTER(i64* env, void* new_sp, void* body) {
 }
 
 __attribute__((noinline, naked, preserve_none))
-i64 RESUME(i64 arg, void** exc, void* rsp_sp) {
+i64 RESUME(i64 arg, void* exc, void* rsp_sp) {
     __asm__ (
         "movq %%rsp, 0(%%rsi)\n\t" // Save the current stack pointer to exchanger. Later when switching back, just need to run a ret
         "movq %%rdx, %%rsp\n\t" // Switch to the new stack rsp_sp
@@ -292,21 +303,21 @@ i64 RESUME(i64 arg, void** exc, void* rsp_sp) {
     ({ \
     i64 out; \
     if (mode == TAIL) { \
-        meta_t stub; \
+        header_t stub; \
         stub.defs = (handler_def_t[]){EXPAND m_defs}; \
         stub.env = (i64[]) {EXPAND m_free_vars}; \
         out = body((i64)stub.env, (i64)&stub); \
     } else if (mode == ABORT) { \
-        meta_t stub; \
+        header_t stub; \
         stub.defs = (handler_def_t[]){EXPAND m_defs}; \
         stub.env = (i64[]) {EXPAND m_free_vars}; \
-        stub.sp_exchanger = stub._sp_exchanger; \
+        stub.exchanger_ptr = &stub.exchanger; \
         long dummyreg; /* dummyreg used to allow compiler to pick available register */ \
         __asm__ __volatile__ ( \
             "lea -8(%%rsp), %[temp]\n\t" \
             "movq %[temp], 0(%1)\n\t" \
             : [temp]"=&r"(dummyreg)\
-            : "r"(stub.sp_exchanger) \
+            : "r"(&stub.exchanger) \
         ); \
         [[clang::noinline]]out = ((i64(*FAST_SWITCH_DECORATOR)(i64, i64))body)((i64)stub.env, (i64)&stub); \
     } else { \
@@ -320,11 +331,11 @@ i64 RESUME(i64 arg, void** exc, void* rsp_sp) {
         char* env_ptr = new_sp; \
         memcpy(env_ptr, _env, sizeof(_env)); \
         new_sp = (char*)((i64)new_sp & ~0xF); \
-        new_sp -= sizeof(meta_t); \
-        meta_t* stub = (meta_t*)new_sp; \
+        new_sp -= sizeof(header_t); \
+        header_t* stub = (header_t*)new_sp; \
         stub->defs = (handler_def_t*)defs_ptr; \
         stub->env = (i64*)env_ptr; \
-        stub->sp_exchanger = stub->_sp_exchanger; \
+        stub->exchanger_ptr = &stub->exchanger; \
         GC_set_main_stack_sp(); \
         out = ENTER(stub->env, new_sp, body); \
     } \
@@ -357,7 +368,7 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
 
 #define RAISE(_stub, index, m_args) \
     ({ \
-    meta_t* stub = (meta_t*)_stub; \
+    header_t* stub = (header_t*)_stub; \
     i64 out; \
     i64 nargs = NARGS m_args; \
     i64 args[] = {EXPAND m_args}; \
@@ -377,13 +388,13 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
         } \
     } else { \
         if (nargs == 1) { \
-            out = raise_table[stub->defs[index].mode]((i64)stub->env, (i64)args[0], (i64)stub->sp_exchanger, (i64)stub->defs[index].func); \
+            out = raise_table[stub->defs[index].mode]((i64)stub->env, (i64)args[0], (i64)stub->exchanger_ptr, (i64)stub->defs[index].func); \
         } else if (nargs == 2) { \
-            out = raise_table_2[stub->defs[index].mode]((i64)stub->env, (i64)args[0], (i64)args[1], (i64)stub->sp_exchanger, (i64)stub->defs[index].func); \
+            out = raise_table_2[stub->defs[index].mode]((i64)stub->env, (i64)args[0], (i64)args[1], (i64)stub->exchanger_ptr, (i64)stub->defs[index].func); \
         } else if (nargs == 3) { \
-            out = raise_table_3[stub->defs[index].mode]((i64)stub->env, (i64)args[0], (i64)args[1], (i64)args[2], (i64)stub->sp_exchanger, (i64)stub->defs[index].func); \
+            out = raise_table_3[stub->defs[index].mode]((i64)stub->env, (i64)args[0], (i64)args[1], (i64)args[2], (i64)stub->exchanger_ptr, (i64)stub->defs[index].func); \
         } else if (nargs == 0) { \
-            out = raise_table_0[stub->defs[index].mode]((i64)stub->env, (i64)stub->sp_exchanger, (i64)stub->defs[index].func); \
+            out = raise_table_0[stub->defs[index].mode]((i64)stub->env, (i64)stub->exchanger_ptr, (i64)stub->defs[index].func); \
         } else { \
             printf("Number of args to raise unsupported\n"); exit(EXIT_FAILURE); \
         } \
@@ -397,7 +408,7 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
     i64 out; \
     char* new_sp = dup_stack((char*)((resumption_t*)k)->rsp_sp); \
     GC_set_main_stack_sp(); \
-    out = RESUME(arg, ((resumption_t*)k)->ctx_sp, new_sp); \
+    out = RESUME(arg, ((resumption_t*)k)->exchanger_ptr, new_sp); \
     out; \
     })
 
@@ -405,7 +416,7 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
     ({ \
     i64 out; \
     GC_set_main_stack_sp(); \
-    out = RESUME(arg, ((resumption_t*)k)->ctx_sp, ((resumption_t*)k)->rsp_sp); \
+    out = RESUME(arg, ((resumption_t*)k)->exchanger_ptr, ((resumption_t*)k)->rsp_sp); \
     out; \
     })
 
