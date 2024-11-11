@@ -26,17 +26,18 @@ def main():
     if os.path.exists(result_csv):
         os.rename(result_csv, result_csv + ".bak")
 
+    def job(c):
+        platform, benchmark, params = c
+        if "fail_reason" in params:
+            return (platform, benchmark, None)
+        (mean_mili, std_mili) = build_and_bench(f"../benchmarks/{platform}/{benchmark}", params["build"], params["run"], params["bench_input"], adjust_warmup=params.get("adjust_warmup", False), quick=args.quick)
+        if "scale" in params:
+            mean_mili *= params["scale"]
+            std_mili *= params["scale"]
+        return (platform, benchmark, (mean_mili, std_mili))
+
     with ThreadPoolExecutor(max_workers=len(bench_CPUs)) as executor:
-        results_generator = executor.map(
-            lambda c: 
-                (c[0], 
-                c[1], 
-                build_and_bench(f"../benchmarks/{c[0]}/{c[1]}", c[2]["build"], c[2]["run"], c[2]["bench_input"], adjust_warmup=c[2].get("adjust_warmup", False), quick=args.quick)
-                    * c[2].get("scale", 1)
-                )
-                if "fail_reason" not in c[2] else (c[0], c[1], None),
-            config_tups
-        )
+        results_generator = executor.map(job, config_tups)
         with open(result_txt, 'w') as f:
             for platform, benchmark, (mean_mili, std_mili) in results_generator:
                 results += [(platform, benchmark, mean_mili, std_mili)]

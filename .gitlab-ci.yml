@@ -33,10 +33,22 @@ integration-test-job:
   script:
     - nix --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c "dune runtest ./test/integration"
 
-nightly-bench-job:
+nightly-bench-job-intel:
   stage: test
+  tags:
+    - intel
   rules:
     - if: $BENCH
   script:
     # This command builds and runs not only Lexa programs, but also programs in other systems
-    - nix --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c "opam init; opam switch create 5.3.0+trunk; opam install -y multicont; cd scripts && python bench.py --quick --all-systems"
+    - nix --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c "opam init; opam switch create 5.3.0+trunk; opam install -y multicont; cd scripts && python bench.py --quick --all-systems; echo "=====Intel Runtimes======"; cat runtimes.txt"
+
+nightly-bench-job-amd:
+  stage: test
+  tags:
+    - amd
+  rules:
+    - if: $BENCH
+  script:
+    # This command builds and runs not only Lexa programs, but also programs in other systems
+    - nix --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c "opam init; opam switch create 5.3.0+trunk; opam install -y multicont; cd scripts && python bench.py --quick --all-systems; echo "=====AMD Runtimes======"; cat runtimes.txt"
