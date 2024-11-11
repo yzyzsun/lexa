@@ -29,7 +29,7 @@ def main():
     def job(c):
         platform, benchmark, params = c
         if "fail_reason" in params:
-            return (platform, benchmark, None)
+            return (platform, benchmark, (None, None))
         (mean_mili, std_mili) = build_and_bench(f"../benchmarks/{platform}/{benchmark}", params["build"], params["run"], params["bench_input"], adjust_warmup=params.get("adjust_warmup", False), quick=args.quick)
         if "scale" in params:
             mean_mili *= params["scale"]
