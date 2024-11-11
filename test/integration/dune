@@ -3,4 +3,4 @@
   %{bin:lexac} 
   (glob_files_rec ../lexa_snippets/*.lx)
   (glob_files_rec ../../src/stacktrek/*.h)
-  (glob_files_rec ../lexa_snippets/*)))
+  (glob_files_rec ../lexa_snippets/*.lx)))
