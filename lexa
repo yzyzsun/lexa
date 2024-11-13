@@ -21,8 +21,11 @@ def run_commands(source_file, output_file, output_c, lexac_args):
             dune_command += lexac_args.split()
         subprocess.run(dune_command, check=True)
 
-        clang_command = ["clang", "-g", "-O3", "-I", os.path.dirname(os.path.realpath(__file__)) + "/src/stacktrek", c_file, "-o", output_file, "-lm", "-lgc"]
+        clang_command = ["clang", "-g", "-O3", "-I", os.path.dirname(os.path.realpath(__file__)) + "/src/stacktrek", c_file, os.path.dirname(os.path.realpath(__file__)) + "/src/stackwalk/stackwalk.c", "-o", output_file, "-lm", "-lgc"]
         subprocess.run(clang_command, check=True)
+
+        clue_annotate_command = [os.path.dirname(os.path.realpath(__file__)) + "/src/stackwalk/annotate_binary.py", output_file]
+        subprocess.run(clue_annotate_command, check=True)
     finally:
         shutil.rmtree(temp_dir)
 
