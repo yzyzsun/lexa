@@ -74,6 +74,6 @@ def bench_warnup_overhead(path, run_command, CPU):
         external_sec = float(re.search(r"(\d+\.\d+)user", out.stderr).group(1))
         overheads_mili.append(external_sec * 1000 - internal_nano / 1e6)
     overheads_mili = overheads_mili[10:] # Discard first 10 runs
-    overhead = sum(overheads_mili) / len(overheads_mili)
+    overhead = int(sum(overheads_mili) / len(overheads_mili))
     print_message(f"Estimated warmup overhead: {overhead} ms")
     return overhead
