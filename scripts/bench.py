@@ -41,7 +41,7 @@ def main():
         with open(result_txt, 'w') as f:
             for platform, benchmark, (mean_mili, std_mili) in results_generator:
                 results += [(platform, benchmark, mean_mili, std_mili)]
-                f.write(f"{platform:<15} {benchmark:<30} {mean_mili:<10} {std_mili}\n")
+                f.write(f"{platform:<15} {benchmark:<30} {str(mean_mili):<10} {str(std_mili)}\n")
                 f.flush()
 
     import pandas as pd
