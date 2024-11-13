@@ -303,6 +303,7 @@ i64 RESUME(i64 arg, void* exc, void* rsp_sp) {
         header_t stub; \
         stub.defs = (handler_def_t[]){EXPAND m_defs}; \
         stub.env = (i64[]) {EXPAND m_free_vars}; \
+        stub.exchanger = (void*)0xDEADBEEF; \
         out = body((i64)stub.env, (i64)&stub); \
     } else if (mode == ABORT) { \
         header_t stub; \

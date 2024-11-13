@@ -1,0 +1,23 @@
+effect E {
+    dcl op
+}
+
+def main() {
+    handlez {
+        handlez {
+            ~printInt(raisez <E, 1>.op());
+            0
+        } with E {
+            hdl_1 op(k) {
+                ~printInt(1);
+                resume_final k 2;
+                0
+            }
+        }
+    } with E {
+        def op() {
+            ~printInt(3);
+            0
+        }
+    }
+}
