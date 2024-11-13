@@ -20,8 +20,7 @@ def add_section_to_elf(input_elf, output_elf, section_name, data):
             f"--update-section", f"clue_table={tmp_file_path}",
             input_elf, output_elf
         ]
-        print(objcopy_add_section_cmd)
-        subprocess.run(objcopy_add_section_cmd, check=True)
+        subprocess.run(objcopy_add_section_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     finally:
         os.remove(tmp_file_path)  # Clean up temporary file

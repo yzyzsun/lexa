@@ -24,8 +24,6 @@ intptr_t* stackwalk(int clue_sig, int clue_dist) {
     int table_size = CLUE_TABLE[0];
     CLUE_TABLE = CLUE_TABLE + 1;
 
-    int count = 0;
-
     intptr_t stack_iter;
     __asm__("mov %%rsp, %0" : "=r"(stack_iter));
     stack_iter = stack_iter + STACKWALKER_IMMEDIATE_OFFSET;
@@ -40,7 +38,6 @@ intptr_t* stackwalk(int clue_sig, int clue_dist) {
         printf("=================\n");
         printf("stack_iter:0x%lx\n", stack_iter);
         printf("return address: 0x%lx\n", ret_addr);
-        printf("Depth: %d\n", count);
         printf("clue_sig: %d\n", clue_sig);
         printf("clue_dist: %d\n", clue_dist);
 #endif
@@ -57,23 +54,45 @@ intptr_t* stackwalk(int clue_sig, int clue_dist) {
             }
         }
         if (is_handler) {
+            // +1 is because: https://git.uwaterloo.ca/z33ge/sstal/-/issues/77
+            intptr_t *exc_ptr = (intptr_t*)*((intptr_t*)stack_iter + 1);
+
             if (clue_dist == 0) {
-                // +1 is because: https://git.uwaterloo.ca/z33ge/sstal/-/issues/77
-                intptr_t *header_ptr = (intptr_t*)*((intptr_t*)stack_iter + 1);
                 // -2 is because the pointer read off the stack is the location of the exchanger,
                 // while this function promised to return the location of header
-                return header_ptr-2;
+                intptr_t *header_ptr = exc_ptr-2;
+                return header_ptr;
             } else {
                 clue_dist--;
             }
-        }
-        if (frame_size == -1) {
-            printf("Frame size not found!\n\n");
-            exit(1);
-        }
-        
-        stack_iter = stack_iter + frame_size;
 
-        count++;
+            // We use the value of the exchanger to determine the type of handler
+            intptr_t ctx_sp = *exc_ptr;
+            if (ctx_sp == 0xDEADBEEF) {
+                #if DEBUG_STACKWALKER
+                printf("skipping tail handler\n");
+                #endif
+                stack_iter = stack_iter + frame_size;
+            } else if ((intptr_t)stack_iter - (intptr_t)ctx_sp == 0) {
+                #if DEBUG_STACKWALKER
+                printf("skipping abortive handler%d\n");
+                #endif
+                stack_iter = stack_iter + frame_size;
+            } else {
+                #if DEBUG_STACKWALKER
+                printf("skipping general handler\n");
+                #endif
+                stack_iter = ctx_sp;
+            }
+        } else {
+            if (frame_size == -1) {
+                printf("Frame size not found!\n\n");
+                exit(1);
+            }
+            #if DEBUG_STACKWALKER
+            printf("skipping function\n");
+            #endif
+            stack_iter = stack_iter + frame_size;
+        }
     }
 }

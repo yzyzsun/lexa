@@ -1,0 +1,17 @@
+effect E {
+    dcl op
+}
+
+def main() {
+    handlez {
+        raisez <E, 0>.op();
+        ~printInt(1)
+    } with E {
+        exc op() {
+            ~printInt(2);
+            0
+        }
+    };
+    ~printInt(3);
+    0
+}

@@ -1,0 +1,54 @@
+effect E {
+    dcl op
+}
+
+def main() {
+    handlez {
+        handlez {
+            handlez {
+                handlez {
+                    handlez {
+                        ~printInt(raisez <E, 4>.op());
+                        ~printInt(raisez <E, 3>.op());
+                        ~printInt(raisez <E, 2>.op());
+                        ~printInt(raisez <E, 1>.op());
+                        ~printInt(raisez <E, 0>.op());
+                        0
+                    } with E {
+                        hdl_1 op(k) {
+                            ~printInt(1);
+                            resume_final k 1;
+                            0
+                        }
+                    };
+                    0
+                } with E {
+                    hdl_1 op(k) {
+                        ~printInt(2);
+                        resume_final k 2;
+                        0
+                    }
+                };
+                0
+            } with E {
+                hdl_1 op(k) {
+                    ~printInt(3);
+                    resume_final k 3;
+                    0
+                }
+            };
+            0
+        } with E {
+            hdl_1 op(k) {
+                ~printInt(4);
+                resume_final k 4;
+                0
+            }
+        }
+    } with E {
+        def op() {
+            ~printInt(5);
+            5
+        }
+    }
+}
