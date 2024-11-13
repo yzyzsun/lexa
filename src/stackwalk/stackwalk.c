@@ -11,7 +11,7 @@ static const intptr_t CLUE_TABLE_WIDTH = 3;
 
 static const intptr_t CODE_START = 0x555555554000;
 
-#define DEBUG_STACKWALKER 1
+#define DEBUG_STACKWALKER 0
 #if DEBUG_STACKWALKER
 static const intptr_t STACKWALKER_IMMEDIATE_OFFSET = 56;
 #else

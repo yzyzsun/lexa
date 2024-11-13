@@ -82,6 +82,10 @@ rule read =
   | "||" { DISJ }
   | "!" { NEG }
   | "open_c_header" { OPEN_C_HEADER }
+
+  | "effectz" { EFFECTZ }
+  | "handlez" { HANDLEZ }
+  | "raisez" { RAISEZ }
   | '"' { read_string (Buffer.create 17) lexbuf }
   | '\'' { read_char (Buffer.create 17) lexbuf }
   | float { FLOAT (float_of_string (Lexing.lexeme lexbuf)) }
