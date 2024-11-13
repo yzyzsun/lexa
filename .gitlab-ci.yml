@@ -41,7 +41,7 @@ nightly-bench-job-intel:
     - if: $BENCH
   script:
     # This command builds and runs not only Lexa programs, but also programs in other systems
-    - nix --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c "opam init; opam switch create 5.3.0+trunk; opam install -y multicont; cd scripts & python bench.py --quick --all-systems & echo "=====Intel Runtimes======" & cat runtimes.txt"
+    - nix --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c "opam init; opam switch create 5.3.0+trunk; opam install -y multicont; cd scripts && python bench.py --quick --all-systems && echo "=====Intel Runtimes======" && cat runtimes.txt"
 
 nightly-bench-job-amd:
   stage: test
@@ -51,4 +51,4 @@ nightly-bench-job-amd:
     - if: $BENCH
   script:
     # This command builds and runs not only Lexa programs, but also programs in other systems
-    - nix --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c "opam init; opam switch create 5.3.0+trunk; opam install -y multicont; cd scripts & python bench.py --quick --all-systems & echo "=====AMD Runtimes======" & cat runtimes.txt"
+    - nix --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c "opam init; opam switch create 5.3.0+trunk; opam install -y multicont; cd scripts && python bench.py --quick --all-systems && echo "=====AMD Runtimes======" && cat runtimes.txt"
