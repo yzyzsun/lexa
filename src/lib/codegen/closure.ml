@@ -32,12 +32,18 @@ let rec free_var (e : Syntax.expr) : Varset.t =
   | Syntax.Get (e1, e2) -> Varset.union (free_var e1) (free_var e2)
   | Syntax.Set (e1, e2, e3) -> Varset.((free_var e1) @@@ (free_var e2) @@@ (free_var e3))
   | Syntax.Raise {raise_stub; raise_args; _} -> Varset.((union_map free_var raise_args) @@@ (free_var raise_stub))
+  | Syntax.RaiseZ {raisez_args; _} -> Varset.((union_map free_var raisez_args))
   | Syntax.Resume (k, e) | Syntax.ResumeFinal (k, e) -> Varset.(free_var e @@@ (free_var k))
   | Syntax.Handle {handle_body; stub; handler_defs; _} ->
     let handler_fvs = Varset.union_map 
       (fun ({op_params; op_body; _} : Syntax.hdl) -> Varset.(diff (free_var op_body) (of_list op_params))) handler_defs in
     let hdler_names = List.map (fun ({op_name; _} : Syntax.hdl) -> op_name) handler_defs in
     Varset.((diff (free_var handle_body) (of_list (stub :: hdler_names))) @@@ handler_fvs)
+  | Syntax.HandleZ {handle_body; handler_defs; _} ->
+    let handler_fvs = Varset.union_map 
+      (fun ({op_params; op_body; _} : Syntax.hdl) -> Varset.(diff (free_var op_body) (of_list op_params))) handler_defs in
+    let handler_names = List.map (fun ({op_name; _} : Syntax.hdl) -> op_name) handler_defs in
+    Varset.((diff (free_var handle_body) (of_list handler_names)) @@@ handler_fvs)
   | Syntax.Fun (params, body) -> Varset.(diff (free_var body) (of_list params))
   | Syntax.Stmt (e1, e2) -> Varset.union (free_var e1) (free_var e2)
   | Syntax.Recdef (fundefs, e) ->
@@ -87,6 +93,13 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
       raise_op;
       raise_args = List.map (fun x -> convert_expr x env) raise_args
     }
+  | Syntax.RaiseZ {clue_sig; clue_dist; raisez_op; raisez_args} -> 
+    RaiseZ {
+      clue_sig;
+      clue_dist;
+      raisez_op;
+      raisez_args = List.map (fun x -> convert_expr x env) raisez_args
+    }
   | Syntax.Resume (k, e) -> Resume (convert_expr k env, convert_expr e env)
   | Syntax.ResumeFinal (k, e) -> ResumeFinal (convert_expr k env, convert_expr e env)
   | Syntax.Handle {handle_body; stub; sig_name; handler_defs} -> 
@@ -114,6 +127,35 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
     let lifted_obj = TLObj (obj_lifted_name, ["__env__"], handler_defs') in
     extra_toplevels := lifted_obj :: !extra_toplevels;
     Handle { env = Varset.to_list fvs; 
+             body_name = body_lifted_name;
+             obj_name = obj_lifted_name;
+             sig_name }
+  | Syntax.HandleZ {handle_body; sig_name; handler_defs} ->
+    (* TODO: Repeating code *)
+    let handle_body' = convert_expr handle_body env in
+    let body_lifted_name = gen_lifted_name "handle_body" in
+    let obj_lifted_name = gen_lifted_name sig_name in
+    let fvs = free_var e in
+    let body_fv_opened = open_env (Varset.to_list fvs) handle_body' in
+    let annotation = if (List.exists 
+      (fun x -> (match x with
+        | HDef -> false
+        | _ -> true))
+      (List.map (fun ({ op_anno; _} : Syntax.hdl) -> op_anno)
+        handler_defs))
+    then
+      CANoneLocalComeFrom (* If one of the handler is not TR, use preserve_none *)
+    else CANone in
+    
+    let lifted_body = TLAbs (annotation, body_lifted_name, ["__env__"], body_fv_opened) in
+    extra_toplevels := lifted_body :: !extra_toplevels;
+
+    let convert_hdl ({op_anno; op_name; op_params; op_body} : Syntax.hdl) =
+      {op_anno; op_name; op_params; op_body = open_env (Varset.to_list fvs) (convert_expr op_body Varset.(union (of_list op_params) env))} in
+    let handler_defs' = List.map convert_hdl handler_defs in
+    let lifted_obj = TLObj (obj_lifted_name, ["__env__"], handler_defs') in
+    extra_toplevels := lifted_obj :: !extra_toplevels;
+    HandleZ { env = Varset.to_list fvs; 
              body_name = body_lifted_name;
              obj_name = obj_lifted_name;
              sig_name }
@@ -187,6 +229,8 @@ let closure_convert_toplevels (tls : Syntax.top_level list) =
         TLAbs (CANone, lifted_name, ("__env__" :: params), convert_expr body (Varset.of_list params))
     | Syntax.TLEffSig (name, dcls) ->
       TLEffSig (name, dcls)
+    | Syntax.TLEffZSig (name, dcls) ->
+        TLEffZSig (name, dcls)
     | Syntax.TLType typedefs -> TLType typedefs
     | Syntax.TLOpen filename -> TLOpen filename
     | Syntax.TLOpenC filename -> TLOpenC filename

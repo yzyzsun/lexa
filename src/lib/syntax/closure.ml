@@ -30,12 +30,24 @@ and t = (* expressions AFTER closure conversion *)
     raise_op : var;
     raise_args : t list
   }
+  | RaiseZ of {
+    clue_sig : var;
+    clue_dist : int;
+    raisez_op : var;
+    raisez_args : t list
+  }
   | Resume of t * t
   | ResumeFinal of t * t
   | Handle of { env : var list;
     body_name: var;
     obj_name : var;
     sig_name : var
+  }
+  | HandleZ of {
+    env : var list;
+    body_name: var;
+    obj_name : var;
+    sig_name : var;
   }
   | Closure of closure
   | AppClosure of t * t list
@@ -53,6 +65,7 @@ and t = (* expressions AFTER closure conversion *)
 type top_level =
   | TLAbs of funcAnno * var * var list * t
   | TLEffSig of var * var list
+  | TLEffZSig of var * var list
   | TLObj of var * var list * hdl list
   | TLType of typedef list
   | TLOpen of var

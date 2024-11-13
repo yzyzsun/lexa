@@ -3,6 +3,7 @@ open Common
 type top_level =
   | TLAbs of var * var list * expr
   | TLEffSig of var * var list
+  | TLEffZSig of var * var list
   | TLType of typedef list
   | TLOpen of var
   | TLOpenC of var
@@ -40,10 +41,21 @@ and expr =
     raise_op : var;
     raise_args : expr list
   }
+  | RaiseZ of {
+    clue_sig : var;
+    clue_dist : int;
+    raisez_op : var;
+    raisez_args : expr list
+  }
   | Resume of expr * expr
   | ResumeFinal of expr * expr
   | Handle of { handle_body : expr;
     stub : var;
+    sig_name : var;
+    handler_defs : hdl list
+  }
+  | HandleZ of {
+    handle_body : expr;
     sig_name : var;
     handler_defs : hdl list
   }

@@ -239,8 +239,21 @@ and gen_expr ?(is_tail = false) (e : Syntax__Closure.t) =
         let env_str = sprintf "(%s)" 
           (String.concat ", " (List.map (fun x -> "(i64)" ^ x) handle_env)) in
         sprintf "HANDLE(%s, %s, %s)" body_name hdl_str env_str
+    | HandleZ {env = handle_env; body_name; obj_name; sig_name} ->
+      let hdl_list = lookup_eff_sig_dcls sig_name (get_eff_sig_env !env) in
+      let gen_operation_arg operation_name =
+        let operation_type = lookup_operation_type obj_name operation_name (get_eff_type_env !env) in
+        let full_operation_name = obj_name ^ "_" ^ operation_name in
+        (sprintf "{%s, %s}" operation_type full_operation_name)
+      in
+      let hdl_str = "(" ^ (String.concat ", " (List.map gen_operation_arg hdl_list)) ^ ")" in
+      let env_str = sprintf "(%s)" 
+        (String.concat ", " (List.map (fun x -> "(i64)" ^ x) handle_env)) in
+      sprintf "HANDLEZ(%s, %s, %s)" body_name hdl_str env_str
     | Raise {raise_stub; raise_op; raise_args} ->
         sprintf "RAISE(%s, %s, %s)" (gen_expr raise_stub) raise_op (gen_args raise_args ~cast:true)
+    | RaiseZ {clue_dist; raisez_op; raisez_args; _} ->
+      sprintf "RAISEZ(%d, %d, %s, %s)" 0 clue_dist raisez_op (gen_args raisez_args ~cast:true)
     | Resume (k, e) -> sprintf "THROW(%s, %s)" (gen_expr k) (gen_expr e)
     | ResumeFinal (k, e) -> sprintf "FINAL_THROW(%s, %s)" (gen_expr k) (gen_expr e)
     | Closure ({ entry = entry_name; fv = free_vars }) ->
@@ -375,6 +388,8 @@ let rec sig_pass (toplevel : top_level list) : eff_sig_env =
   | [] -> []
   | (TLEffSig (sig_name, dcl_list)) :: tail ->
       (sig_name, dcl_list) :: (sig_pass tail)
+  | (TLEffZSig (sig_name, dcl_list)) :: tail ->
+      (sig_name, dcl_list) :: (sig_pass tail)
   | _ :: tail -> sig_pass tail
 
 (* Pass through the top levels keep track of effect types. *)
@@ -443,6 +458,8 @@ return((int)__res__);}|}
       (* sprintf "i64 %s(%s) {\nreturn(%s);\n}\n" name (genParams params) (gen_expr body) *)
   | TLEffSig (sig_name, sig_methods) ->
     sprintf "enum %s {%s};\n" sig_name (String.concat "," sig_methods)
+  | TLEffZSig (sig_name, sig_methods) ->
+      sprintf "enum %s {%s};\n" sig_name (String.concat "," sig_methods)
   | TLObj (obj_name, obj_params, hdls) -> 
     let gen_hdl {op_anno; op_name; op_params; op_body} = 
       let concated_params = (List.map (fun x -> (CTI64P, x)) obj_params) 

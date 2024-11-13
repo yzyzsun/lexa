@@ -1,0 +1,20 @@
+effectz Hello {
+    dcl hello
+}
+
+def run(n) {
+    val s = newref {42};
+    handlez {
+        raisez <Hello, 0>.hello() 
+    } with Hello {
+        def hello(_) { 
+            ~strPrint("hello\n");
+            ~printInt(s[0]);
+            0
+        }        
+    }
+}
+
+def main() {
+    run()
+}
