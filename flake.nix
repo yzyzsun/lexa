@@ -69,6 +69,8 @@
               ropper
               rpyc
               unicorn
+
+              pyelftools
             ]))
             
             cmake

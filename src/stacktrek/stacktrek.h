@@ -268,9 +268,6 @@ i64 RESUME(i64 arg, void* exc, void* rsp_sp) {
 
 #define N_DEFS(...) ARG_N(_, ## __VA_ARGS__, 5, OOPS, 4, OOPS, 3, OOPS, 2, OOPS, 1, OOPS, 0)
 
-// Thie macro aggregate the modes of the handlers into one mode to guide the allocation of the meta,
-// which happens in _HANDLE. Since the modes are compile-time constants, the compiler will optimize
-// away the if-else chain.
 #define HANDLE(body, m_defs, m_free_vars) \
 ({ \
     i64 out; \
@@ -342,6 +339,104 @@ i64 RESUME(i64 arg, void* exc, void* rsp_sp) {
     out; \
     })
 
+
+#define HANDLEZ(body, m_defs, m_free_vars) \
+({ \
+    i64 out; \
+    handler_def_t defs[] = {EXPAND m_defs}; \
+    size_t n_defs = N_DEFS m_defs; \
+    handler_mode_t mode = 0; \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Warray-bounds\"") \
+    if (n_defs > 3) { \
+        printf("%d handlers are not supported(currently 2 max)\n", n_defs); \
+        exit(EXIT_FAILURE); \
+    } \
+    if (defs[0].mode == TAIL && (n_defs <= 1 || defs[1].mode == TAIL) && (n_defs <= 2 || defs[2].mode == TAIL)) { \
+        mode = TAIL; \
+    } else if ((defs[0].mode == SINGLESHOT || defs[0].mode == MULTISHOT) || \
+                (n_defs > 1 && (defs[1].mode == SINGLESHOT || defs[1].mode == MULTISHOT)) || \
+                (n_defs > 2 && (defs[2].mode == SINGLESHOT || defs[2].mode == MULTISHOT))) { \
+        mode = MULTISHOT; \
+    } else { \
+        mode = ABORT; \
+    } \
+    _Pragma("clang diagnostic pop") \
+    out = _HANDLEZ(mode, body, m_defs, m_free_vars); \
+    out; \
+})
+
+
+// TODO: GC_set_main_stack_sp does not work with nested general handlers
+#define _HANDLEZ(mode, body, m_defs, m_free_vars) \
+    ({ \
+    i64 out; \
+    if (mode == TAIL) { \
+        header_t stub; \
+        stub.defs = (handler_def_t[]){EXPAND m_defs}; \
+        stub.env = (i64[]) {EXPAND m_free_vars}; \
+        i64 exchanger_ptr = (i64)&stub.exchanger; \
+        __asm__ __volatile__ ( \
+            "pushq %[exc]\n\t" \
+            "pushq %[exc]\n\t" \
+            "callq %P[body_]\n\t" \
+            "addq $16, %%rsp\n\t" \
+            : "=a"(out), "+D"(stub.env), [exc]"+d"(exchanger_ptr)\
+            : [body_]"i"(body) \
+            : "rsi", "rcx", "r8", "r9", "r10", "r11", \
+            "rbx", "rbp", "r12", "r13", "r14", "r15", \
+            "xmm0","xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", \
+            "xmm8","xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", \
+            "mm0","mm1", "mm2", "mm3", "mm4", "mm5", "mm6", "mm6", \
+            "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)" \
+        ); \
+    } else if (mode == ABORT) { \
+        header_t stub; \
+        i64 defs = (i64)(handler_def_t[]){EXPAND m_defs}; \
+        i64 env = (i64)(i64[]) {EXPAND m_free_vars}; \
+        stub.defs = (handler_def_t*)defs; \
+        stub.env = (i64*)env; \
+        stub.exchanger_ptr = &stub.exchanger; \
+        i64 exchanger_ptr = (i64)&stub.exchanger; \
+        __asm__ __volatile__ ( \
+            "lea -24(%%rsp), %%r10\n\t" \
+            "movq %%r10, 0(%[exc])\n\t" \
+            "pushq %[exc]\n\t" \
+            "pushq %[exc]\n\t" \
+            "callq %P[body_]\n\t" \
+            "addq $16, %%rsp\n\t" \
+            : "=a"(out), "+D"(stub.env), [exc]"+d"(exchanger_ptr)\
+            : [body_]"i"(body) \
+            : "rsi", "rcx", "r8", "r9", "r10", "r11", \
+            "rbx", "rbp", "r12", "r13", "r14", "r15", \
+            "xmm0","xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", \
+            "xmm8","xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", \
+            "mm0","mm1", "mm2", "mm3", "mm4", "mm5", "mm6", "mm6", \
+            "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)" \
+        ); \
+    } else { \
+        handler_def_t _defs[] = {EXPAND m_defs}; \
+        i64 _env[] = {EXPAND m_free_vars}; \
+        char* new_sp = get_stack(); \
+        new_sp -= sizeof(_defs); \
+        char* defs_ptr = new_sp; \
+        memcpy(defs_ptr, _defs, sizeof(_defs)); \
+        new_sp -= sizeof(_env); \
+        char* env_ptr = new_sp; \
+        memcpy(env_ptr, _env, sizeof(_env)); \
+        new_sp = (char*)((i64)new_sp & ~0xF); \
+        new_sp -= sizeof(header_t); \
+        header_t* stub = (header_t*)new_sp; \
+        stub->defs = (handler_def_t*)defs_ptr; \
+        stub->env = (i64*)env_ptr; \
+        stub->exchanger_ptr = &stub->exchanger; \
+        GC_set_main_stack_sp(); \
+        out = ENTER(stub->env, new_sp, body); \
+    } \
+    out; \
+    })
+
+
 static i64 (FAST_SWITCH_DECORATOR* raise_table[3])(i64 env, i64 arg, i64 exc, i64 func) = {
     RAISE_ABORT,
     RAISE,
@@ -366,9 +461,48 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
     RAISE_M_0,
 };
 
+header_t* stackwalk();
+
 #define RAISE(_stub, index, m_args) \
     ({ \
     header_t* stub = (header_t*)_stub; \
+    i64 out; \
+    i64 nargs = NARGS m_args; \
+    i64 args[] = {EXPAND m_args}; \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Warray-bounds\"") \
+    if (stub->defs[index].mode == TAIL) { \
+        if (nargs == 0) { \
+            out = ((i64(*)(i64*))stub->defs[index].func)(stub->env); \
+        } else if (nargs == 1) { \
+            out = ((i64(*)(i64*, i64))stub->defs[index].func)(stub->env, args[0]); \
+        } else if (nargs == 2) { \
+            out = ((i64(*)(i64*, i64, i64))stub->defs[index].func)(stub->env, args[0], args[1]); \
+        } else if (nargs == 3) { \
+            out = ((i64(*)(i64*, i64, i64, i64))stub->defs[index].func)(stub->env, args[0], args[1], args[2]); \
+        } else { \
+            exit(EXIT_FAILURE); \
+        } \
+    } else { \
+        if (nargs == 1) { \
+            out = raise_table[stub->defs[index].mode]((i64)stub->env, (i64)args[0], (i64)stub->exchanger_ptr, (i64)stub->defs[index].func); \
+        } else if (nargs == 2) { \
+            out = raise_table_2[stub->defs[index].mode]((i64)stub->env, (i64)args[0], (i64)args[1], (i64)stub->exchanger_ptr, (i64)stub->defs[index].func); \
+        } else if (nargs == 3) { \
+            out = raise_table_3[stub->defs[index].mode]((i64)stub->env, (i64)args[0], (i64)args[1], (i64)args[2], (i64)stub->exchanger_ptr, (i64)stub->defs[index].func); \
+        } else if (nargs == 0) { \
+            out = raise_table_0[stub->defs[index].mode]((i64)stub->env, (i64)stub->exchanger_ptr, (i64)stub->defs[index].func); \
+        } else { \
+            printf("Number of args to raise unsupported\n"); exit(EXIT_FAILURE); \
+        } \
+    } \
+    _Pragma("clang diagnostic pop") \
+    out; \
+    })
+
+#define RAISEZ(clue_sig, clue_dist, index, m_args) \
+    ({ \
+    header_t* stub = stackwalk(clue_sig, clue_dist); \
     i64 out; \
     i64 nargs = NARGS m_args; \
     i64 args[] = {EXPAND m_args}; \
