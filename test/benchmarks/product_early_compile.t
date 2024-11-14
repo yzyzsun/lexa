@@ -10,7 +10,7 @@
   
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_7__(i64, i64);
-  i64 __abort_stub_lifted_8___done(i64 *, i64);
+  i64 __handler_abort_stub_lifted_8___done(i64 *, i64);
   static i64 __run_lifted_5__(i64, i64);
   static i64 __loop_lifted_4__(i64, i64, i64, i64);
   static i64 __runProduct_lifted_3__(i64, i64);
@@ -44,9 +44,9 @@
   }
   
   static i64 __runProduct_lifted_3__(i64 __env__, i64 xs) {
-    return (
-        (HANDLE(__handle_body_lifted_7__, ({ABORT, __abort_stub_lifted_8___done}),
-                ((i64)product, (i64)xs))));
+    return ((HANDLE(__handle_body_lifted_7__,
+                    ({ABORT, __handler_abort_stub_lifted_8___done}),
+                    ((i64)product, (i64)xs))));
   }
   
   static i64 __loop_lifted_4__(i64 __env__, i64 xs, i64 i, i64 a) {
@@ -98,7 +98,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __abort_stub_lifted_8___done(i64 *__env__, i64 r) {
+  i64 __handler_abort_stub_lifted_8___done(i64 *__env__, i64 r) {
     return (({
       i64 product = (i64)(((i64 *)__env__)[0]);
       ({

@@ -11,8 +11,8 @@
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_6__(i64, i64);
   FAST_SWITCH_DECORATOR
-  i64 __search_stub_lifted_7___pick(i64 *, i64, i64);
-  i64 __search_stub_lifted_7___fail(i64 *, i64);
+  i64 __handler_search_stub_lifted_7___pick(i64 *, i64, i64);
+  i64 __handler_search_stub_lifted_7___fail(i64 *, i64);
   static i64 __loop_lifted_4__(i64, i64, i64, i64, i64);
   static i64 __run_lifted_3__(i64, i64);
   static i64 __place_lifted_2__(i64, i64, i64, i64);
@@ -60,8 +60,8 @@
   
   static i64 __run_lifted_3__(i64 __env__, i64 n) {
     return ((HANDLE(__handle_body_lifted_6__,
-                    ({MULTISHOT, __search_stub_lifted_7___pick},
-                     {ABORT, __search_stub_lifted_7___fail}),
+                    ({MULTISHOT, __handler_search_stub_lifted_7___pick},
+                     {ABORT, __handler_search_stub_lifted_7___fail}),
                     ((i64)loop, (i64)n, (i64)place))));
   }
   
@@ -102,7 +102,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __search_stub_lifted_7___fail(i64 *__env__, i64 _) {
+  i64 __handler_search_stub_lifted_7___fail(i64 *__env__, i64 _) {
     return (({
       i64 loop = (i64)(((i64 *)__env__)[0]);
       ({
@@ -116,7 +116,7 @@
   }
   
   FAST_SWITCH_DECORATOR
-  i64 __search_stub_lifted_7___pick(i64 *__env__, i64 size, i64 k) {
+  i64 __handler_search_stub_lifted_7___pick(i64 *__env__, i64 size, i64 k) {
     return (({
       i64 loop = (i64)(((i64 *)__env__)[0]);
       ({

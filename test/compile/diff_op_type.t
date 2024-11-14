@@ -11,12 +11,12 @@
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_5__(i64, i64);
   FAST_SWITCH_DECORATOR
-  i64 __state2_stub_lifted_6___set(i64 *, i64, i64);
+  i64 __handler_state2_stub_lifted_6___set(i64 *, i64, i64);
   FAST_SWITCH_DECORATOR
-  i64 __state2_stub_lifted_6___get(i64 *, i64, i64);
+  i64 __handler_state2_stub_lifted_6___get(i64 *, i64, i64);
   static i64 __handle_body_lifted_7__(i64, i64);
-  i64 __state1_stub_lifted_8___set(i64 *, i64);
-  i64 __state1_stub_lifted_8___get(i64 *, i64);
+  i64 __handler_state1_stub_lifted_8___set(i64 *, i64);
+  i64 __handler_state1_stub_lifted_8___get(i64 *, i64);
   static i64 __run_lifted_3__(i64, i64);
   static i64 __body_lifted_2__(i64, i64, i64);
   static i64 __countdown_lifted_1__(i64, i64);
@@ -57,12 +57,12 @@
       }));
       ({
         (HANDLE(__handle_body_lifted_7__,
-                ({TAIL, __state1_stub_lifted_8___get},
-                 {TAIL, __state1_stub_lifted_8___set}),
+                ({TAIL, __handler_state1_stub_lifted_8___get},
+                 {TAIL, __handler_state1_stub_lifted_8___set}),
                 ((i64)countdown, (i64)s)));
         (HANDLE(__handle_body_lifted_5__,
-                ({SINGLESHOT, __state2_stub_lifted_6___get},
-                 {SINGLESHOT, __state2_stub_lifted_6___set}),
+                ({SINGLESHOT, __handler_state2_stub_lifted_6___get},
+                 {SINGLESHOT, __handler_state2_stub_lifted_6___set}),
                 ((i64)countdown, (i64)s)));
       });
     }));
@@ -93,7 +93,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __state1_stub_lifted_8___get(i64 *__env__, i64 _) {
+  i64 __handler_state1_stub_lifted_8___get(i64 *__env__, i64 _) {
     return (({
       i64 countdown = (i64)(((i64 *)__env__)[0]);
       ({
@@ -103,7 +103,7 @@
     }));
   }
   
-  i64 __state1_stub_lifted_8___set(i64 *__env__, i64 i) {
+  i64 __handler_state1_stub_lifted_8___set(i64 *__env__, i64 i) {
     return (({
       i64 countdown = (i64)(((i64 *)__env__)[0]);
       ({
@@ -127,7 +127,7 @@
   }
   
   FAST_SWITCH_DECORATOR
-  i64 __state2_stub_lifted_6___get(i64 *__env__, i64 _, i64 k) {
+  i64 __handler_state2_stub_lifted_6___get(i64 *__env__, i64 _, i64 k) {
     return (({
       i64 countdown = (i64)(((i64 *)__env__)[0]);
       ({
@@ -138,7 +138,7 @@
   }
   
   FAST_SWITCH_DECORATOR
-  i64 __state2_stub_lifted_6___set(i64 *__env__, i64 i, i64 k) {
+  i64 __handler_state2_stub_lifted_6___set(i64 *__env__, i64 i, i64 k) {
     return (({
       i64 countdown = (i64)(((i64 *)__env__)[0]);
       ({

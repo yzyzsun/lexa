@@ -10,16 +10,16 @@
   
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_11__(i64, i64);
-  i64 __exn_stub_lifted_12___throw(i64 *, i64);
+  i64 __handler_exn_stub_lifted_12___throw(i64 *, i64);
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_13__(i64, i64);
   FAST_SWITCH_DECORATOR
-  i64 __process_stub_lifted_14___fork(i64 *, i64, i64);
+  i64 __handler_process_stub_lifted_14___fork(i64 *, i64, i64);
   FAST_SWITCH_DECORATOR
-  i64 __process_stub_lifted_14___yield(i64 *, i64, i64);
+  i64 __handler_process_stub_lifted_14___yield(i64 *, i64, i64);
   static i64 __fun_lifted_15__(i64, i64);
   static i64 __handle_body_lifted_16__(i64, i64);
-  i64 __tick_stub_lifted_17___tick(i64 *, i64);
+  i64 __handler_tick_stub_lifted_17___tick(i64 *, i64);
   static i64 __repeat_lifted_9__(i64, i64);
   static i64 __step_lifted_8__(i64, i64, i64, i64);
   static i64 __run_lifted_7__(i64, i64, i64);
@@ -72,7 +72,8 @@
   
   static i64 __driver_lifted_4__(i64 __env__, i64 job_queue) {
     return (({
-      (HANDLE(__handle_body_lifted_11__, ({ABORT, __exn_stub_lifted_12___throw}),
+      (HANDLE(__handle_body_lifted_11__,
+              ({ABORT, __handler_exn_stub_lifted_12___throw}),
               ((i64)driver, (i64)job_queue, (i64)queueDeqExn)));
       0;
     }));
@@ -80,8 +81,8 @@
   
   static i64 __spawn_lifted_5__(i64 __env__, i64 f, i64 job_queue) {
     return ((HANDLE(__handle_body_lifted_13__,
-                    ({SINGLESHOT, __process_stub_lifted_14___yield},
-                     {SINGLESHOT, __process_stub_lifted_14___fork}),
+                    ({SINGLESHOT, __handler_process_stub_lifted_14___yield},
+                     {SINGLESHOT, __handler_process_stub_lifted_14___fork}),
                     ((i64)f, (i64)job_queue, (i64)spawn))));
   }
   
@@ -105,7 +106,8 @@
         (i64) __newref__;
       }));
       ({
-        (HANDLE(__handle_body_lifted_16__, ({TAIL, __tick_stub_lifted_17___tick}),
+        (HANDLE(__handle_body_lifted_16__,
+                ({TAIL, __handler_tick_stub_lifted_17___tick}),
                 ((i64)c, (i64)jobs, (i64)n_jobs, (i64)scheduler)));
         (((i64 *)c)[0]);
       });
@@ -173,7 +175,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __tick_stub_lifted_17___tick(i64 *__env__, i64 _) {
+  i64 __handler_tick_stub_lifted_17___tick(i64 *__env__, i64 _) {
     return (({
       i64 c = (i64)(((i64 *)__env__)[0]);
       ({
@@ -232,7 +234,7 @@
   }
   
   FAST_SWITCH_DECORATOR
-  i64 __process_stub_lifted_14___yield(i64 *__env__, i64 _, i64 k) {
+  i64 __handler_process_stub_lifted_14___yield(i64 *__env__, i64 _, i64 k) {
     return (({
       i64 f = (i64)(((i64 *)__env__)[0]);
       ({
@@ -246,7 +248,7 @@
   }
   
   FAST_SWITCH_DECORATOR
-  i64 __process_stub_lifted_14___fork(i64 *__env__, i64 g, i64 k) {
+  i64 __handler_process_stub_lifted_14___fork(i64 *__env__, i64 g, i64 k) {
     return (({
       i64 f = (i64)(((i64 *)__env__)[0]);
       ({
@@ -286,7 +288,7 @@
     }));
   }
   
-  i64 __exn_stub_lifted_12___throw(i64 *__env__, i64 _) {
+  i64 __handler_exn_stub_lifted_12___throw(i64 *__env__, i64 _) {
     return (({
       i64 driver = (i64)(((i64 *)__env__)[0]);
       ({

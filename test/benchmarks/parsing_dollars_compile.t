@@ -9,12 +9,12 @@
   #include <string.h>
   
   static i64 __handle_body_lifted_14__(i64, i64);
-  i64 __emit_stub_lifted_15___emit(i64 *, i64);
+  i64 __handler_emit_stub_lifted_15___emit(i64 *, i64);
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_16__(i64, i64);
-  i64 __stop_stub_lifted_17___stop(i64 *, i64);
+  i64 __handler_stop_stub_lifted_17___stop(i64 *, i64);
   static i64 __handle_body_lifted_18__(i64, i64);
-  i64 __read_stub_lifted_19___read(i64 *);
+  i64 __handler_read_stub_lifted_19___read(i64 *);
   static i64 __run_lifted_12__(i64, i64);
   static i64 __catch_action_lifted_11__(i64, i64, i64, i64);
   static i64 __sum_action_lifted_10__(i64, i64, i64);
@@ -62,7 +62,8 @@
         (i64) __newref__;
       }));
       ({
-        (HANDLE(__handle_body_lifted_14__, ({TAIL, __emit_stub_lifted_15___emit}),
+        (HANDLE(__handle_body_lifted_14__,
+                ({TAIL, __handler_emit_stub_lifted_15___emit}),
                 ((i64)action, (i64)n, (i64)s)));
         (((i64 *)s)[0]);
       });
@@ -71,7 +72,7 @@
   
   static i64 __catch_lifted_6__(i64 __env__, i64 action, i64 emit_stub, i64 n) {
     return ((HANDLE(__handle_body_lifted_16__,
-                    ({ABORT, __stop_stub_lifted_17___stop}),
+                    ({ABORT, __handler_stop_stub_lifted_17___stop}),
                     ((i64)action, (i64)emit_stub, (i64)n))));
   }
   
@@ -91,7 +92,8 @@
           __newref__[0] = __field_0__;
           (i64) __newref__;
         }));
-        (HANDLE(__handle_body_lifted_18__, ({TAIL, __read_stub_lifted_19___read}),
+        (HANDLE(__handle_body_lifted_18__,
+                ({TAIL, __handler_read_stub_lifted_19___read}),
                 ((i64)action, (i64)dollar, (i64)emit_stub, (i64)i_ref, (i64)j_ref,
                  (i64)n, (i64)newline, (i64)stop_stub)));
       });
@@ -209,7 +211,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __read_stub_lifted_19___read(i64 *__env__) {
+  i64 __handler_read_stub_lifted_19___read(i64 *__env__) {
     return (({
       i64 action = (i64)(((i64 *)__env__)[0]);
       ({
@@ -290,7 +292,7 @@
     }));
   }
   
-  i64 __stop_stub_lifted_17___stop(i64 *__env__, i64 _) {
+  i64 __handler_stop_stub_lifted_17___stop(i64 *__env__, i64 _) {
     return (({
       i64 action = (i64)(((i64 *)__env__)[0]);
       ({
@@ -327,7 +329,7 @@
     }));
   }
   
-  i64 __emit_stub_lifted_15___emit(i64 *__env__, i64 e) {
+  i64 __handler_emit_stub_lifted_15___emit(i64 *__env__, i64 e) {
     return (({
       i64 action = (i64)(((i64 *)__env__)[0]);
       ({
