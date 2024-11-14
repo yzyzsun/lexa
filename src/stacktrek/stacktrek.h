@@ -303,7 +303,6 @@ i64 RESUME(i64 arg, void* exc, void* rsp_sp) {
         header_t stub; \
         stub.defs = (handler_def_t[]){EXPAND m_defs}; \
         stub.env = (i64[]) {EXPAND m_free_vars}; \
-        stub.exchanger = (void*)0xDEADBEEF; \
         out = body((i64)stub.env, (i64)&stub); \
     } else if (mode == ABORT) { \
         header_t stub; \
@@ -378,6 +377,8 @@ i64 RESUME(i64 arg, void* exc, void* rsp_sp) {
         stub.env = (i64[]) {EXPAND m_free_vars}; \
         i64 exchanger_ptr = (i64)&stub.exchanger; \
         __asm__ __volatile__ ( \
+            "lea -24(%%rsp), %%r10\n\t" \
+            "movq %%r10, 0(%[exc])\n\t" \
             "pushq %[exc]\n\t" \
             "pushq %[exc]\n\t" \
             "callq %P[body_]\n\t" \
@@ -513,7 +514,21 @@ header_t* stackwalk();
         if (nargs == 0) { \
             out = ((i64(*)(i64*))stub->defs[index].func)(stub->env); \
         } else if (nargs == 1) { \
-            out = ((i64(*)(i64*, i64))stub->defs[index].func)(stub->env, args[0]); \
+            i64 env = (i64)stub->env; \
+            i64 arg = args[0]; \
+            __asm__ __volatile__ ( \
+                "pushq %[exc]\n\t" \
+                "pushq %[exc]\n\t" \
+                "callq *%[body_]\n\t" \
+                "addq $16, %%rsp\n\t" \
+                : "=a"(out), "+D"(env), "+S"(arg) \
+                : [body_]"r"(stub->defs[index].func), [exc]"r"(&stub->exchanger) \
+                : "rcx", "rdx", "r8", "r9", "r10", "r11", \
+                "xmm0","xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", \
+                "xmm8","xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", \
+                "mm0","mm1", "mm2", "mm3", "mm4", "mm5", "mm6", "mm6", \
+                "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)" \
+            ); \
         } else if (nargs == 2) { \
             out = ((i64(*)(i64*, i64, i64))stub->defs[index].func)(stub->env, args[0], args[1]); \
         } else if (nargs == 3) { \

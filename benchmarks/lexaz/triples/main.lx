@@ -1,0 +1,50 @@
+effectz Choice {
+    dcl flip
+    dcl fail
+}
+
+def choice(n) {
+    if n < 1 then
+        raisez <Choice, 0>.fail(0)
+    else
+        if raisez <Choice, 0>.flip(0) then
+            n
+        else
+            choice(n - 1)
+}
+
+def triple(n, s) {
+    val i = choice(n);
+    val j = choice(i - 1);
+    val k = choice(j - 1);
+    if i + j + k == s then
+        hash(i, j, k)
+    else
+        raisez <Choice, 0>.fail(0)
+}
+
+def run(n, s) {
+    handlez {
+        triple(n, s)
+    } with Choice {
+        exc fail(_) {
+            0
+        }
+
+        hdl_s flip(_, k) {
+            (resume k true + resume_final k false) % 1000000007
+        }
+    }
+}
+
+def hash(a,b,c) {
+    (53 * a + 2809 * b + 148877 * c) % 1000000007
+}
+
+def main() {
+    val n = ~readInt();
+    val res = run(n, n);
+    ~printInt(res);
+    0
+}
+

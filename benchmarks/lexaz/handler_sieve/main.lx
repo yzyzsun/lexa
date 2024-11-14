@@ -1,0 +1,39 @@
+effect Prime {
+    dcl prime
+}
+
+def primes(i, n, a) {
+    if i < n then
+        if raisez <Prime, 0>.prime(i) then
+            handlez {
+                primes(i + 1, n, a + i)
+            } with Prime {
+                def prime(e) {
+                    if (e % i) == 0 then
+                        false
+                    else
+                        raisez <Prime, 0>.prime(e)
+                }                
+            }
+        else
+            primes(i + 1, n, a)
+    else
+        a
+}
+
+def run(n) {
+    handlez {
+        primes(2, n, 0)
+    } with Prime {
+        def prime(e) {
+            1
+        }        
+    }
+}
+
+def main() {
+    val arg1 = ~readInt();
+    val arg2 = run(arg1);
+    ~printInt(arg2);
+    0
+}

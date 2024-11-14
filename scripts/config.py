@@ -21,7 +21,7 @@ else:
         bench_CPUs = bench_CPUs[:4]
 
 benchmarks = ["countdown", "fibonacci_recursive", "product_early", "iterator", "nqueens", "generator", "tree_explore", "triples", "resume_nontail", "parsing_dollars", "handler_sieve", "resume_nontail_2", "scheduler", "interruptible_iterator"]
-platforms = ["lexa", "effekt", "koka_named", "koka", "ocaml"]
+platforms = ["lexa", "lexaz", "effekt", "koka_named", "koka", "ocaml"]
 
 config = {}
 
@@ -29,6 +29,12 @@ for benchmark in benchmarks:
     LEXA_BUILD_COMMAND = "flock /tmp/dune_lockfile -c 'lexa main.lx -o main'"
     LEXA_RUN_COMMAND = "./main {IN}"
     config[("lexa", benchmark)] = {
+        "build": LEXA_BUILD_COMMAND, "run": LEXA_RUN_COMMAND,
+    }
+
+    LEXA_BUILD_COMMAND = "flock /tmp/dune_lockfile -c 'lexa main.lx -o main'"
+    LEXA_RUN_COMMAND = "./main {IN}"
+    config[("lexaz", benchmark)] = {
         "build": LEXA_BUILD_COMMAND, "run": LEXA_RUN_COMMAND,
     }
 

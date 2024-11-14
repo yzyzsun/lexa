@@ -17,7 +17,7 @@ def add_section_to_elf(input_elf, output_elf, section_name, data):
         # Step 2: Copy ELF and add the section with the contents of the temporary file
         objcopy_add_section_cmd = [
             "objcopy",
-            f"--update-section", f"clue_table={tmp_file_path}",
+            f"--update-section", f"{section_name}={tmp_file_path}",
             input_elf, output_elf
         ]
         subprocess.run(objcopy_add_section_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -106,6 +106,13 @@ def get_clue_table(input):
                 offset += 16
             meta["rsp_offset"] = offset
 
+        for addr, meta in clue_table.items():
+            function_name = find_function_by_address(function_map, addr)
+            if function_name.startswith("__handler"):
+                meta["in_handler"] = True
+            else:
+                meta["in_handler"] = False
+
     # find the return address to ENTER and mark handler indicator
     for addr, meta in clue_table.items():
         if meta["function_name"] == "ENTER":
@@ -115,7 +122,7 @@ def get_clue_table(input):
 
 # Remove calls that are pure. Most of them come from the old c stdlib
 def clean_clue_table(clue_table):
-    irrelevant_functions =  ["error", "check", "printInt", "printChar", "listNode", "listRange", "listPrint", "listAppend", "treeNode", "queueMake", "queueEnq", "stringMake", "stringSubStr", "printFloat", "floatPow", "floatExp", "floatRand", "floatCos", "floatSin", "floatSqrt", "floatLog", "arrayMake", "arrayMakeInit", "arrayPush", "arrayPrint", "arrayPrintChars", "strPrint", "strConcat", "strEq", "init_stack_pool", "get_stack", "dup_stack", "RAISE_M", "RAISE_M_2", "RAISE_M_3", "RAISE_M_0", "stackwalk"]
+    irrelevant_functions =  ["error", "check", "printInt", "printChar", "listNode", "listRange", "listPrint", "listAppend", "treeNode", "queueMake", "queueEnq", "stringMake", "stringSubStr", "printFloat", "floatPow", "floatExp", "floatRand", "floatCos", "floatSin", "floatSqrt", "floatLog", "arrayMake", "arrayMakeInit", "arrayPush", "arrayPrint", "arrayPrintChars", "strPrint", "strConcat", "strEq", "init_stack_pool", "get_stack", "dup_stack", "RAISE_M", "RAISE_M_2", "RAISE_M_3", "RAISE_M_0"]
     return {addr: meta for addr, meta in clue_table.items() if meta["function_name"] not in irrelevant_functions}
 
 def main():
@@ -130,14 +137,16 @@ def main():
         flat_clue_table.append(addr)
         flat_clue_table.append(meta["rsp_offset"])
         flat_clue_table.append(meta["handler_indicator"])
+        flat_clue_table.append(meta["in_handler"])
 
     flat_clue_table = [x.to_bytes(8, byteorder='little') for x in flat_clue_table]
     flat_clue_table = [byte for b in flat_clue_table for byte in b]
+    
     add_section_to_elf(args.input, args.input, "clue_table", bytes(flat_clue_table))
 
     with open("clue_table.txt", "w") as file:
         for addr, meta in clue_table.items():
-            file.write(f"{addr:#x} {meta['rsp_offset']} {meta['function_name']} {meta['handler_indicator']}\n")
+            file.write(f"{addr:#x} {meta['rsp_offset']} {meta['function_name']} {meta['handler_indicator']} {meta['in_handler']}\n")
 
 if __name__ == "__main__":
     main()

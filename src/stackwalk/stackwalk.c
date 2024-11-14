@@ -7,13 +7,16 @@
 // See the use of __start_SECTION_NAME: https://stackoverflow.com/a/48550485
 long __attribute__((section("clue_table"), used)) dummyVar;
 extern __attribute__((weak)) intptr_t __start_clue_table;
-static const intptr_t CLUE_TABLE_WIDTH = 3;
+static const intptr_t CLUE_TABLE_WIDTH = 4;
 
 static const intptr_t CODE_START = 0x555555554000;
 
 #define DEBUG_STACKWALKER 0
 #if DEBUG_STACKWALKER
 static const intptr_t STACKWALKER_IMMEDIATE_OFFSET = 56;
+
+// Turn this on when -O1 is used
+// static const intptr_t STACKWALKER_IMMEDIATE_OFFSET = 88;
 #else
 static const intptr_t STACKWALKER_IMMEDIATE_OFFSET = 8;
 #endif
@@ -28,6 +31,8 @@ intptr_t* stackwalk(int clue_sig, int clue_dist) {
     __asm__("mov %%rsp, %0" : "=r"(stack_iter));
     stack_iter = stack_iter + STACKWALKER_IMMEDIATE_OFFSET;
 
+
+    bool is_in_handler = false;
     // At the beginning of each iteration,
     // stack_iter points to the return address on the stack
     while (1) {
@@ -44,15 +49,23 @@ intptr_t* stackwalk(int clue_sig, int clue_dist) {
 
         // Find the framesize of the current function
         // and check if the current function is a handler
-        long frame_size = -1;
+        long frame_size = 0;
         bool is_handler = false;
+        bool found = false;
         for (int i = 0; i < table_size; i++) {
             if (CLUE_TABLE[CLUE_TABLE_WIDTH*i] == ret_addr) {
                 frame_size = CLUE_TABLE[CLUE_TABLE_WIDTH*i+1];
                 is_handler = CLUE_TABLE[CLUE_TABLE_WIDTH*i+2];
+                is_in_handler = CLUE_TABLE[CLUE_TABLE_WIDTH*i+3];
+                found = true;
                 break;
             }
         }
+        if (!found) {
+            printf("No clue found for address 0x%lx\n", ret_addr);
+            exit(1);
+        }
+
         if (is_handler) {
             // +1 is because: https://git.uwaterloo.ca/z33ge/sstal/-/issues/77
             intptr_t *exc_ptr = (intptr_t*)*((intptr_t*)stack_iter + 1);
@@ -60,6 +73,9 @@ intptr_t* stackwalk(int clue_sig, int clue_dist) {
             if (clue_dist == 0) {
                 // -2 is because the pointer read off the stack is the location of the exchanger,
                 // while this function promised to return the location of header
+                #if DEBUG_STACKWALKER
+                printf("found handler\n");
+                #endif
                 intptr_t *header_ptr = exc_ptr-2;
                 return header_ptr;
             } else {
@@ -68,31 +84,47 @@ intptr_t* stackwalk(int clue_sig, int clue_dist) {
 
             // We use the value of the exchanger to determine the type of handler
             intptr_t ctx_sp = *exc_ptr;
-            if (ctx_sp == 0xDEADBEEF) {
+            if ((intptr_t)stack_iter - (intptr_t)ctx_sp == 0) {
                 #if DEBUG_STACKWALKER
-                printf("skipping tail handler\n");
-                #endif
-                stack_iter = stack_iter + frame_size;
-            } else if ((intptr_t)stack_iter - (intptr_t)ctx_sp == 0) {
-                #if DEBUG_STACKWALKER
-                printf("skipping abortive handler%d\n");
+                printf("walk over in-stack handler\n");
                 #endif
                 stack_iter = stack_iter + frame_size;
             } else {
                 #if DEBUG_STACKWALKER
-                printf("skipping general handler\n");
+                printf("walk over general handler\n");
                 #endif
                 stack_iter = ctx_sp;
             }
         } else {
-            if (frame_size == -1) {
-                printf("Frame size not found!\n\n");
-                exit(1);
+            if (is_in_handler) {
+                // If an effect is coming out of a handler,
+                // we need to walk all the way up to the installment of the handler
+                // For abortive handlers and tail handlers, we find the saved exchanger
+                // behind the return address on the stack.
+                // For abortive handlers, it was pushed when the handler is installed.
+                // For tail handlers, it was pushed when the handler was called
+                // TODO: For general handlers it is not clear how to carry on
+                #if DEBUG_STACKWALKER
+                printf("jump over\n");
+                #endif
+                stack_iter = stack_iter + frame_size;
+                intptr_t *exc_ptr = (intptr_t*)*((intptr_t*)stack_iter + 1);
+                intptr_t ctx_sp = *exc_ptr;
+                stack_iter = ctx_sp;
+
+                clue_dist += 1;
+            } else {
+                #if DEBUG_STACKWALKER
+                printf("skipping function\n");
+                #endif
+                stack_iter = stack_iter + frame_size;
             }
-            #if DEBUG_STACKWALKER
-            printf("skipping function\n");
-            #endif
-            stack_iter = stack_iter + frame_size;
+
+            // We now has skipped all handlers within a function and
+            // is going to the caller. If we were in a handler, 
+            // we are not anymore.
+            // (actually, we may still be in a handler, but that will be determined in the next iteration)
+            is_in_handler = false;
         }
     }
 }

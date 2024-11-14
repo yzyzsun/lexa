@@ -1,0 +1,51 @@
+
+effectz Abort {
+  dcl done
+}
+
+def product(xs) {
+    if ~listIsEmpty(xs) then
+        0
+    else
+        val y = ~listHead(xs);
+        val ys = ~listTail(xs);
+            if y == 0 then
+                raisez <Abort, 0>.done(0)
+            else
+                y * product(ys)
+}
+
+def enumerate(i) {
+    if i < 0 then
+        ~listEnd()
+    else
+        ~listNode(i, enumerate(i - 1))
+}
+
+def runProduct(xs) {
+    handlez {
+        product(xs)
+    } with Abort {
+        exc done(r) {
+            r
+        }
+    }
+}
+
+def loop(xs, i, a) {
+    if i == 0 then
+        a
+    else
+        loop(xs, i - 1, a + runProduct(xs))
+}
+
+def run(n) {
+    loop(enumerate(1000), n, 0)
+}
+
+def main() {
+    val arg1 = ~readInt();
+    val arg2 = run(arg1);
+    ~printInt(arg2);
+    0
+}
