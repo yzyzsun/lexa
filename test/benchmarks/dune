@@ -2,4 +2,5 @@
  (deps 
   %{bin:lexac} 
   (glob_files_rec ../../benchmarks/lexa/*.lx)
+  (glob_files_rec ../../benchmarks/lexaz/*.lx)
   (glob_files_rec ../../src/stacktrek/*.h)))

@@ -1,0 +1,35 @@
+effectz State {
+    dcl get
+    dcl set
+}
+
+def countdown() {
+    val i = raisez <State, 0>.get(0);
+    if i == 0 then
+        i
+    else (
+        raisez <State, 0>.set(i-1);
+        countdown()
+    )
+}
+
+def run(n) {
+    val s = newref {n};
+    handlez {
+        countdown()
+    } with State {
+        def get(_) { 
+            s[0]
+        }
+
+        def set(i) {
+            s[0] := i;
+            0
+        }
+    }
+}
+
+def main() {
+    ~printInt(run(~readInt()));
+    0
+}

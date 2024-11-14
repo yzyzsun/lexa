@@ -1,0 +1,99 @@
+effectz Read {
+    dcl read
+}
+
+effectz Emit {
+    dcl emit
+}
+
+effectz Stop {
+    dcl stop
+}
+
+def newline() {
+    10
+}
+
+def is_newline(c) {
+    c == 10
+}
+
+def dollar() {
+    36
+}
+
+def is_dollar(c) {
+    c == 36
+}
+
+def sum(action) {
+    val s = newref {0};
+    handlez {
+        action()
+    } with Emit {
+        def emit(e) {
+            s[0] := s[0] + e
+        }
+    };
+    s[0]
+}
+
+def catch(action) {
+    handlez {
+        action()
+    } with Stop {
+        exc stop(_) { 0 }
+    }
+}
+
+def feed(n, action) {
+    val i_ref = newref {0};
+    val j_ref = newref {0};
+    handlez {
+        action()
+    }
+    with Read {
+        def read() {
+            val i = i_ref[0];
+            val j = j_ref[0];
+            if i > n then
+                raisez <Stop, 1>.stop(0)
+            else (
+                if j == 0 then
+                    i_ref[0] := i + 1;
+                    j_ref[0] := i + 1;
+                    newline()
+                else
+                    (j_ref[0] := j - 1;
+                    dollar())
+            )    
+        }
+    
+    }
+}
+
+def parse(a) {
+    val c = raisez <Read, 0>.read(0);
+    if is_dollar(c) then
+        parse(a + 1)
+    else
+        if is_newline(c) then
+            raisez <Emit, 2>.emit(a);
+            parse(0)
+        else
+            raisez <Stop, 1>.stop(0)
+}
+
+def run(n) {
+    sum(fun() {
+        catch(fun() {
+            feed(n, fun() { parse(0) })
+        })
+    })
+}
+
+def main() {
+    val n = ~readInt();
+    ~printInt(run(n));
+    0
+}

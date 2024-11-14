@@ -35,8 +35,13 @@ def build(path, build_command):
     CPU = bench_CPUs[thread_id]
     print_message(f"Building {path}")
     taskset_cmd = f"taskset -c {CPU} {build_command}"
-    run_processe(taskset_cmd, path)
-    print_message("Done building")
+    try:
+        run_processe(taskset_cmd, path)
+        print_message("Done building")
+    except Exception as e:
+        print_message("Failed building", short=True)
+        return False
+    return True
 
 def bench(path, run_command, input, adjust_warmup, quick=False):
     thread_id = int(current_thread().getName().split('_')[1])
@@ -48,19 +53,24 @@ def bench(path, run_command, input, adjust_warmup, quick=False):
         hyperfine_cmd = f"hyperfine --shell none --warmup 5 --time-unit millisecond '{run_command.format(IN=input)}'"
     # NB: use five spaces so that the command can be parsed out later
     taskset_cmd = f"taskset -c {CPU} {hyperfine_cmd} "
-    result = run_processe(taskset_cmd, path)
-    matches = re.search(r"Time \(mean ± σ\):\s+(\d+\.\d+)\sms\s+±\s+(\d+\.\d+)\sms", result.stdout)
-    mean_mili = int(float(matches.group(1)))
-    std_mili = int(float(matches.group(2)))
-    print_message(f"Done benchmarking {path}")
+    try:
+        result = run_processe(taskset_cmd, path)
+        matches = re.search(r"Time \(mean ± σ\):\s+(\d+\.\d+)\sms\s+±\s+(\d+\.\d+)\sms", result.stdout)
+        mean_mili = int(float(matches.group(1)))
+        std_mili = int(float(matches.group(2)))
+        print_message(f"Done benchmarking {path}")
 
-    if adjust_warmup:
-        warmup_overhead_mili = bench_warnup_overhead(path, run_command, CPU)
-        mean_mili -= warmup_overhead_mili
-    return (mean_mili, std_mili)
+        if adjust_warmup:
+            warmup_overhead_mili = bench_warnup_overhead(path, run_command, CPU)
+            mean_mili -= warmup_overhead_mili
+        return (mean_mili, std_mili)
+    except Exception as e:
+        print_message("Failed benchmarking", short=True)
+        return (None, None)
 
 def build_and_bench(path, build_command, run_command, input, adjust_warmup, quick=False):
-    build(path, build_command)
+    if not build(path, build_command):
+        return (None, None)
     return bench(path, run_command, input, adjust_warmup, quick)
 
 def bench_warnup_overhead(path, run_command, CPU):

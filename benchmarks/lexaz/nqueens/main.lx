@@ -1,0 +1,55 @@
+effectz Search {
+    dcl pick
+    dcl fail
+}
+
+def safe(queen, diag, xs) {
+    val is_empty = ~listIsEmpty(xs);
+    if is_empty then
+        true
+    else
+        val q = ~listHead(xs);
+        val qs = ~listTail(xs);
+        if queen != q && queen != q + diag && queen != q - diag then
+            safe(queen, diag + 1, qs)
+        else
+            false
+}
+
+def place(size, column) {
+    if column == 0 then
+        ~listEnd()
+    else
+        val rest = place(size, column - 1);
+        val next = raisez <Search, 0>.pick(size);
+        if safe(next, 1, rest) then
+            ~listNode(next, rest)
+        else
+            raisez <Search, 0>.fail(0)
+}
+
+def run(n) {
+    handlez {
+        place(n, n);
+        1
+    } with Search {
+        exc fail(_) { 0 }
+        hdl_s pick(size, k) {
+            loop(1, 0, size, k)
+        }
+    }
+}
+
+def loop(i, a, size, k) {
+    if i == size then
+        a + resume_final k i
+    else
+        loop(i + 1, a + resume k i, size, k)
+}
+
+def main() {
+    val n = ~readInt();
+    val run_res = run(n);
+    ~printInt(run_res);
+    0
+}

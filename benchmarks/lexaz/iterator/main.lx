@@ -1,0 +1,30 @@
+effectz Emit {
+    dcl emit
+}
+
+def range(l, u) {
+    if l > u then
+        0
+    else (
+        raisez <Emit, 0>.emit(l);
+        range(l + 1, u)
+    )
+}
+
+def run(n) {
+    val s = newref {0};
+    handlez {
+        range(0, n)
+    } with Emit {
+        def emit(e) {
+            s[0] := s[0] + e;
+            0
+        }        
+    };
+    s[0]
+}
+
+def main() {
+    ~printInt(run(~readInt()));
+    0
+}

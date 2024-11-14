@@ -1,0 +1,39 @@
+effectz Operator {
+    dcl operator
+}
+
+def loop(i, s) {
+    if i == 0 then
+        s
+    else (
+        raisez <Operator, 0>.operator(i);
+        loop(i - 1, s)
+    )
+}
+
+def run(n, s) {
+    handlez {
+        loop(n, s)
+    } with Operator {
+        hdl_1 operator(x, k) {
+            val y = resume_final k 0;
+            ~mathAbs(x - (503 * y) + 37) % 1009
+        }
+    }
+}
+
+def step(l, s, n) {
+    if l == 0 then
+        s
+    else
+        step(l - 1, run(n, s), n)
+}
+
+def repeat(n) {
+    step(1000, 0, n)
+}
+
+def main() {
+    ~printInt(repeat(~readInt()));
+    0
+}

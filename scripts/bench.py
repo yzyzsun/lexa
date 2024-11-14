@@ -12,10 +12,10 @@ def main():
     args = parser.parse_args()
 
     config_tups = [(platform, benchmark, params) for (platform, benchmark), params in config.items()]
-    config_tups.sort(key=lambda x: (platforms.index(x[0]), benchmarks.index(x[1])))
+    config_tups.sort(key=lambda x: (platforms.index(x[0]), benchmarks.index(x[1].strip("_z"))))
 
     if not args.all_systems:
-        config_tups = [c for c in config_tups if c[0] == "lexa"]
+        config_tups = [c for c in config_tups if c[0] == "lexa" or c[0] == "lexaz"]
 
     results = []
 
