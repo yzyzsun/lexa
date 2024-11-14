@@ -376,6 +376,7 @@ i64 RESUME(i64 arg, void* exc, void* rsp_sp) {
         stub.defs = (handler_def_t[]){EXPAND m_defs}; \
         stub.env = (i64[]) {EXPAND m_free_vars}; \
         i64 exchanger_ptr = (i64)&stub.exchanger; \
+        i64 env = (i64)stub.env; \
         __asm__ __volatile__ ( \
             "lea -24(%%rsp), %%r10\n\t" \
             "movq %%r10, 0(%[exc])\n\t" \
@@ -383,7 +384,7 @@ i64 RESUME(i64 arg, void* exc, void* rsp_sp) {
             "pushq %[exc]\n\t" \
             "callq %P[body_]\n\t" \
             "addq $16, %%rsp\n\t" \
-            : "=a"(out), "+D"(stub.env), [exc]"+d"(exchanger_ptr)\
+            : "=a"(out), "+D"(env), [exc]"+d"(exchanger_ptr)\
             : [body_]"i"(body) \
             : "rsi", "rcx", "r8", "r9", "r10", "r11", \
             "rbx", "rbp", "r12", "r13", "r14", "r15", \
@@ -400,6 +401,7 @@ i64 RESUME(i64 arg, void* exc, void* rsp_sp) {
         stub.env = (i64*)env; \
         stub.exchanger_ptr = &stub.exchanger; \
         i64 exchanger_ptr = (i64)&stub.exchanger; \
+        i64 env_ptr = (i64)stub.env; \
         __asm__ __volatile__ ( \
             "lea -24(%%rsp), %%r10\n\t" \
             "movq %%r10, 0(%[exc])\n\t" \
@@ -407,7 +409,7 @@ i64 RESUME(i64 arg, void* exc, void* rsp_sp) {
             "pushq %[exc]\n\t" \
             "callq %P[body_]\n\t" \
             "addq $16, %%rsp\n\t" \
-            : "=a"(out), "+D"(stub.env), [exc]"+d"(exchanger_ptr)\
+            : "=a"(out), "+D"(env_ptr), [exc]"+d"(exchanger_ptr)\
             : [body_]"i"(body) \
             : "rsi", "rcx", "r8", "r9", "r10", "r11", \
             "rbx", "rbp", "r12", "r13", "r14", "r15", \
@@ -516,13 +518,15 @@ header_t* stackwalk();
         } else if (nargs == 1) { \
             i64 env = (i64)stub->env; \
             i64 arg = args[0]; \
+            i64 func = (i64)stub->defs[index].func; \
+            i64 exchanger_ptr = (i64)&stub->exchanger; \
             __asm__ __volatile__ ( \
                 "pushq %[exc]\n\t" \
                 "pushq %[exc]\n\t" \
                 "callq *%[body_]\n\t" \
                 "addq $16, %%rsp\n\t" \
-                : "=a"(out), "+D"(env), "+S"(arg) \
-                : [body_]"r"(stub->defs[index].func), [exc]"r"(&stub->exchanger) \
+                : "=a"(out), "+D"(env), "+S"(arg), [body_]"+r"(func), [exc]"+r"(exchanger_ptr) \
+                : \
                 : "rcx", "rdx", "r8", "r9", "r10", "r11", \
                 "xmm0","xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", \
                 "xmm8","xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", \
