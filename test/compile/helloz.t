@@ -9,7 +9,7 @@
   #include <string.h>
   
   static i64 __handle_body_lifted_3__(i64);
-  i64 __Hello_lifted_4___hello(i64 *, i64);
+  i64 __handler_Hello_lifted_4___hello(i64 *, i64);
   static i64 __run_lifted_1__(i64, i64);
   static closure_t *run;
   enum Hello { hello };
@@ -22,8 +22,8 @@
         __newref__[0] = __field_0__;
         (i64) __newref__;
       }));
-      (HANDLEZ(__handle_body_lifted_3__, ({TAIL, __Hello_lifted_4___hello}),
-               ((i64)s)));
+      (HANDLEZ(__handle_body_lifted_3__,
+               ({TAIL, __handler_Hello_lifted_4___hello}), ((i64)s)));
     }));
   }
   
@@ -37,7 +37,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __Hello_lifted_4___hello(i64 *__env__, i64 _) {
+  i64 __handler_Hello_lifted_4___hello(i64 *__env__, i64 _) {
     return (({
       i64 s = (i64)(((i64 *)__env__)[0]);
       ({

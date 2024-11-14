@@ -9,7 +9,7 @@
   #include <string.h>
   
   static i64 __handle_body_lifted_4__(i64, i64);
-  i64 __emit_stub_lifted_5___emit(i64 *, i64);
+  i64 __handler_emit_stub_lifted_5___emit(i64 *, i64);
   static i64 __run_lifted_2__(i64, i64);
   static i64 __range_lifted_1__(i64, i64, i64, i64);
   static closure_t *run;
@@ -37,7 +37,8 @@
         (i64) __newref__;
       }));
       ({
-        (HANDLE(__handle_body_lifted_4__, ({TAIL, __emit_stub_lifted_5___emit}),
+        (HANDLE(__handle_body_lifted_4__,
+                ({TAIL, __handler_emit_stub_lifted_5___emit}),
                 ((i64)n, (i64)range, (i64)s)));
         (((i64 *)s)[0]);
       });
@@ -61,7 +62,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __emit_stub_lifted_5___emit(i64 *__env__, i64 e) {
+  i64 __handler_emit_stub_lifted_5___emit(i64 *__env__, i64 e) {
     return (({
       i64 n = (i64)(((i64 *)__env__)[0]);
       ({

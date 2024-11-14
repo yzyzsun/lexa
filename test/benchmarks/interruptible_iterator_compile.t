@@ -9,13 +9,13 @@
   #include <string.h>
   
   static i64 __handle_body_lifted_7__(i64, i64);
-  i64 __behead_stub_lifted_8___behead(i64 *, i64);
+  i64 __handler_behead_stub_lifted_8___behead(i64 *, i64);
   static i64 __handle_body_lifted_9__(i64, i64);
-  i64 __replace_stub_lifted_10___replace(i64 *, i64);
+  i64 __handler_replace_stub_lifted_10___replace(i64 *, i64);
   static i64 __handle_body_lifted_11__(i64, i64);
-  i64 __yield_stub_lifted_12___yield(i64 *, i64, i64, i64);
+  i64 __handler_yield_stub_lifted_12___yield(i64 *, i64, i64, i64);
   static i64 __handle_body_lifted_13__(i64, i64);
-  i64 __behead_main_stub_lifted_14___behead(i64 *, i64);
+  i64 __handler_behead_main_stub_lifted_14___behead(i64 *, i64);
   static i64 __repeat_lifted_5__(i64, i64);
   static i64 __step_lifted_4__(i64, i64, i64, i64);
   static i64 __run_lifted_3__(i64, i64);
@@ -36,7 +36,7 @@
                                i64 behead_stub) {
     return (({
       (HANDLE(__handle_body_lifted_9__,
-              ({TAIL, __replace_stub_lifted_10___replace}),
+              ({TAIL, __handler_replace_stub_lifted_10___replace}),
               ((i64)behead_stub, (i64)it, (i64)yield_stub)));
       ({
         i64 it_tail = (i64)((i64)(listTail((node_t *)it)));
@@ -51,10 +51,11 @@
             i64 newtl =
                 (i64)(((i64)(listIsEmpty((node_t *)it_tail)))
                           ? ((i64)(listEnd()))
-                          : (HANDLE(__handle_body_lifted_7__,
-                                    ({TAIL, __behead_stub_lifted_8___behead}),
-                                    ((i64)beheaded, (i64)it_tail, (i64)loop,
-                                     (i64)yield_stub))));
+                          : (HANDLE(
+                                __handle_body_lifted_7__,
+                                ({TAIL, __handler_behead_stub_lifted_8___behead}),
+                                ((i64)beheaded, (i64)it_tail, (i64)loop,
+                                 (i64)yield_stub))));
             ({
               i64 tobehead = (i64)(((i64 *)beheaded)[0]);
               ({
@@ -93,10 +94,10 @@
           (i64) __newref__;
         }));
         ({
-          i64 newtl =
-              (i64)(HANDLE(__handle_body_lifted_13__,
-                           ({TAIL, __behead_main_stub_lifted_14___behead}),
-                           ((i64)beheaded, (i64)l, (i64)loop)));
+          i64 newtl = (i64)(HANDLE(
+              __handle_body_lifted_13__,
+              ({TAIL, __handler_behead_main_stub_lifted_14___behead}),
+              ((i64)beheaded, (i64)l, (i64)loop)));
           ({
             i64 tobehead = (i64)(((i64 *)beheaded)[0]);
             ({
@@ -159,7 +160,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __behead_main_stub_lifted_14___behead(i64 *__env__, i64 _) {
+  i64 __handler_behead_main_stub_lifted_14___behead(i64 *__env__, i64 _) {
     return (({
       i64 beheaded = (i64)(((i64 *)__env__)[0]);
       ({
@@ -180,15 +181,15 @@
         ({
           i64 loop = (i64)(((i64 *)__env__)[2]);
           (HANDLE(__handle_body_lifted_11__,
-                  ({TAIL, __yield_stub_lifted_12___yield}),
+                  ({TAIL, __handler_yield_stub_lifted_12___yield}),
                   ((i64)behead_main_stub, (i64)l, (i64)loop)));
         });
       });
     }));
   }
   
-  i64 __yield_stub_lifted_12___yield(i64 *__env__, i64 x, i64 behead_stub,
-                                     i64 replace_stub) {
+  i64 __handler_yield_stub_lifted_12___yield(i64 *__env__, i64 x, i64 behead_stub,
+                                             i64 replace_stub) {
     return (({
       i64 behead_main_stub = (i64)(((i64 *)__env__)[0]);
       ({
@@ -216,7 +217,7 @@
     }));
   }
   
-  i64 __replace_stub_lifted_10___replace(i64 *__env__, i64 x) {
+  i64 __handler_replace_stub_lifted_10___replace(i64 *__env__, i64 x) {
     return (({
       i64 behead_stub = (i64)(((i64 *)__env__)[0]);
       ({
@@ -246,7 +247,7 @@
     }));
   }
   
-  i64 __behead_stub_lifted_8___behead(i64 *__env__, i64 _) {
+  i64 __handler_behead_stub_lifted_8___behead(i64 *__env__, i64 _) {
     return (({
       i64 beheaded = (i64)(((i64 *)__env__)[0]);
       ({

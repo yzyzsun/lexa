@@ -105,7 +105,7 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
   | Syntax.Handle {handle_body; stub; sig_name; handler_defs} -> 
     let handle_body' = convert_expr handle_body Varset.(env |> add stub) in
     let body_lifted_name = gen_lifted_name "handle_body" in
-    let obj_lifted_name = gen_lifted_name stub in
+    let obj_lifted_name = gen_lifted_name ("handler_" ^ stub) in
     let fvs = free_var e in
     let body_fv_opened = open_env (Varset.to_list fvs) handle_body' in
     let annotation = if (List.exists 
@@ -134,7 +134,7 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
     (* TODO: Repeating code *)
     let handle_body' = convert_expr handle_body env in
     let body_lifted_name = gen_lifted_name "handle_body" in
-    let obj_lifted_name = gen_lifted_name sig_name in
+    let obj_lifted_name = gen_lifted_name ("handler_" ^ sig_name) in
     let fvs = free_var e in
     let body_fv_opened = open_env (Varset.to_list fvs) handle_body' in
     let annotation = if (List.exists 
