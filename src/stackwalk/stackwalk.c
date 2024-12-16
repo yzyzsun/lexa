@@ -5,7 +5,8 @@
 #include <stdbool.h>
 
 // See the use of __start_SECTION_NAME: https://stackoverflow.com/a/48550485
-long __attribute__((section("clue_table"), used)) dummyVar;
+// NB: we assume that clue_table has max 4096 bytes
+__attribute__((section("clue_table"), used)) char dummyArray[4096];
 extern __attribute__((weak)) intptr_t __start_clue_table;
 static const intptr_t CLUE_TABLE_WIDTH = 4;
 
