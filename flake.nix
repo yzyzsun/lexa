@@ -1,6 +1,15 @@
 {
   description = "";
 
+  nixConfig = {
+    extra-substituters = [
+      "https://lexa-lang.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "lexa-lang.cachix.org-1:+sLINOQTFyHLCppbo41mXzTeUpLl/7UR/uvCObyuSt0="
+    ];
+  };
+
   # Specifies the inputs for this flake, including nixpkgs
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
