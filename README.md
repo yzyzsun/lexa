@@ -27,7 +27,7 @@ docker run -it hflsmax/lexa-lang:OOPSLA24
 ### Setup using Nix (recommended for development)
 1. **Install Nix**: Follow the [instructions](https://nixos.org/download.html) to install Nix on your system.
 2. **Clone the repository**: Clone the Lexa repo to your local machine.
-3. **Build the development environment**: Run `nix develop` in the repository root. This could take over an hour.
+3. **Build the development environment**: Run `nix develop` in the repository root. This could take up to an hour, or a few seconds if you allow Nix to use the pre-built cache.
 4. **Build the project**: Run `dune build` to build the compiler.
 
 ### Running the Compiler
