@@ -8,7 +8,13 @@
 4. Install additional VSCode extensions on `apple`: [direnv](https://marketplace.visualstudio.com/items?itemName=mkhl.direnv) and [OCaml Platform](https://marketplace.visualstudio.com/items?itemName=ocamllabs.ocaml-platform)
 
 ### On `apple`(Read [FAQ](https://docs.google.com/document/d/1kmJdBhl-ugQLXV8p6yBBJAXeuFDlzoiIaVsteCdgv4k/edit?usp=sharing) before proceeding)
-1. Install `direnv` using `home-manager`.
+1. Install `direnv` using `home-manager`, aka adding the following line to `~/.config/home-manager/home.nix`
+```
+  programs.atuin = {
+    enable = true;
+    enableZshIntegration = true;
+  };
+```
 2. Clone this repository; `cd` into the directory
 3. Run `direnv allow`
 
