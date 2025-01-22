@@ -10,7 +10,7 @@
 ### On `apple`(Read [FAQ](https://docs.google.com/document/d/1kmJdBhl-ugQLXV8p6yBBJAXeuFDlzoiIaVsteCdgv4k/edit?usp=sharing) before proceeding)
 1. Install `direnv` using `home-manager`, aka adding the following line to `~/.config/home-manager/home.nix`
 ```
-  programs.atuin = {
+  programs.direnv = {
     enable = true;
     enableZshIntegration = true;
   };
