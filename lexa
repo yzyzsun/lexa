@@ -5,7 +5,7 @@ import tempfile
 import os
 import shutil
 
-def run_commands(source_file, output_file, output_c, lexac_args):
+def run_commands(source_file, output_file, output_c, lexac_args, output_ll):
     src_path = os.path.abspath(source_file)
     temp_dir = tempfile.mkdtemp()
     try:
@@ -21,13 +21,20 @@ def run_commands(source_file, output_file, output_c, lexac_args):
             dune_command += lexac_args.split()
         subprocess.run(dune_command, check=True)
 
-        passes = ["addNoCapture/AddNoCaptureToAsmPass.so", 
-                  "markInvariant/MarkInvariantPass.so"]
+        passes = [
+            "addNoCapture/AddNoCaptureToAsmPass.so", 
+            "markInvariant/MarkInvariantPass.so"
+            ]
+
+        if output_ll:
+            clang_ll_command = ["clang", "-S", "-emit-llvm", "-O3", "-I", os.path.dirname(os.path.realpath(__file__)) + "/src/stacktrek", c_file, "-o", source_file.split(".")[0] + ".ll"]
+            for path in passes:
+                clang_ll_command += ["-Xclang", "-fpass-plugin=" + os.path.dirname(os.path.realpath(__file__)) + "/passes/" + path]
+            subprocess.run(clang_ll_command, check=True)
 
         clang_command = ["clang", "-g", "-O3", "-I", os.path.dirname(os.path.realpath(__file__)) + "/src/stacktrek", c_file, os.path.dirname(os.path.realpath(__file__)) + "/src/stackwalk/stackwalk.c", "-o", output_file, "-lm", "-lgc"]
         for path in passes:
-            clang_command += ["-Xclang", "-fpass-plugin=" + os.path.dirname(os.path.realpath(__file__)) + "/passes/build/" + path]
-
+            clang_command += ["-Xclang", "-fpass-plugin=" + os.path.dirname(os.path.realpath(__file__)) + "/passes/" + path]
         subprocess.run(clang_command, check=True)
 
         clue_annotate_command = [os.path.dirname(os.path.realpath(__file__)) + "/src/stackwalk/annotate_binary.py", output_file]
@@ -38,13 +45,14 @@ def run_commands(source_file, output_file, output_c, lexac_args):
 def main():
     parser = argparse.ArgumentParser(description="Compile lexa programs.")
     parser.add_argument("source_file", type=str, help="The source file to compile")
+    parser.add_argument("--output-ll", action="store_true", help="Output the generated LLVM IR")
     parser.add_argument("--output-c", action="store_true", help="Output the generated C code")
     parser.add_argument("-o", "--output", type=str, default="a.out", help="The binary output file")
     parser.add_argument("--lexac-args", type=str, default="", help="Arguments to pass to lexac")
     
     args = parser.parse_args()
 
-    run_commands(args.source_file, args.output, args.output_c, args.lexac_args)
+    run_commands(args.source_file, args.output, args.output_c, args.lexac_args, args.output_ll)
 
 if __name__ == "__main__":
     main()
