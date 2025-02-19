@@ -34,7 +34,7 @@
             closure_t *__clo__ = (closure_t *)f;
             i64 __f__ = (i64)(__clo__->func_pointer);
             i64 __env__ = (i64)(__clo__->env);
-            ((i64(*)(i64))__f__)(__env__);
+            ((i64(*)(i64))__f__)((i64)__env__);
           }));
         });
       });
@@ -74,7 +74,7 @@
         closure_t *__clo__ = (closure_t *)g;
         i64 __f__ = (i64)(__clo__->func_pointer);
         i64 __env__ = (i64)(__clo__->env);
-        ((i64(*)(i64))__f__)(__env__);
+        ((i64(*)(i64))__f__)((i64)__env__);
       }));
     }));
   }

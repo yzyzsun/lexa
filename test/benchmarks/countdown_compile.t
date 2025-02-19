@@ -8,7 +8,7 @@
   #include <stdlib.h>
   #include <string.h>
   
-  static i64 __handle_body_lifted_4__(i64, i64);
+  static i64 __handle_body_lifted_4__(i64 *, i64 *);
   i64 __handler_state_stub_lifted_5___set(i64 *, i64);
   i64 __handler_state_stub_lifted_5___get(i64 *, i64);
   static i64 __run_lifted_2__(i64, i64);
@@ -86,7 +86,7 @@
     }));
   }
   
-  static i64 __handle_body_lifted_4__(i64 __env__, i64 state_stub) {
+  static i64 __handle_body_lifted_4__(i64 *__env__, i64 *state_stub) {
     return (({
       i64 countdown = (i64)(((i64 *)__env__)[0]);
       ({

@@ -9,7 +9,7 @@
   #include <string.h>
   
   FAST_SWITCH_DECORATOR
-  static i64 __handle_body_lifted_6__(i64, i64);
+  static i64 __handle_body_lifted_6__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
   i64 __handler_search_stub_lifted_7___pick(i64 *, i64, i64);
   i64 __handler_search_stub_lifted_7___fail(i64 *, i64);
@@ -131,7 +131,7 @@
   }
   
   FAST_SWITCH_DECORATOR
-  static i64 __handle_body_lifted_6__(i64 __env__, i64 search_stub) {
+  static i64 __handle_body_lifted_6__(i64 *__env__, i64 *search_stub) {
     return (({
       i64 out = ({
         i64 loop = (i64)(((i64 *)__env__)[0]);

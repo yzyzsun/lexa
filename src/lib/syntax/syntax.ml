@@ -2,6 +2,7 @@ open Common
 
 type top_level =
   | TLAbs of var * var list * expr
+  | TLBody of var * var list * expr
   | TLEffSig of var * var list
   | TLEffZSig of var * var list
   | TLType of typedef list

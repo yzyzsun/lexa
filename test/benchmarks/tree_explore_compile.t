@@ -10,7 +10,7 @@
   
   static i64 __list_max_rec_lifted_10__(i64, i64, i64);
   FAST_SWITCH_DECORATOR
-  static i64 __handle_body_lifted_11__(i64, i64);
+  static i64 __handle_body_lifted_11__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
   i64 __handler_choice_stub_lifted_12___choose(i64 *, i64, i64);
   static i64 __run_lifted_8__(i64, i64);
@@ -98,7 +98,7 @@
         closure_t *__clo__ = (closure_t *)list_max_rec;
         i64 __f__ = (i64)(__clo__->func_pointer);
         i64 __env__ = (i64)(__clo__->env);
-        ((i64(*)(i64, i64, i64))__f__)(__env__, l, 0);
+        ((i64(*)(i64, i64, i64))__f__)((i64)__env__, (i64)l, (i64)0);
       }));
     }));
   }
@@ -267,7 +267,7 @@
   }
   
   FAST_SWITCH_DECORATOR
-  static i64 __handle_body_lifted_11__(i64 __env__, i64 choice_stub) {
+  static i64 __handle_body_lifted_11__(i64 *__env__, i64 *choice_stub) {
     return (({
       i64 out = ({
         i64 append = (i64)(((i64 *)__env__)[0]);
@@ -321,13 +321,14 @@
               closure_t *__clo__ = (closure_t *)list_max_rec;
               i64 __f__ = (i64)(__clo__->func_pointer);
               i64 __env__ = (i64)(__clo__->env);
-              ((i64(*)(i64, i64, i64))__f__)(__env__, t, h);
+              ((i64(*)(i64, i64, i64))__f__)((i64)__env__, (i64)t, (i64)h);
             }))
                        : (({
                            closure_t *__clo__ = (closure_t *)list_max_rec;
                            i64 __f__ = (i64)(__clo__->func_pointer);
                            i64 __env__ = (i64)(__clo__->env);
-                           ((i64(*)(i64, i64, i64))__f__)(__env__, t, acc);
+                           ((i64(*)(i64, i64, i64))__f__)((i64)__env__, (i64)t,
+                                                          (i64)acc);
                          })));
           });
         }

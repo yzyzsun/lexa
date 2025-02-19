@@ -9,7 +9,7 @@
   #include <string.h>
   
   FAST_SWITCH_DECORATOR
-  static i64 __handle_body_lifted_7__(i64, i64);
+  static i64 __handle_body_lifted_7__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
   i64 __handler_yield_stub_lifted_8___yield(i64 *, i64, i64);
   static i64 __fun_lifted_9__(i64, i64);
@@ -209,7 +209,7 @@
   }
   
   FAST_SWITCH_DECORATOR
-  static i64 __handle_body_lifted_7__(i64 __env__, i64 yield_stub) {
+  static i64 __handle_body_lifted_7__(i64 *__env__, i64 *yield_stub) {
     return (({
       i64 out = ({
         i64 f = (i64)(((i64 *)__env__)[0]);
@@ -218,7 +218,7 @@
             closure_t *__clo__ = (closure_t *)f;
             i64 __f__ = (i64)(__clo__->func_pointer);
             i64 __env__ = (i64)(__clo__->env);
-            ((i64(*)(i64, i64))__f__)(__env__, yield_stub);
+            ((i64(*)(i64, i64))__f__)((i64)__env__, (i64)yield_stub);
           }));
           (({
             __generator_t__ *__t__ =

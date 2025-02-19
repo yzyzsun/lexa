@@ -28,8 +28,8 @@ typedef struct {
 // NOTE: the resumption k that the handler receives
 // is either the bottom half of header_t or resumption_t.
 typedef struct {
-  handler_def_t* defs;
-  i64* env;
+  handler_def_t defs [2];
+  i64 env [10];
   void* exchanger;
   void** exchanger_ptr;
 } header_t;
@@ -223,7 +223,7 @@ i64 RAISE_ABORT_0(i64 env, i64 exc, i64 func) {
 __attribute__((noinline, naked, preserve_none))
 i64 ENTER(i64* env, void* new_sp, void* body) {
     __asm__ (
-        "lea 16(%%rsi), %%rcx\n\t" // Move the exchanger to rcx
+        "lea 112(%%rsi), %%rcx\n\t" // Move the exchanger to rcx
         "movq %%rsp, 0(%%rcx)\n\t" // Save the current stack pointer to exchanger. Later when switching back, just need to run a ret
         "movq %%rsi, %%rsp\n\t" // Switch to the new stack new_sp
         // NB: why push the address of the exchanger, isn't it already on the relative address from the current rsp?
@@ -268,6 +268,8 @@ i64 RESUME(i64 arg, void* exc, void* rsp_sp) {
 
 #define N_DEFS(...) ARG_N(_, ## __VA_ARGS__, 5, OOPS, 4, OOPS, 3, OOPS, 2, OOPS, 1, OOPS, 0)
 
+void mark_defs_invariant(void*, size_t); // marker to mark defs array as invariant
+
 #define HANDLE(body, m_defs, m_free_vars) \
 ({ \
     i64 out; \
@@ -294,44 +296,41 @@ i64 RESUME(i64 arg, void* exc, void* rsp_sp) {
     out; \
 })
 
-
 // TODO: GC_set_main_stack_sp does not work with nested general handlers
 #define _HANDLE(mode, body, m_defs, m_free_vars) \
     ({ \
     i64 out; \
     if (mode == TAIL) { \
-        header_t stub; \
-        stub.defs = (handler_def_t[]){EXPAND m_defs}; \
-        stub.env = (i64[]) {EXPAND m_free_vars}; \
-        out = body((i64)stub.env, (i64)&stub); \
+        header_t stub = { \
+            .defs = { EXPAND m_defs }, \
+            .env = { EXPAND m_free_vars } \
+        }; \
+        mark_defs_invariant(&stub.defs, N_DEFS m_defs); \
+        out = body((i64*)stub.env, (i64*)&stub); \
     } else if (mode == ABORT) { \
-        header_t stub; \
-        stub.defs = (handler_def_t[]){EXPAND m_defs}; \
-        stub.env = (i64[]) {EXPAND m_free_vars}; \
-        stub.exchanger_ptr = &stub.exchanger; \
+        header_t stub = { \
+            .defs = { EXPAND m_defs }, \
+            .env = { EXPAND m_free_vars }, \
+            .exchanger_ptr = NULL \
+        }; \
         long dummyreg; /* dummyreg used to allow compiler to pick available register */ \
         __asm__ __volatile__ ( \
+            "annotation_marker%=_nocapture_0: \n" \
             "lea -8(%%rsp), %[temp]\n\t" \
             "movq %[temp], 0(%1)\n\t" \
             : [temp]"=&r"(dummyreg)\
             : "r"(&stub.exchanger) \
         ); \
-        [[clang::noinline]]out = ((i64(*FAST_SWITCH_DECORATOR)(i64, i64))body)((i64)stub.env, (i64)&stub); \
+        [[clang::noinline]]out = ((i64(*FAST_SWITCH_DECORATOR)(__attribute__((noescape)) i64 *, __attribute__((noescape)) i64 *))body)((i64*)stub.env, (i64*)&stub); \
     } else { \
         handler_def_t _defs[] = {EXPAND m_defs}; \
         i64 _env[] = {EXPAND m_free_vars}; \
         char* new_sp = get_stack(); \
-        new_sp -= sizeof(_defs); \
-        char* defs_ptr = new_sp; \
-        memcpy(defs_ptr, _defs, sizeof(_defs)); \
-        new_sp -= sizeof(_env); \
-        char* env_ptr = new_sp; \
-        memcpy(env_ptr, _env, sizeof(_env)); \
         new_sp = (char*)((i64)new_sp & ~0xF); \
         new_sp -= sizeof(header_t); \
         header_t* stub = (header_t*)new_sp; \
-        stub->defs = (handler_def_t*)defs_ptr; \
-        stub->env = (i64*)env_ptr; \
+        memcpy(&stub->defs, &_defs, sizeof(_defs)); \
+        memcpy(&stub->env, &_env, sizeof(_env)); \
         stub->exchanger_ptr = &stub->exchanger; \
         GC_set_main_stack_sp(); \
         out = ENTER(stub->env, new_sp, body); \
@@ -475,6 +474,9 @@ header_t* stackwalk();
     i64 args[] = {EXPAND m_args}; \
     _Pragma("clang diagnostic push") \
     _Pragma("clang diagnostic ignored \"-Warray-bounds\"") \
+    if (stub->defs[index].mode == ABORT) { \
+        stub->exchanger_ptr = &stub->exchanger; \
+    } \
     if (stub->defs[index].mode == TAIL) { \
         if (nargs == 0) { \
             out = ((i64(*)(i64*))stub->defs[index].func)(stub->env); \

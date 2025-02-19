@@ -280,7 +280,7 @@ __c__->func_pointer = (i64)%s;
       closure_creation
     | AppClosure (e, args) ->
       (match e with
-        | Prim _ -> 
+        | Prim _ ->
           let name = gen_expr e in (* name is prim with leading ~ stripped *)
           (* The name here should have ~ stripped *)
           let cast_args (name : string) (args : Syntax__Closure.t list) : string list =
@@ -309,7 +309,7 @@ i64 __f__ = (i64)(__clo__->func_pointer);
 i64 __env__ = (i64)(__clo__->env);
 ((%s)__f__)%s;
 })|}
-          (gen_expr e) cast_func_str (gen_args (Var "__env__" :: args)))
+          (gen_expr e) cast_func_str (gen_args (Var "__env__" :: args) ~cast:true))
     | Stmt (e1, e2) ->
       sprintf "{%s;\n%s;}" (gen_expr e1) (gen_expr e2 ~is_tail:is_tail)
     | Recdef (clo_map, e) -> 
@@ -456,6 +456,13 @@ return((int)__res__);}|}
         CDef (annotation, CKStatic, CTI64, name, (List.map (fun p -> (CTI64, p)) params), body) in
       gen_c_def cdef ~do_tail:true
       (* sprintf "i64 %s(%s) {\nreturn(%s);\n}\n" name (genParams params) (gen_expr body) *)
+  | TLBody (annotation, name, params, body) ->
+    let cdec = 
+      CDec (annotation, CKStatic, CTI64, name, (List.map (fun _ -> CTI64P) params)) in
+    c_decs := (name, cdec) :: !c_decs;
+    let cdef =
+      CDef (annotation, CKStatic, CTI64, name, (List.map (fun p -> (CTI64P, p)) params), body) in
+    gen_c_def cdef ~do_tail:true
   | TLEffSig (sig_name, sig_methods) ->
     sprintf "enum %s {%s};\n" sig_name (String.concat "," sig_methods)
   | TLEffZSig (sig_name, sig_methods) ->
