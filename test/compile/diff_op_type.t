@@ -9,12 +9,12 @@
   #include <string.h>
   
   FAST_SWITCH_DECORATOR
-  static i64 __handle_body_lifted_5__(i64, i64);
+  static i64 __handle_body_lifted_5__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
   i64 __handler_state2_stub_lifted_6___set(i64 *, i64, i64);
   FAST_SWITCH_DECORATOR
   i64 __handler_state2_stub_lifted_6___get(i64 *, i64, i64);
-  static i64 __handle_body_lifted_7__(i64, i64);
+  static i64 __handle_body_lifted_7__(i64 *, i64 *);
   i64 __handler_state1_stub_lifted_8___set(i64 *, i64);
   i64 __handler_state1_stub_lifted_8___get(i64 *, i64);
   static i64 __run_lifted_3__(i64, i64);
@@ -116,7 +116,7 @@
     }));
   }
   
-  static i64 __handle_body_lifted_7__(i64 __env__, i64 state1_stub) {
+  static i64 __handle_body_lifted_7__(i64 *__env__, i64 *state1_stub) {
     return (({
       i64 countdown = (i64)(((i64 *)__env__)[0]);
       ({
@@ -152,7 +152,7 @@
   }
   
   FAST_SWITCH_DECORATOR
-  static i64 __handle_body_lifted_5__(i64 __env__, i64 state2_stub) {
+  static i64 __handle_body_lifted_5__(i64 *__env__, i64 *state2_stub) {
     return (({
       i64 out = ({
         i64 countdown = (i64)(((i64 *)__env__)[0]);

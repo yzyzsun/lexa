@@ -8,13 +8,13 @@
   #include <stdlib.h>
   #include <string.h>
   
-  static i64 __handle_body_lifted_7__(i64, i64);
+  static i64 __handle_body_lifted_7__(i64 *, i64 *);
   i64 __handler_behead_stub_lifted_8___behead(i64 *, i64);
-  static i64 __handle_body_lifted_9__(i64, i64);
+  static i64 __handle_body_lifted_9__(i64 *, i64 *);
   i64 __handler_replace_stub_lifted_10___replace(i64 *, i64);
-  static i64 __handle_body_lifted_11__(i64, i64);
+  static i64 __handle_body_lifted_11__(i64 *, i64 *);
   i64 __handler_yield_stub_lifted_12___yield(i64 *, i64, i64, i64);
-  static i64 __handle_body_lifted_13__(i64, i64);
+  static i64 __handle_body_lifted_13__(i64 *, i64 *);
   i64 __handler_behead_main_stub_lifted_14___behead(i64 *, i64);
   static i64 __repeat_lifted_5__(i64, i64);
   static i64 __step_lifted_4__(i64, i64, i64, i64);
@@ -173,7 +173,7 @@
     }));
   }
   
-  static i64 __handle_body_lifted_13__(i64 __env__, i64 behead_main_stub) {
+  static i64 __handle_body_lifted_13__(i64 *__env__, i64 *behead_main_stub) {
     return (({
       i64 beheaded = (i64)(((i64 *)__env__)[0]);
       ({
@@ -203,7 +203,7 @@
     }));
   }
   
-  static i64 __handle_body_lifted_11__(i64 __env__, i64 yield_stub) {
+  static i64 __handle_body_lifted_11__(i64 *__env__, i64 *yield_stub) {
     return (({
       i64 behead_main_stub = (i64)(((i64 *)__env__)[0]);
       ({
@@ -230,7 +230,7 @@
     }));
   }
   
-  static i64 __handle_body_lifted_9__(i64 __env__, i64 replace_stub) {
+  static i64 __handle_body_lifted_9__(i64 *__env__, i64 *replace_stub) {
     return (({
       i64 behead_stub = (i64)(((i64 *)__env__)[0]);
       ({
@@ -263,7 +263,7 @@
     }));
   }
   
-  static i64 __handle_body_lifted_7__(i64 __env__, i64 behead_stub) {
+  static i64 __handle_body_lifted_7__(i64 *__env__, i64 *behead_stub) {
     return (({
       i64 beheaded = (i64)(((i64 *)__env__)[0]);
       ({

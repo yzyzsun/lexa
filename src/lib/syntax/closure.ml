@@ -64,6 +64,7 @@ and t = (* expressions AFTER closure conversion *)
 
 type top_level =
   | TLAbs of funcAnno * var * var list * t
+  | TLBody of funcAnno * var * var list * t
   | TLEffSig of var * var list
   | TLEffZSig of var * var list
   | TLObj of var * var list * hdl list

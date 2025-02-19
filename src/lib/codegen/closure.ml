@@ -118,7 +118,7 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
       CANoneLocalComeFrom (* If one of the handler is not TR, use preserve_none *)
     else CANone in
     
-    let lifted_body = TLAbs (annotation, body_lifted_name, ["__env__"; stub], body_fv_opened) in
+    let lifted_body = TLBody (annotation, body_lifted_name, ["__env__"; stub], body_fv_opened) in
     extra_toplevels := lifted_body :: !extra_toplevels;
 
     let convert_hdl ({op_anno; op_name; op_params; op_body} : Syntax.hdl) =
@@ -227,6 +227,10 @@ let closure_convert_toplevels (tls : Syntax.top_level list) =
         let lifted_name = (List.assoc name !toplevel_lifted_name_map) in
         toplevel_closures := (name, lifted_name) :: !toplevel_closures;
         TLAbs (CANone, lifted_name, ("__env__" :: params), convert_expr body (Varset.of_list params))
+    | Syntax.TLBody (name, params, body) ->
+      let lifted_name = (List.assoc name !toplevel_lifted_name_map) in
+      toplevel_closures := (name, lifted_name) :: !toplevel_closures;
+      TLBody (CANone, lifted_name, ("__env__" :: params), convert_expr body (Varset.of_list params))
     | Syntax.TLEffSig (name, dcls) ->
       TLEffSig (name, dcls)
     | Syntax.TLEffZSig (name, dcls) ->

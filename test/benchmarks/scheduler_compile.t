@@ -9,16 +9,16 @@
   #include <string.h>
   
   FAST_SWITCH_DECORATOR
-  static i64 __handle_body_lifted_11__(i64, i64);
+  static i64 __handle_body_lifted_11__(i64 *, i64 *);
   i64 __handler_exn_stub_lifted_12___throw(i64 *, i64);
   FAST_SWITCH_DECORATOR
-  static i64 __handle_body_lifted_13__(i64, i64);
+  static i64 __handle_body_lifted_13__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
   i64 __handler_process_stub_lifted_14___fork(i64 *, i64, i64);
   FAST_SWITCH_DECORATOR
   i64 __handler_process_stub_lifted_14___yield(i64 *, i64, i64);
   static i64 __fun_lifted_15__(i64, i64);
-  static i64 __handle_body_lifted_16__(i64, i64);
+  static i64 __handle_body_lifted_16__(i64 *, i64 *);
   i64 __handler_tick_stub_lifted_17___tick(i64 *, i64);
   static i64 __repeat_lifted_9__(i64, i64);
   static i64 __step_lifted_8__(i64, i64, i64, i64);
@@ -194,7 +194,7 @@
     }));
   }
   
-  static i64 __handle_body_lifted_16__(i64 __env__, i64 tick_stub) {
+  static i64 __handle_body_lifted_16__(i64 *__env__, i64 *tick_stub) {
     return (({
       i64 c = (i64)(((i64 *)__env__)[0]);
       ({
@@ -266,7 +266,7 @@
   }
   
   FAST_SWITCH_DECORATOR
-  static i64 __handle_body_lifted_13__(i64 __env__, i64 process_stub) {
+  static i64 __handle_body_lifted_13__(i64 *__env__, i64 *process_stub) {
     return (({
       i64 out = ({
         i64 f = (i64)(((i64 *)__env__)[0]);
@@ -278,7 +278,7 @@
               closure_t *__clo__ = (closure_t *)f;
               i64 __f__ = (i64)(__clo__->func_pointer);
               i64 __env__ = (i64)(__clo__->env);
-              ((i64(*)(i64, i64))__f__)(__env__, process_stub);
+              ((i64(*)(i64, i64))__f__)((i64)__env__, (i64)process_stub);
             }));
           });
         });
@@ -302,7 +302,7 @@
   }
   
   FAST_SWITCH_DECORATOR
-  static i64 __handle_body_lifted_11__(i64 __env__, i64 exn_stub) {
+  static i64 __handle_body_lifted_11__(i64 *__env__, i64 *exn_stub) {
     return (({
       i64 out = ({
         i64 driver = (i64)(((i64 *)__env__)[0]);

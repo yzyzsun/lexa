@@ -21,7 +21,13 @@ def run_commands(source_file, output_file, output_c, lexac_args):
             dune_command += lexac_args.split()
         subprocess.run(dune_command, check=True)
 
+        passes = ["addNoCapture/AddNoCaptureToAsmPass.so", 
+                  "markInvariant/MarkInvariantPass.so"]
+
         clang_command = ["clang", "-g", "-O3", "-I", os.path.dirname(os.path.realpath(__file__)) + "/src/stacktrek", c_file, os.path.dirname(os.path.realpath(__file__)) + "/src/stackwalk/stackwalk.c", "-o", output_file, "-lm", "-lgc"]
+        for path in passes:
+            clang_command += ["-Xclang", "-fpass-plugin=" + os.path.dirname(os.path.realpath(__file__)) + "/passes/build/" + path]
+
         subprocess.run(clang_command, check=True)
 
         clue_annotate_command = [os.path.dirname(os.path.realpath(__file__)) + "/src/stackwalk/annotate_binary.py", output_file]

@@ -29,7 +29,7 @@
         closure_t *__clo__ = (closure_t *)is_even;
         i64 __f__ = (i64)(__clo__->func_pointer);
         i64 __env__ = (i64)(__clo__->env);
-        ((i64(*)(i64, i64))__f__)(__env__, n);
+        ((i64(*)(i64, i64))__f__)((i64)__env__, (i64)n);
       }));
     }));
   }
@@ -56,7 +56,7 @@
         closure_t *__clo__ = (closure_t *)is_even;
         i64 __f__ = (i64)(__clo__->func_pointer);
         i64 __env__ = (i64)(__clo__->env);
-        ((i64(*)(i64, i64))__f__)(__env__, (n - 1));
+        ((i64(*)(i64, i64))__f__)((i64)__env__, (i64)(n - 1));
       })));
     }));
   }
@@ -68,7 +68,7 @@
         closure_t *__clo__ = (closure_t *)is_odd;
         i64 __f__ = (i64)(__clo__->func_pointer);
         i64 __env__ = (i64)(__clo__->env);
-        ((i64(*)(i64, i64))__f__)(__env__, (n - 1));
+        ((i64(*)(i64, i64))__f__)((i64)__env__, (i64)(n - 1));
       })));
     }));
   }
