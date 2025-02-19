@@ -313,6 +313,7 @@ void mark_defs_invariant(void*, size_t); // marker to mark defs array as invaria
             .env = { EXPAND m_free_vars }, \
             .exchanger_ptr = NULL \
         }; \
+        stub.exchanger_ptr = &stub.exchanger; \
         long dummyreg; /* dummyreg used to allow compiler to pick available register */ \
         __asm__ __volatile__ ( \
             "annotation_marker%=_nocapture_0: \n" \
@@ -371,9 +372,10 @@ void mark_defs_invariant(void*, size_t); // marker to mark defs array as invaria
     ({ \
     i64 out; \
     if (mode == TAIL) { \
-        header_t stub; \
-        stub.defs = (handler_def_t[]){EXPAND m_defs}; \
-        stub.env = (i64[]) {EXPAND m_free_vars}; \
+        header_t stub = { \
+            .defs = { EXPAND m_defs }, \
+            .env = { EXPAND m_free_vars } \
+        }; \
         i64 exchanger_ptr = (i64)&stub.exchanger; \
         i64 env = (i64)stub.env; \
         __asm__ __volatile__ ( \
@@ -393,11 +395,10 @@ void mark_defs_invariant(void*, size_t); // marker to mark defs array as invaria
             "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)" \
         ); \
     } else if (mode == ABORT) { \
-        header_t stub; \
-        i64 defs = (i64)(handler_def_t[]){EXPAND m_defs}; \
-        i64 env = (i64)(i64[]) {EXPAND m_free_vars}; \
-        stub.defs = (handler_def_t*)defs; \
-        stub.env = (i64*)env; \
+        header_t stub = { \
+            .defs = { EXPAND m_defs }, \
+            .env = { EXPAND m_free_vars } \
+        }; \
         stub.exchanger_ptr = &stub.exchanger; \
         i64 exchanger_ptr = (i64)&stub.exchanger; \
         i64 env_ptr = (i64)stub.env; \
@@ -421,17 +422,11 @@ void mark_defs_invariant(void*, size_t); // marker to mark defs array as invaria
         handler_def_t _defs[] = {EXPAND m_defs}; \
         i64 _env[] = {EXPAND m_free_vars}; \
         char* new_sp = get_stack(); \
-        new_sp -= sizeof(_defs); \
-        char* defs_ptr = new_sp; \
-        memcpy(defs_ptr, _defs, sizeof(_defs)); \
-        new_sp -= sizeof(_env); \
-        char* env_ptr = new_sp; \
-        memcpy(env_ptr, _env, sizeof(_env)); \
         new_sp = (char*)((i64)new_sp & ~0xF); \
         new_sp -= sizeof(header_t); \
         header_t* stub = (header_t*)new_sp; \
-        stub->defs = (handler_def_t*)defs_ptr; \
-        stub->env = (i64*)env_ptr; \
+        memcpy(&stub->defs, &_defs, sizeof(_defs)); \
+        memcpy(&stub->env, &_env, sizeof(_env)); \
         stub->exchanger_ptr = &stub->exchanger; \
         GC_set_main_stack_sp(); \
         out = ENTER(stub->env, new_sp, body); \
@@ -474,9 +469,6 @@ header_t* stackwalk();
     i64 args[] = {EXPAND m_args}; \
     _Pragma("clang diagnostic push") \
     _Pragma("clang diagnostic ignored \"-Warray-bounds\"") \
-    if (stub->defs[index].mode == ABORT) { \
-        stub->exchanger_ptr = &stub->exchanger; \
-    } \
     if (stub->defs[index].mode == TAIL) { \
         if (nargs == 0) { \
             out = ((i64(*)(i64*))stub->defs[index].func)(stub->env); \

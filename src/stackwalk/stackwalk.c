@@ -77,7 +77,7 @@ intptr_t* stackwalk(int clue_sig, int clue_dist) {
                 #if DEBUG_STACKWALKER
                 printf("found handler\n");
                 #endif
-                intptr_t *header_ptr = exc_ptr-2;
+                intptr_t *header_ptr = exc_ptr-14;
                 return header_ptr;
             } else {
                 clue_dist--;
