@@ -1,7 +1,7 @@
 { wrapCC, stdenv, python38, cmake, ninja, fetchFromGitHub }:
 
 wrapCC ( stdenv.mkDerivation rec {
-    pname = "llvm-project";
+    pname = "llvm";
     version = "c166a43";
 
     src = fetchFromGitHub {
@@ -12,6 +12,7 @@ wrapCC ( stdenv.mkDerivation rec {
     };
 
     patchFile = ./preserve_none_no_save_rbp.patch;
+    patchFile2 = ./omit_fp_even_with_stackmap.patch;
 
     buildInputs = [ python38 ];
     nativeBuildInputs = [ cmake ninja ];
@@ -20,11 +21,12 @@ wrapCC ( stdenv.mkDerivation rec {
 
     patchPhase = ''
     patch -p1 -i ${patchFile}
+    patch -p1 -i ${patchFile2}
     '';
 
     buildPhase = ''
     cmake -S llvm -B build -G Ninja \
-        -DLLVM_ENABLE_PROJECTS="clang" \
+        -DLLVM_ENABLE_PROJECTS="clang;compiler-rt" \
         -DCMAKE_BUILD_TYPE=Release \
         -DLLVM_INCLUDE_TESTS=OFF \
         -DLLVM_TARGETS_TO_BUILD=X86
@@ -37,6 +39,8 @@ wrapCC ( stdenv.mkDerivation rec {
     cp build/bin/opt $out/bin
     cp build/bin/clang-format $out/bin
     cp -r build/lib $out/lib
+    mkdir -p $out/lib/clang/19/lib/linux
+    cp $out/lib/clang/19/lib/x86_64-pc-linux-gnu/libclang_rt.profile.a $out/lib/clang/19/lib/linux/libclang_rt.profile-x86_64.a
     '';
 
     passthru.isClang = true;  

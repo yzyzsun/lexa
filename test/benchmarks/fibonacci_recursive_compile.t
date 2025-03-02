@@ -1,4 +1,4 @@
-  $ lexa ../../benchmarks/lexa/fibonacci_recursive/main.lx -o main --output-c &> /dev/null
+  $ lexa ../../benchmarks/lexa/fibonacci_recursive/main.lx -o main &> /dev/null
   $ cat ../../benchmarks/lexa/fibonacci_recursive/main.c
   #include <datastructure.h>
   #include <stacktrek.h>

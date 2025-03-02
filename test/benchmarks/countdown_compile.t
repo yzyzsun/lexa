@@ -1,4 +1,4 @@
-  $ lexa ../../benchmarks/lexa/countdown/main.lx -o main --output-c &> /dev/null
+  $ lexa ../../benchmarks/lexa/countdown/main.lx -o main &> /dev/null
   $ cat ../../benchmarks/lexa/countdown/main.c
   #include <datastructure.h>
   #include <stacktrek.h>

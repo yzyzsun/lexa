@@ -1,3 +1,3 @@
-  $ lexa ./queue.lx -o main --output-c &> /dev/null
+  $ lexa ./queue.lx -o main &> /dev/null
   $ ./main
   OK

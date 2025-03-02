@@ -1,3 +1,3 @@
-  $ lexa ./stack.lx -o main --output-c &> /dev/null
+  $ lexa ./stack.lx -o main &> /dev/null
   $ ./main
   OK

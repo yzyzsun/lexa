@@ -1,4 +1,4 @@
-  $ lexa ../../benchmarks/lexa/iterator/main.lx -o main --output-c &> /dev/null
+  $ lexa ../../benchmarks/lexa/iterator/main.lx -o main &> /dev/null
   $ cat ../../benchmarks/lexa/iterator/main.c
   #include <datastructure.h>
   #include <stacktrek.h>

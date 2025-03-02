@@ -1,4 +1,4 @@
-  $ lexa ../../benchmarks/lexa/handler_sieve/main.lx -o main --output-c &> /dev/null
+  $ lexa ../../benchmarks/lexa/handler_sieve/main.lx -o main &> /dev/null
   $ cat ../../benchmarks/lexa/handler_sieve/main.c
   #include <datastructure.h>
   #include <stacktrek.h>

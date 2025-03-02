@@ -11,3 +11,4 @@ include(AddLLVM)
 
 add_subdirectory(addNoCapture)
 add_subdirectory(markInvariant)
+add_subdirectory(generateStackMap)

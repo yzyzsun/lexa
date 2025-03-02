@@ -1,4 +1,4 @@
-  $ lexa ../../benchmarks/lexa/interruptible_iterator/main.lx -o main --output-c &> /dev/null
+  $ lexa ../../benchmarks/lexa/interruptible_iterator/main.lx -o main &> /dev/null
   $ cat ../../benchmarks/lexa/interruptible_iterator/main.c
   #include <datastructure.h>
   #include <stacktrek.h>

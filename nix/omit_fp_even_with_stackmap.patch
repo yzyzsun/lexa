@@ -1,0 +1,12 @@
+diff --git a/llvm/lib/Target/X86/X86FrameLowering.cpp b/llvm/lib/Target/X86/X86FrameLowering.cpp
+index be416fb0d..88bafe10d 100644
+--- a/llvm/lib/Target/X86/X86FrameLowering.cpp
++++ b/llvm/lib/Target/X86/X86FrameLowering.cpp
+@@ -101,7 +101,6 @@ bool X86FrameLowering::hasFP(const MachineFunction &MF) const {
+           MF.getInfo<X86MachineFunctionInfo>()->getForceFramePointer() ||
+           MF.getInfo<X86MachineFunctionInfo>()->hasPreallocatedCall() ||
+           MF.callsUnwindInit() || MF.hasEHFunclets() || MF.callsEHReturn() ||
+-          MFI.hasStackMap() || MFI.hasPatchPoint() ||
+           (isWin64Prologue(MF) && MFI.hasCopyImplyingStackAdjustment()));
+ }
+ 

@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/closure_rec2.lx -o main --output-c &> /dev/null
+  $ lexa ../lexa_snippets/closure_rec2.lx -o main &> /dev/null
   $ cat ../lexa_snippets/closure_rec2.c
   #include <datastructure.h>
   #include <stacktrek.h>

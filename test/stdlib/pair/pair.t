@@ -1,3 +1,3 @@
-  $ lexa ./pair.lx -o main --output-c &> /dev/null
+  $ lexa ./pair.lx -o main &> /dev/null
   $ ./main
   OK

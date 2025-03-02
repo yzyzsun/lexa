@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/adt/list.lx -o main --output-c &> /dev/null
+  $ lexa ../lexa_snippets/adt/list.lx -o main &> /dev/null
   $ ./main 5
   10
   8

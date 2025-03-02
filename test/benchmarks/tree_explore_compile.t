@@ -1,4 +1,4 @@
-  $ lexa ../../benchmarks/lexa/tree_explore/main.lx -o main --output-c &> /dev/null
+  $ lexa ../../benchmarks/lexa/tree_explore/main.lx -o main &> /dev/null
   $ cat ../../benchmarks/lexa/tree_explore/main.c
   #include <datastructure.h>
   #include <stacktrek.h>

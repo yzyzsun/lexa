@@ -1,5 +1,5 @@
-  $ lexa ../lexa_snippets/helloz.lx -o main --output-c &> /dev/null
-  $ cat ../lexa_snippets/helloz.c
+  $ lexa ../lexa_snippets/helloz/helloz.lx -o main &> /dev/null
+  $ cat ../lexa_snippets/helloz/helloz.c
   #include <datastructure.h>
   #include <stacktrek.h>
   #include <stdbool.h>
@@ -8,7 +8,7 @@
   #include <stdlib.h>
   #include <string.h>
   
-  static i64 __handle_body_lifted_3__(i64);
+  static i64 __handle_body_lifted_3__(i64 *);
   i64 __handler_Hello_lifted_4___hello(i64 *, i64);
   static i64 __run_lifted_1__(i64, i64);
   static closure_t *run;
@@ -54,7 +54,7 @@
     }));
   }
   
-  static i64 __handle_body_lifted_3__(i64 __env__) {
+  static i64 __handle_body_lifted_3__(i64 *__env__) {
     return (({
       i64 s = (i64)(((i64 *)__env__)[0]);
       (RAISEZ(0, 0, hello, ()));
