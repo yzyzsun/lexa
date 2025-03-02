@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/string.lx -o main --output-c &> /dev/null
+  $ lexa ../lexa_snippets/string.lx -o main &> /dev/null
   $ ./main
   hello
   world

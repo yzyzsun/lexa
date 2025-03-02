@@ -3,42 +3,6 @@
 #include <stack_pool.h>
 #include <common.h>
 
-#define i64 intptr_t
-
-typedef enum {
-    ABORT = 0,
-    SINGLESHOT,
-    MULTISHOT,
-    TAIL,
-} handler_mode_t;
-
-typedef struct {
-  handler_mode_t mode;
-  void *func;
-} handler_def_t;
-
-// For single-shot handlers, the exchanger stores either the parent's sp
-// or resumption's sp.
-// For multi-shot handlers, since there could be multiple copies of 
-// resumptions that share the same header, they need a separate
-// way of storing the resumption's sp. This is done by allocating
-// a resumption_t for each resumption.
-// resumption_t's rsp_sp stores the resumption's sp, and its
-// exchanger_ptr stores the address of the shared exchanger.
-// NOTE: the resumption k that the handler receives
-// is either the bottom half of header_t or resumption_t.
-typedef struct {
-  handler_def_t defs [2];
-  i64 env [10];
-  void* exchanger;
-  void** exchanger_ptr;
-} header_t;
-
-typedef struct {
-    void* rsp_sp;
-    void** exchanger_ptr;
-} resumption_t;
-
 #define ARG_N(_0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, N, ...) N
 #define NARGS(...) ARG_N(_, ## __VA_ARGS__, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
 
@@ -223,7 +187,7 @@ i64 RAISE_ABORT_0(i64 env, i64 exc, i64 func) {
 __attribute__((noinline, naked, preserve_none))
 i64 ENTER(i64* env, void* new_sp, void* body) {
     __asm__ (
-        "lea 112(%%rsi), %%rcx\n\t" // Move the exchanger to rcx
+        "lea 120(%%rsi), %%rcx\n\t" // Move the exchanger to rcx
         "movq %%rsp, 0(%%rcx)\n\t" // Save the current stack pointer to exchanger. Later when switching back, just need to run a ret
         "movq %%rsi, %%rsp\n\t" // Switch to the new stack new_sp
         // NB: why push the address of the exchanger, isn't it already on the relative address from the current rsp?
@@ -317,18 +281,18 @@ void mark_defs_invariant(void*, size_t); // marker to mark defs array as invaria
         long dummyreg; /* dummyreg used to allow compiler to pick available register */ \
         __asm__ __volatile__ ( \
             "annotation_marker%=_nocapture_0: \n" \
-            "lea -8(%%rsp), %[temp]\n\t" \
-            "movq %[temp], 0(%1)\n\t" \
+            "lea -8(%%rsp), %[temp]\n\t" /* NB: we assume no registers are spilled */ \
+            "movq %[temp], 0(%[exc])\n\t" \
             : [temp]"=&r"(dummyreg)\
-            : "r"(&stub.exchanger) \
+            : [exc]"r"(&stub.exchanger) \
         ); \
         [[clang::noinline]]out = ((i64(*FAST_SWITCH_DECORATOR)(__attribute__((noescape)) i64 *, __attribute__((noescape)) i64 *))body)((i64*)stub.env, (i64*)&stub); \
     } else { \
         handler_def_t _defs[] = {EXPAND m_defs}; \
         i64 _env[] = {EXPAND m_free_vars}; \
         char* new_sp = get_stack(); \
-        new_sp = (char*)((i64)new_sp & ~0xF); \
         new_sp -= sizeof(header_t); \
+        new_sp = (char*)((i64)new_sp & ~0xF); \
         header_t* stub = (header_t*)new_sp; \
         memcpy(&stub->defs, &_defs, sizeof(_defs)); \
         memcpy(&stub->env, &_env, sizeof(_env)); \
@@ -366,6 +330,9 @@ void mark_defs_invariant(void*, size_t); // marker to mark defs array as invaria
     out; \
 })
 
+// Be cautious when using stackmap, as it kills optimization
+void stackmap(void* obj);
+header_t* stackwalk(int clue_sig, int clue_dist);
 
 // TODO: GC_set_main_stack_sp does not work with nested general handlers
 #define _HANDLEZ(mode, body, m_defs, m_free_vars) \
@@ -373,63 +340,52 @@ void mark_defs_invariant(void*, size_t); // marker to mark defs array as invaria
     i64 out; \
     if (mode == TAIL) { \
         header_t stub = { \
+            .mode = TAIL, \
             .defs = { EXPAND m_defs }, \
-            .env = { EXPAND m_free_vars } \
+            .env = { EXPAND m_free_vars }, \
+            .exchanger = NULL \
         }; \
-        i64 exchanger_ptr = (i64)&stub.exchanger; \
-        i64 env = (i64)stub.env; \
+        long dummyreg; /* dummyreg used to allow compiler to pick available register */ \
         __asm__ __volatile__ ( \
-            "lea -24(%%rsp), %%r10\n\t" \
-            "movq %%r10, 0(%[exc])\n\t" \
-            "pushq %[exc]\n\t" \
-            "pushq %[exc]\n\t" \
-            "callq %P[body_]\n\t" \
-            "addq $16, %%rsp\n\t" \
-            : "=a"(out), "+D"(env), [exc]"+d"(exchanger_ptr)\
-            : [body_]"i"(body) \
-            : "rsi", "rcx", "r8", "r9", "r10", "r11", \
-            "rbx", "rbp", "r12", "r13", "r14", "r15", \
-            "xmm0","xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", \
-            "xmm8","xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", \
-            "mm0","mm1", "mm2", "mm3", "mm4", "mm5", "mm6", "mm6", \
-            "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)" \
+            "annotation_marker%=_nocapture_0: \n" \
+            "lea -8(%%rsp), %[temp]\n\t" /* NB: we assume no registers are spilled */ \
+            "movq %[temp], 0(%[exc])\n\t" \
+            : [temp]"=&r"(dummyreg)\
+            : [exc]"r"(&stub.exchanger) \
         ); \
+        [[clang::noinline]]out = body((i64*)stub.env); \
+        stackmap(&stub); \
     } else if (mode == ABORT) { \
         header_t stub = { \
+            .mode = ABORT, \
             .defs = { EXPAND m_defs }, \
             .env = { EXPAND m_free_vars } \
         }; \
         stub.exchanger_ptr = &stub.exchanger; \
-        i64 exchanger_ptr = (i64)&stub.exchanger; \
-        i64 env_ptr = (i64)stub.env; \
+        long dummyreg; /* dummyreg used to allow compiler to pick available register */ \
         __asm__ __volatile__ ( \
-            "lea -24(%%rsp), %%r10\n\t" \
-            "movq %%r10, 0(%[exc])\n\t" \
-            "pushq %[exc]\n\t" \
-            "pushq %[exc]\n\t" \
-            "callq %P[body_]\n\t" \
-            "addq $16, %%rsp\n\t" \
-            : "=a"(out), "+D"(env_ptr), [exc]"+d"(exchanger_ptr)\
-            : [body_]"i"(body) \
-            : "rsi", "rcx", "r8", "r9", "r10", "r11", \
-            "rbx", "rbp", "r12", "r13", "r14", "r15", \
-            "xmm0","xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", \
-            "xmm8","xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", \
-            "mm0","mm1", "mm2", "mm3", "mm4", "mm5", "mm6", "mm6", \
-            "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)" \
+            "annotation_marker%=_nocapture_0: \n" \
+            "lea -8(%%rsp), %[temp]\n\t" /* NB: we assume no registers are spilled */ \
+            "movq %[temp], 0(%[exc])\n\t" \
+            : [temp]"=&r"(dummyreg)\
+            : [exc]"r"(&stub.exchanger) \
         ); \
+        [[clang::noinline]]out = ((i64(*FAST_SWITCH_DECORATOR)(__attribute__((noescape)) i64 *))body)((i64*)stub.env); \
+        stackmap(&stub); \
     } else { \
         handler_def_t _defs[] = {EXPAND m_defs}; \
         i64 _env[] = {EXPAND m_free_vars}; \
         char* new_sp = get_stack(); \
-        new_sp = (char*)((i64)new_sp & ~0xF); \
         new_sp -= sizeof(header_t); \
+        new_sp = (char*)((i64)new_sp & ~0xF); \
         header_t* stub = (header_t*)new_sp; \
         memcpy(&stub->defs, &_defs, sizeof(_defs)); \
         memcpy(&stub->env, &_env, sizeof(_env)); \
         stub->exchanger_ptr = &stub->exchanger; \
+        stub->mode = MULTISHOT; \
         GC_set_main_stack_sp(); \
         out = ENTER(stub->env, new_sp, body); \
+        /*stackmap(stub);*/ \
     } \
     out; \
     })
@@ -458,8 +414,6 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
     RAISE_0,
     RAISE_M_0,
 };
-
-header_t* stackwalk();
 
 #define RAISE(_stub, index, m_args) \
     ({ \
@@ -510,23 +464,7 @@ header_t* stackwalk();
         if (nargs == 0) { \
             out = ((i64(*)(i64*))stub->defs[index].func)(stub->env); \
         } else if (nargs == 1) { \
-            i64 env = (i64)stub->env; \
-            i64 arg = args[0]; \
-            i64 func = (i64)stub->defs[index].func; \
-            i64 exchanger_ptr = (i64)&stub->exchanger; \
-            __asm__ __volatile__ ( \
-                "pushq %[exc]\n\t" \
-                "pushq %[exc]\n\t" \
-                "callq *%[body_]\n\t" \
-                "addq $16, %%rsp\n\t" \
-                : "=a"(out), "+D"(env), "+S"(arg), [body_]"+r"(func), [exc]"+r"(exchanger_ptr) \
-                : \
-                : "rcx", "rdx", "r8", "r9", "r10", "r11", \
-                "xmm0","xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", \
-                "xmm8","xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", \
-                "mm0","mm1", "mm2", "mm3", "mm4", "mm5", "mm6", "mm6", \
-                "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)" \
-            ); \
+            out = ((i64(*)(i64*, i64))stub->defs[index].func)(stub->env, args[0]); \
         } else if (nargs == 2) { \
             out = ((i64(*)(i64*, i64, i64))stub->defs[index].func)(stub->env, args[0], args[1]); \
         } else if (nargs == 3) { \
@@ -534,6 +472,11 @@ header_t* stackwalk();
         } else { \
             exit(EXIT_FAILURE); \
         } \
+        /* We need to keep te stub on the stack, in case the handler raises its own effect, which need to be "undered" through */ \
+        /* To find the stack offset of stub, we can't use stackmap as it kills optimization. */ \
+        /* We stead relies on try and error to find the offset of stub */ \
+        *(volatile header_t *)&stub; \
+        /* stackmap(&stub); */ \
     } else { \
         if (nargs == 1) { \
             out = raise_table[stub->defs[index].mode]((i64)stub->env, (i64)args[0], (i64)stub->exchanger_ptr, (i64)stub->defs[index].func); \
@@ -580,3 +523,8 @@ typedef struct {
   i64 env;
   i64 num_fv;
 } closure_t;
+
+int error(const char* msg) {
+    fprintf(stderr, "Error: %s\n", msg);
+    exit(1);
+}

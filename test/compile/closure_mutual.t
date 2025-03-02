@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/closure_mutual.lx -o main --output-c &> /dev/null
+  $ lexa ../lexa_snippets/closure_mutual.lx -o main &> /dev/null
   $ cat ../lexa_snippets/closure_mutual.c
   #include <datastructure.h>
   #include <stacktrek.h>

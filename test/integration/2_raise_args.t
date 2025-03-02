@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/2_raise_args.lx -o main --output-c &> /dev/null
+  $ lexa ../lexa_snippets/2_raise_args.lx -o main &> /dev/null
   $ ./main
   10
   20

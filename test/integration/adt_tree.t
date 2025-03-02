@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/adt/tree.lx -o main --output-c &> /dev/null
+  $ lexa ../lexa_snippets/adt/tree.lx -o main &> /dev/null
   $ ./main 5
   5
   4

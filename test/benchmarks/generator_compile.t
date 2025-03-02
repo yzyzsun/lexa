@@ -1,4 +1,4 @@
-  $ lexa ../../benchmarks/lexa/generator/main.lx -o main --output-c &> /dev/null
+  $ lexa ../../benchmarks/lexa/generator/main.lx -o main &> /dev/null
   $ cat ../../benchmarks/lexa/generator/main.c
   #include <datastructure.h>
   #include <stacktrek.h>

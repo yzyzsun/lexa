@@ -147,7 +147,7 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
       CANoneLocalComeFrom (* If one of the handler is not TR, use preserve_none *)
     else CANone in
     
-    let lifted_body = TLAbs (annotation, body_lifted_name, ["__env__"], body_fv_opened) in
+    let lifted_body = TLBody (annotation, body_lifted_name, ["__env__"], body_fv_opened) in
     extra_toplevels := lifted_body :: !extra_toplevels;
 
     let convert_hdl ({op_anno; op_name; op_params; op_body} : Syntax.hdl) =

@@ -1,4 +1,4 @@
-  $ lexa ./anf.lx -o main --output-c &> /dev/null
+  $ lexa ./anf.lx -o main &> /dev/null
   $ ./main 5
   (
   x

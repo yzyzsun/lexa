@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/closure_rec.lx -o main --output-c &> /dev/null
+  $ lexa ../lexa_snippets/closure_rec.lx -o main &> /dev/null
   $ ./main 6
   0
   6

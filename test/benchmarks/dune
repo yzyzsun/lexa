@@ -1,6 +1,8 @@
 (cram
  (deps 
   %{bin:lexac} 
-  (glob_files_rec ../../benchmarks/lexa/*.lx)
-  (glob_files_rec ../../benchmarks/lexaz/*.lx)
-  (glob_files_rec ../../src/stacktrek/*.h)))
+  (glob_files_rec ../../benchmarks/offset_functions.h)
+  (glob_files_rec ../../benchmarks/*.lx)
+  (glob_files_rec ../../src/stacktrek/*.h)
+  (glob_files_rec ../../src/stackwalk/stackwalk.c)
+  ))

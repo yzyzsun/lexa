@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/import_c_lib/file.lx -o main --output-c &> /dev/null
+  $ lexa ../lexa_snippets/import_c_lib/file.lx -o main &> /dev/null
   $ cat ../lexa_snippets/import_c_lib/file.c
   #include <datastructure.h>
   #include <stacktrek.h>

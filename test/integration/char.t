@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/char.lx -o main --output-c &> /dev/null
+  $ lexa ../lexa_snippets/char.lx -o main &> /dev/null
   $ ./main 5
   
   

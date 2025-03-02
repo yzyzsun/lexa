@@ -1,4 +1,4 @@
-  $ lexa ../../benchmarks/lexa/triples/main.lx -o main --output-c &> /dev/null
+  $ lexa ../../benchmarks/lexa/triples/main.lx -o main &> /dev/null
   $ cat ../../benchmarks/lexa/triples/main.c
   #include <datastructure.h>
   #include <stacktrek.h>

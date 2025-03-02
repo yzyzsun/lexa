@@ -80,6 +80,8 @@
               unicorn
 
               pyelftools
+              ipykernel
+              pip
             ]))
             
             cmake
@@ -93,6 +95,8 @@
 
             ghostscript
             graphviz
+
+            llvmPackages.bintools
           ] ++ 
           (with ocaml-ng.ocamlPackages_5_1; [
               ocaml-lsp
