@@ -71,12 +71,17 @@ def main():
     print(results)
     print(pivoted_df)
     if any(df["mean_mili"].isna()):
+        rt_code = 0
         for platform, benchmark, mean_mili, std_mili in results:
             if mean_mili is None:
-                print(f"{platform} {benchmark} failed")
+                if config[(platform, benchmark)].get("fail_reason"):
+                    print(f"{platform} {benchmark} failed as expected: {config[(platform, benchmark)]['fail_reason']}")
+                else:
+                    print(f"{platform} {benchmark} failed unexpectedly")
+                    rt_code = 1
         print("SOME BENCHMARKS FAILED")
         import sys
-        sys.exit(1)
+        sys.exit(rt_code)
 
 if __name__ == "__main__":
     main()
