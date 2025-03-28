@@ -9,6 +9,8 @@ def run_commands(source_file, output_file, lexac_args, output_ll):
     if source_file.endswith(".c"):
         c_file = src_path
     else:
+        subprocess.run(["dune", "clean"], check=True)
+
         base_name = os.path.basename(src_path)
         c_file = os.path.dirname(src_path) + "/" + os.path.splitext(base_name)[0] + ".c"
 
