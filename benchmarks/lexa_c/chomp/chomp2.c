@@ -5,13 +5,15 @@
 int *_malloc(int, i64*);
 FAST_SWITCH_DECORATOR
 i64 handle_body(i64*, i64*);
+FAST_SWITCH_DECORATOR
+i64 no_good_move_handle_body(i64*, i64*);
 i64 handler_malloc_exception(i64*);
+i64 handler_no_good_move(i64*, i64);
 
 #define NDATA(abort_stub) (int *)_malloc(ncol * sizeof(int), abort_stub)
 #define NLIST(abort_stub) (struct _list *)_malloc(sizeof(struct _list), abort_stub)
 #define NPLAY(abort_stub) (struct _play *)_malloc(sizeof(struct _play), abort_stub)
 
-__attribute__((noinline))
 int *_malloc(int size, i64 *abort_stub) {
   int *ptr = (int*)malloc(size);
   if (ptr == NULL) {
@@ -132,7 +134,7 @@ void show_data(int *data) /* little display routine to give off results */
   int counter = 0;
   while (counter != ncol)
     {
-      // printf("%d",data[counter ++]);
+      printf("%d",data[counter ++]);
       if (counter != ncol) putchar(',');
     }
 }
@@ -141,7 +143,7 @@ void show_move(int *data) /* puts in the "(" and ")" for show_data() */
 {
   putchar('(');
   show_data(data);
-  // printf(")\n");
+  printf(")\n");
 }
 
 void show_list(struct _list *list) /* show the entire list of moves */
@@ -157,10 +159,10 @@ void show_play(struct _play *play) /* to display the whole tree */
 {
   while (play != NULL)
     {
-      // printf("For state :\n");
+      printf("For state :\n");
       show_data(play -> state);
-      // printf("  value = %d\n",play -> value);
-      // printf("We get, in order :\n");
+      printf("  value = %d\n",play -> value);
+      printf("We get, in order :\n");
       show_list(play -> first);
       play = play -> next;
     }
@@ -311,22 +313,24 @@ void make_wanted(int *data, i64 *abort_stub) /* makes up the list of positions f
   wanted = current;
 }
 
-int *get_good_move(struct _list *list, i64 *abort_stub) /* gets the first good move from a _list */
+int *get_good_move(struct _list *list, int player, i64 *abort_stub, i64 *error_stub) /* gets the first good move from a _list */
 {
-  if (list == NULL) return NULL; /* if list is NULL, say so */
+  if (list == NULL) RAISE(abort_stub, 0, (player)); /* the last player has made the move (0,0) */
       /* until end-of-list or a good one is found */
       /* a good move is one that gives off a zero value */
   while ((list -> next != NULL) && (get_value(list -> data)))
       list = list -> next;
+
+  if (list == NULL) RAISE(abort_stub, 0, (1 - player)); /* no good move: player loses */
   return copy_data(list -> data,abort_stub); /* return the value */
 }
 
-int *get_winning_move(struct _play *play, i64 *abort_stub) /* just scans for the first good move */
+int *get_winning_move(struct _play *play, int player, i64 *abort_stub, i64 *error_stub) /* just scans for the first good move */
                                           /* in the last _list of a _play. This */
 {                                         /* is the full board */
   int *temp;
   while (play -> next != NULL) play = play -> next; /* go to end of _play */
-  temp = get_good_move(play -> first, abort_stub); /* get good move */
+  temp = get_good_move(play -> first, player, abort_stub, error_stub); /* get good move */
   return temp;                         /* return it */
 }
 
@@ -359,35 +363,57 @@ int main(int argc, char *argv[])
 
 FAST_SWITCH_DECORATOR
 i64 handle_body(i64 *env, i64 *abort_stub) {
-  int row,col,player;
+  int row,col;
   int *current,*temp;
   struct _play *tree;
 
   tree = make_play(1,abort_stub); /* create entire tree structure, not just the */
-  player = 0;          /* needed part for first move */
   current = make_data(nrow,ncol,abort_stub); /* start play at full board */
 
-  while (current != NULL)
-    {
-      temp = get_good_move(where(current,tree), abort_stub); /* get best move */
-      if (temp != NULL)  /* temp = NULL when the poison pill is taken */
-        {
-          get_real_move(temp,current,&row,&col); /* calculate coordinates */
-          /* print it out nicely */
-          // printf("player %d plays at (%d,%d)\n",player,row,col);
-          player = 1 - player; /* next player to do the same */
-          free(current);  /* dump for memory management */
-        }
-      current = temp; /* update board */
-    }
+  int winner = HANDLE(
+    no_good_move_handle_body,
+    ({ABORT, handler_no_good_move}),
+    ((i64)tree, (i64)abort_stub)
+  );
+
   dump_play(tree);
-  // printf("player %d loses\n",1 - player); /* display winning player */
+  printf("player %d loses\n",1 - winner); /* display winning player */
   return 0;
 }
 
+FAST_SWITCH_DECORATOR
+i64 no_good_move_handle_body(i64 *env, i64 *abort_stub) {
+  int row,col;
+  int *temp;
+  int *current = make_data(nrow,ncol,abort_stub); /* start play at full board */
+  struct _play *tree = (struct _play *) env[0];
+  i64 *malloc_error_stub = (i64 *)env[1];
+  int player = 0;
+
+  while (current != NULL)
+  {
+    temp = get_good_move(where(current,tree), player, abort_stub, malloc_error_stub); /* get best move */
+    if (temp != NULL)  /* temp = NULL when the poison pill is taken */
+    {
+        get_real_move(temp,current,&row,&col); /* calculate coordinates */
+        /* print it out nicely */
+        printf("player %d plays at (%d,%d)\n",player,row,col);
+        player = 1 - player; /* next player to do the same */
+        free(current);  /* dump for memory management */
+    }
+    current = temp; /* update board */
+  }
+
+  return player;
+}
+
 i64 handler_malloc_exception(i64 *env) {
-  // printf("Exception: malloc() failed to allocate memory\n");
+  printf("Exception: malloc() failed to allocate memory\n");
   return 1;
+}
+
+i64 handler_no_good_move(i64 *env, i64 player) {
+    return player;
 }
 
 /*****************************************************************************/

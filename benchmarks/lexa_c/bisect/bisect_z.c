@@ -21,7 +21,7 @@
 i64 handler_alloc_exception(i64*);
 i64 handler_zero_division_exception(i64*);
 FAST_SWITCH_DECORATOR
-i64 main_handle_body(i64*, i64*);
+i64 main_handle_body(i64*);
 
 i64 handler_alloc_exception(i64 *env) {
   // printf("Exception: failed to allocate memory\n");
@@ -35,26 +35,26 @@ i64 handler_zero_division_exception(i64 *env) {
 
 #define DBL_EPSILON 0x1p-52
 
-void  *allocvector(size_t size, i64 *abort_stub) 
+void  *allocvector(size_t size) 
 {
   void *V;
 
   if ( (V = (void *) malloc((size_t) size)) == NULL ) {
-    RAISE(abort_stub, 0, ());
+    RAISEZ(0, 0, 0, ());
   }
   memset(V,0,size);
   return V;
 }
 
-void dallocvector(int n, double **V, i64 *abort_stub)
+void dallocvector(int n, double **V)
 {
-  *V = (double *) allocvector((size_t) n*sizeof(double), abort_stub);
+  *V = (double *) allocvector((size_t) n*sizeof(double));
 }
 
 
 #define FUDGE  (double) 1.01
 
-int sturm(int n, double c[], double b[], double beta[], double x, i64 *abort_stub)
+int sturm(int n, double c[], double b[], double beta[], double x)
 
 /**************************************************************************
 
@@ -136,7 +136,7 @@ mentioned in the code below.
 
     }
     else {
-      RAISE(abort_stub, 1, ());  
+      RAISEZ(0, 0, 1, ());  
     }
 
     if (q < 0)
@@ -177,7 +177,7 @@ mentioned in the code below.
 #endif
     }
     else {
-      RAISE(abort_stub, 0, ()); 
+      RAISEZ(0, 0, 0, ()); 
     }
     
   }
@@ -193,7 +193,7 @@ mentioned in the code below.
 
 void dbisect(double c[], double b[], double beta[], 
 	     int n, int m1, int m2, double eps1, double *eps2, int *z,  
-	     double x[], i64 *abort_stub)
+	     double x[])
 
 
 /**************************************************************************
@@ -278,7 +278,7 @@ Purpose:
     double *wu; 
 
     if( (wu = (double *) calloc(n+1,sizeof(double))) == NULL) {
-      RAISE(abort_stub, 0, ());
+      RAISEZ(0, 0, 0, ());
     }
 
     /* Start bisection process  */
@@ -305,7 +305,7 @@ Purpose:
 	*z = *z + 1;
 	
 	/* Sturms Sequence  */
-       	a = sturm(n,c,b,beta,x1,abort_stub); 
+       	a = sturm(n,c,b,beta,x1); 
 
 	/* Bisection step */
 	if (a < k) {
@@ -352,7 +352,7 @@ void test_matrix(int n, double *C, double *B)
 int main(int argc,char *argv[])
 {
   int n = readInt();
-  return HANDLE(
+  return HANDLEZ(
     main_handle_body,
     ({ABORT, handler_alloc_exception},
     {ABORT, handler_zero_division_exception}),
@@ -361,7 +361,7 @@ int main(int argc,char *argv[])
 }
 
 FAST_SWITCH_DECORATOR
-i64 main_handle_body(i64 *env, i64 *abort_stub) {
+i64 main_handle_body(i64 *env) {
   int rep,n,k,i,j;
   double eps,eps2;
   double *D,*E,*beta,*S;
@@ -370,10 +370,10 @@ i64 main_handle_body(i64 *env, i64 *abort_stub) {
   n = (int)env[0];
   eps = 2.2204460492503131E-16;
 
-  dallocvector(n,&D,abort_stub);
-  dallocvector(n,&E,abort_stub);
-  dallocvector(n,&beta,abort_stub);
-  dallocvector(n,&S,abort_stub);  
+  dallocvector(n,&D);
+  dallocvector(n,&E);
+  dallocvector(n,&beta);
+  dallocvector(n,&S);  
   
   for (j=0; j<rep; j++) {
     test_matrix(n,D,E);
@@ -384,7 +384,7 @@ i64 main_handle_body(i64 *env, i64 *abort_stub) {
     }
     
     E[0] = beta[0] = 0;  
-    dbisect(D,E,beta,n,1,n,eps,&eps2,&k,&S[-1],abort_stub);
+    dbisect(D,E,beta,n,1,n,eps,&eps2,&k,&S[-1]);
   }
   
   for(i=1; i<20; i++)

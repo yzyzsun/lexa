@@ -4,7 +4,7 @@ from threading import current_thread
 import re
 import os
 
-from config import config, platforms, benchmarks, bench_CPUs
+from config import bench_CPUs
 
 def print_message(message, short=False):
     if short:

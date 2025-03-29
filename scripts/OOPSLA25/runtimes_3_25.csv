@@ -1,0 +1,11 @@
+,mean_mili,mean_mili,std_mili,std_mili
+platform,lexa,lexaz,lexa,lexaz
+benchmark,,,,
+catalan,326.0,311.0,8.0,0.0
+bezout,679.0,670.0,6.0,9.0
+golomb,660.0,582.0,6.0,0.0
+hofstadterq,575.0,506.0,0.0,0.0
+karatsuba,844.0,740.0,4.0,3.0
+ackermann,3942.0,4181.0,13.0,9.0
+palindrome_partition,234.0,226.0,1.0,1.0
+latticepath,940.0,905.0,1.0,5.0

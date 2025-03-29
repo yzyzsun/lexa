@@ -1,0 +1,78 @@
+open "../../../stdlib/list.lx"
+
+effect Abort {
+    dcl invalid_arg
+}
+
+def partition(s, abort_stub) {
+    val res = newref {Nil};
+    val path = newref {Nil};
+    backtrack(0, s, path, res, abort_stub);
+    res
+}
+
+def list_pop(l) {
+    match l with
+    | Nil -> { Nil }
+    | Cons (h, t) -> {
+        (match t with
+        | Nil -> { Nil }
+        | Cons (hh, tt) -> { Cons(h, list_pop(t)) })
+    }
+}
+
+def is_palindrome(s, a, b) {
+    rec def iter(start, end) {
+        if (start > end || start == end) then
+            true
+        else
+        if (~strCharAt(s, start) != ~strCharAt(s, end)) then
+            false
+        else
+            iter(start + 1, end - 1)
+    };
+    iter(a, b)
+}
+
+def backtrack_loop(i, s, index, path, res, abort_stub) {
+    if (i == ~strlen(s) || i > ~strlen(s)) then
+        0
+    else (
+        if is_palindrome(s, index, i) then (
+            val ss = ~stringSubStr(s, index, i + 1);
+            path[0] := list_append(Nil, Cons(ss, Nil));
+            backtrack(i + 1, s, path, res, abort_stub);
+            path[0] := list_pop(path[0])
+        ) else (
+            0
+        );
+        backtrack_loop(i + 1, s, index, path, res, abort_stub)
+    )
+}
+
+def backtrack(index, s, path, res, abort_stub) {
+    if (index < 0 || index > ~strlen(s) || path == 0 || res == 0) then
+        raise abort_stub.invalid_arg()
+    else
+    if (index == ~strlen(s)) then
+        res[0] := list_append(res[0], Cons(path, Nil))
+    else
+        backtrack_loop(index, s, index, path, res, abort_stub)
+}
+
+def run(s) {
+    handle {
+        val res = partition(s, abort_stub);
+        list_length(res[0])
+    } with abort_stub : Abort {
+        exc invalid_arg(_) {
+            ~printf("Error: invalid argument\n");
+            1
+        }
+    }
+}
+
+def main() {
+    ~printInt(run("aababbaaaaabababaaa"));
+    0
+}

@@ -2,20 +2,19 @@
 #include <stdlib.h>
 #include <stacktrek.h>
 
-int *_malloc(int, i64*);
+int *_malloc(int);
 FAST_SWITCH_DECORATOR
-i64 handle_body(i64*, i64*);
+i64 handle_body(i64*);
 i64 handler_malloc_exception(i64*);
 
-#define NDATA(abort_stub) (int *)_malloc(ncol * sizeof(int), abort_stub)
-#define NLIST(abort_stub) (struct _list *)_malloc(sizeof(struct _list), abort_stub)
-#define NPLAY(abort_stub) (struct _play *)_malloc(sizeof(struct _play), abort_stub)
+#define NDATA() (int *)_malloc(ncol * sizeof(int))
+#define NLIST() (struct _list *)_malloc(sizeof(struct _list))
+#define NPLAY() (struct _play *)_malloc(sizeof(struct _play))
 
-__attribute__((noinline))
-int *_malloc(int size, i64 *abort_stub) {
+int *_malloc(int size) {
   int *ptr = (int*)malloc(size);
   if (ptr == NULL) {
-    RAISE(abort_stub, 0, ());
+    RAISEZ(0, 0, 0, ());
   }
   return ptr;
 }
@@ -36,9 +35,9 @@ struct _play
 
 int nrow,ncol;      /* global so as to avoid passing them all over the place */
 
-int *copy_data(int* data, i64 *abort_stub) /* creates a duplicate of a given -data list */
+int *copy_data(int* data) /* creates a duplicate of a given -data list */
 {
-  int *new = NDATA(abort_stub);
+  int *new = NDATA();
   int counter = ncol;
   while (counter --)
       new[counter] = data[counter];
@@ -179,11 +178,11 @@ int in_wanted(int *data) /* checks if the current _data is in the wanted list */
   return 1;
 }
 
-int *make_data(int row,int col, i64 *abort_stub) /* creates a new _data with the correct */
+int *make_data(int row,int col) /* creates a new _data with the correct */
                                 /* contents for the specified row & col */
 {
   int count;
-  int *new = NDATA(abort_stub);
+  int *new = NDATA();
   for (count = 0;count != col;count ++) /* creates col-1 cells with nrow */
       new[count] = nrow;
   for (;count != ncol;count ++) /* and the rest with row as value */
@@ -191,26 +190,26 @@ int *make_data(int row,int col, i64 *abort_stub) /* creates a new _data with the
   return new;         /* and return pointer to first element */
 }
 
-struct _list *make_list(int *data,int *value,int *all, i64 *abort_stub) /* create the whole _list of moves */
+struct _list *make_list(int *data,int *value,int *all) /* create the whole _list of moves */
                                                           /* for the _data structure data */
 {
   int row,col;
   int *temp;
   struct _list *head,*current;
   *value = 1; /* set to not good to give */
-  head = NLIST(abort_stub); /* create dummy header */
+  head = NLIST(); /* create dummy header */
   head -> next = NULL; /* set NULL as next element */
   current = head;      /* start from here */
   for (row = 0;row != nrow;row ++) /* for every row */
     {
       for (col = 0;col != ncol;col ++) /* for every column */
         {
-	  temp = make_data(row,col,abort_stub); /* create _data for this play */
+	  temp = make_data(row,col); /* create _data for this play */
 	  melt_data(temp,data);      /* melt it with the current one */
 	  if (! equal_data(temp,data)) /* if they are different, it good */
 	    {
-	      current -> next = NLIST(abort_stub); /* create new element in list */
-	      current -> next -> data = copy_data(temp,abort_stub); /* copy data, and place in list */
+	      current -> next = NLIST(); /* create new element in list */
+	      current -> next -> data = copy_data(temp); /* copy data, and place in list */
 	      current -> next -> next = NULL; /* NULL the next element */
 	      current = current -> next; /* advance pointer */
 	      if (*value == 1) /* if still not found a good one */
@@ -237,25 +236,25 @@ struct _list *make_list(int *data,int *value,int *all, i64 *abort_stub) /* creat
   return current;                           /* not the empty board */
 }
 
-struct _play *make_play(int all, i64 *abort_stub) /* make up the entire tree-like stuff */
+struct _play *make_play(int all) /* make up the entire tree-like stuff */
 {
   int val;
   int *temp;
   struct _play *head,*current;
-  head = NPLAY(abort_stub); /* dummy header again */
+  head = NPLAY(); /* dummy header again */
   current = head; /* start here */
   game_tree = NULL; /* no elements yet */
-  temp = make_data(0,0,abort_stub); /* new data, for empty board */
+  temp = make_data(0,0); /* new data, for empty board */
   temp[0] --;   /* set it up at (-1,xx) so that next_data() returns (0,xx) */
   while (next_data(temp)) /* take next one, and break if none */
     {
       if (valid_data(temp)) /* if board position is possible */
         {
-	  current -> next = NPLAY(abort_stub); /* create a new _play cell */
+	  current -> next = NPLAY(); /* create a new _play cell */
 	  if (game_tree == NULL) game_tree = current -> next;
 	      /* set up game_tree if it was previously NULL */
-	  current -> next -> state = copy_data(temp, abort_stub); /* make a copy of temp */
-	  current -> next -> first = make_list(temp,&val,&all, abort_stub);
+	  current -> next -> state = copy_data(temp); /* make a copy of temp */
+	  current -> next -> first = make_list(temp,&val,&all);
 	      /* make up its whole list of possible moves */
 	  current -> next -> value = val; /* place its value */
 	  current -> next -> next = NULL; /* no next element */
@@ -263,7 +262,7 @@ struct _play *make_play(int all, i64 *abort_stub) /* make up the entire tree-lik
 	  if (all == 2)                   /* if found flag is on */
 	    {
 	      free(temp);            /* dump current temp */
-	      temp = make_data(nrow,ncol,abort_stub); /* and create one that will break */
+	      temp = make_data(nrow,ncol); /* and create one that will break */
 	    }
 	}
     }
@@ -272,7 +271,7 @@ struct _play *make_play(int all, i64 *abort_stub) /* make up the entire tree-lik
   return current;         /* and return pointer to start of list */
 }
 
-void make_wanted(int *data, i64 *abort_stub) /* makes up the list of positions from the full board */
+void make_wanted(int *data) /* makes up the list of positions from the full board */
 {
          /* everything here is almost like in the previous function. */
 	 /* The reason its here, is that it does not do as much as   */
@@ -282,19 +281,19 @@ void make_wanted(int *data, i64 *abort_stub) /* makes up the list of positions f
   int row,col;
   int *temp;
   struct _list *head,*current;
-  head = NLIST(abort_stub);
+  head = NLIST();
   head -> next = NULL;
   current = head;
   for (row = 0;row != nrow;row ++)
     {
       for (col = 0;col != ncol;col ++)
         {
-	  temp = make_data(row,col,abort_stub);
+	  temp = make_data(row,col);
 	  melt_data(temp,data);
 	  if (! equal_data(temp,data))
 	    {
-	      current -> next = NLIST(abort_stub);
-	      current -> next -> data = copy_data(temp,abort_stub);
+	      current -> next = NLIST();
+	      current -> next -> data = copy_data(temp);
 	      current -> next -> next = NULL;
 	      current = current -> next;
 	    }
@@ -311,22 +310,22 @@ void make_wanted(int *data, i64 *abort_stub) /* makes up the list of positions f
   wanted = current;
 }
 
-int *get_good_move(struct _list *list, i64 *abort_stub) /* gets the first good move from a _list */
+int *get_good_move(struct _list *list) /* gets the first good move from a _list */
 {
   if (list == NULL) return NULL; /* if list is NULL, say so */
       /* until end-of-list or a good one is found */
       /* a good move is one that gives off a zero value */
   while ((list -> next != NULL) && (get_value(list -> data)))
       list = list -> next;
-  return copy_data(list -> data,abort_stub); /* return the value */
+  return copy_data(list -> data); /* return the value */
 }
 
-int *get_winning_move(struct _play *play, i64 *abort_stub) /* just scans for the first good move */
+int *get_winning_move(struct _play *play) /* just scans for the first good move */
                                           /* in the last _list of a _play. This */
 {                                         /* is the full board */
   int *temp;
   while (play -> next != NULL) play = play -> next; /* go to end of _play */
-  temp = get_good_move(play -> first, abort_stub); /* get good move */
+  temp = get_good_move(play -> first); /* get good move */
   return temp;                         /* return it */
 }
 
@@ -350,7 +349,7 @@ int main(int argc, char *argv[])
 {
   ncol = nrow = readInt();
 
-  return HANDLE(
+  return HANDLEZ(
     handle_body, 
     ({ABORT, handler_malloc_exception}), 
     ()
@@ -358,18 +357,18 @@ int main(int argc, char *argv[])
 }
 
 FAST_SWITCH_DECORATOR
-i64 handle_body(i64 *env, i64 *abort_stub) {
+i64 handle_body(i64 *env) {
   int row,col,player;
   int *current,*temp;
   struct _play *tree;
 
-  tree = make_play(1,abort_stub); /* create entire tree structure, not just the */
+  tree = make_play(1); /* create entire tree structure, not just the */
   player = 0;          /* needed part for first move */
-  current = make_data(nrow,ncol,abort_stub); /* start play at full board */
+  current = make_data(nrow,ncol); /* start play at full board */
 
   while (current != NULL)
     {
-      temp = get_good_move(where(current,tree), abort_stub); /* get best move */
+      temp = get_good_move(where(current,tree)); /* get best move */
       if (temp != NULL)  /* temp = NULL when the poison pill is taken */
         {
           get_real_move(temp,current,&row,&col); /* calculate coordinates */

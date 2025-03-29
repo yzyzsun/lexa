@@ -1,0 +1,73 @@
+effect Abort {
+  dcl invalid_denominator
+}
+
+def mod(a, b, abort_stub) {
+    if !(b > 0) then
+        raise abort_stub.invalid_denominator()
+    else 
+        a % b
+}
+
+def divide(a, b, abort_stub) {
+    if b == 0 then
+        raise abort_stub.invalid_denominator()
+    else 
+        a / b
+}
+
+def extendedEuclid(a, b, x, y, gcd, abort_stub) {
+    if b == 0 then
+    (
+        x[0] := 1;
+        y[0] := 0;
+        gcd[0] := a;
+        0
+    )
+    else 
+    (
+        val x1 = newref {0};
+        val y1 = newref {0};
+        extendedEuclid(b, mod(a, b, abort_stub), x1, y1, gcd, abort_stub);
+        x[0] := y1[0];
+        y[0] := x1[0] - divide(a, b, abort_stub) * y1[0];
+        0
+    )
+}
+
+def runExtendedEuclid(a, b, x, y, gcd) {
+    handle {
+        extendedEuclid(a, b, x, y, gcd)
+    } with abort_stub: Abort {
+        exc invalid_denominator() {
+            ~printf("Error: Invalid denominator\n");
+            1
+        }
+    }
+}
+
+def loop(a, b, x, y, gcd, i, acc) {
+    if i == 0 then
+        acc
+    else
+    (
+        runExtendedEuclid(a, b, x, y, gcd);
+        loop(a, b + 1, x, y, gcd, i - 1, acc + x[0] + y[0] + gcd[0])
+    )
+}
+
+def run(n) {
+    val a = 660046610375530309;
+    val b = 540113804746346429;
+    val x = newref {0};
+    val y = newref {0};
+    val gcd = newref {0};
+    loop(a, b, x, y, gcd, n, 0)
+}
+
+def main() {
+    val n = ~readInt(); // 1000000
+    val res = run(n);
+    ~printInt(res);
+    0
+}

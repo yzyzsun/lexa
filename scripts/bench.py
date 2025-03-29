@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from config import config, platforms, benchmarks, bench_CPUs
+from config import config, platforms, benchmarks, bench_CPUs, zero_cost_benchmarks
 from utils import build_and_bench
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--benchmarks", nargs="+")
     parser.add_argument("--all-benchmarks", action="store_true")
     parser.add_argument("--all-vanilla-benchmarks", action="store_true")
+    parser.add_argument("--all-zero-cost-benchmarks", action="store_true")
     args = parser.parse_args()
 
     config_tups = [(platform, benchmark, params) for (platform, benchmark), params in config.items()]
@@ -32,6 +33,8 @@ def main():
     if args.all_vanilla_benchmarks:
         vanilla_benchmarks = ["countdown", "fibonacci_recursive", "product_early", "iterator", "nqueens", "generator", "tree_explore", "triples", "resume_nontail", "parsing_dollars", "handler_sieve"]
         config_tups = [c for c in config_tups if c[1].strip("_z") in vanilla_benchmarks]
+    if args.all_zero_cost_benchmarks:
+        config_tups = [c for c in config_tups if c[1] in zero_cost_benchmarks]
     if args.all_benchmarks:
         config_tups = [c for c in config_tups if c[1] in benchmarks]
     if args.benchmarks:
