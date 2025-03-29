@@ -1,0 +1,27 @@
+effect Abort {
+  dcl invalid_arg
+}
+
+def golomb(n, abort_stub) {
+    if !(n > 0) then
+        raise abort_stub.invalid_arg(n)
+    else
+        if n == 1 then
+            1
+        else
+            1 + golomb(n - golomb(golomb(n - 1, abort_stub), abort_stub), abort_stub)
+}
+
+def main() {
+    val n = ~readInt();
+
+    handle {
+        ~printInt(golomb(n, abort_stub));
+        0
+    } with abort_stub: Abort {
+        exc invalid_arg(n) {
+            ~printf("Error: invalid argument %d\n", n);
+            1
+        }
+    }
+}

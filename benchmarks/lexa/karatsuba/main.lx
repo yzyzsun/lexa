@@ -1,0 +1,87 @@
+effect Abort {
+  dcl illegal_denominator
+}
+
+def mod(a, b, abort_stub) {
+    if !(b > 0) then
+        raise abort_stub.illegal_denominator()
+    else 
+        a % b
+}
+
+def divide(a, b, abort_stub) {
+    if b == 0 then
+        raise abort_stub.illegal_denominator()
+    else 
+        a / b
+}
+
+def numdigits(a) {
+    if a < 2 then
+        1
+    else 
+        1 + numdigits(a / 2)
+}
+
+def pow2(n) {
+    if n == 0 then
+        1
+    else
+        2 * pow2(n - 1)
+}
+
+def max(a, b) {
+    if a > b then
+        a
+    else 
+        b
+}
+
+def karatsuba(num1, num2, threshold, abort_stub) {
+    if num1 < threshold || num2 < threshold then
+        num1 * num2
+    else 
+        val m = max(numdigits(num1), numdigits(num2));
+        val m2 = divide(m, 2, abort_stub);
+        val powm2 = pow2(m2);
+    
+        val high1 = divide(num1, powm2, abort_stub);
+        val low1 = mod(num1, powm2, abort_stub);
+        val high2 = divide(num2, powm2, abort_stub);
+        val low2 = mod(num2, powm2, abort_stub);
+
+        val z0 = karatsuba(low1, low2, threshold, abort_stub);
+        val z1 = karatsuba(low1 + high1, low2 + high2, threshold, abort_stub);
+        val z2 = karatsuba(high1, high2, threshold, abort_stub);
+
+        z2 * powm2 * powm2 + ((z1 - z2 - z0) * powm2) + z0
+}
+
+
+def loop(n, i, acc, abort_stub) {
+    if i == 0 then
+        acc
+    else
+    (
+        loop(n, i - 1, acc + karatsuba(n, n, 2, abort_stub), abort_stub)
+    )
+}
+
+def run(n, i) {
+    handle {
+        loop(n, i, 0, abort_stub)
+    } with abort_stub: Abort {
+        exc illegal_denominator() {
+            ~printf("Error: illegal denominator\n");
+            1
+        }
+    }
+    
+}
+
+def main() {
+    val n = ~readInt();
+    val res = run(n, 1000000);
+    ~printInt(res);
+    0
+}

@@ -15,13 +15,13 @@
 i64 handler_malloc_exception(i64*);
 i64 handler_null_exception(i64*);
 FAST_SWITCH_DECORATOR
-i64 stretched_tree_handle_body(i64*, i64*);
+i64 stretched_tree_handle_body(i64*);
 FAST_SWITCH_DECORATOR
-i64 tree_handle_body(i64*, i64*);
+i64 tree_handle_body(i64*);
 FAST_SWITCH_DECORATOR
-i64 long_lived_tree_create_handle_body(i64*, i64*);
+i64 long_lived_tree_create_handle_body(i64*);
 FAST_SWITCH_DECORATOR
-i64 long_lived_tree_test_handle_body(i64*, i64*);
+i64 long_lived_tree_test_handle_body(i64*);
 
 
 typedef struct tn {
@@ -40,14 +40,14 @@ i64 handler_null_exception(i64 *env) {
     return 1;
 }
 
-treeNode_t* NewTreeNode(treeNode_t* left, treeNode_t* right, long item, i64 *abort_stub)
+treeNode_t* NewTreeNode(treeNode_t* left, treeNode_t* right, long item)
 {
     treeNode_t* new;
 
     new = (treeNode_t*)malloc(sizeof(treeNode_t));
 
     if (new == NULL) {
-        RAISE(abort_stub, 0, ());
+        RAISEZ(0, 0, 0, ());
     }
 
     new->left = left;
@@ -58,38 +58,37 @@ treeNode_t* NewTreeNode(treeNode_t* left, treeNode_t* right, long item, i64 *abo
 } /* NewTreeNode() */
 
 
-long ItemCheck(treeNode_t* tree, i64 *abort_stub)
+long ItemCheck(treeNode_t* tree)
 {
     if (tree == NULL) {
-        RAISE(abort_stub, 1, ());
+        RAISEZ(0, 0, 1, ());
     }
 
     if (tree->left == NULL)
         return tree->item;
     else
-        return tree->item + ItemCheck(tree->left, abort_stub) - ItemCheck(tree->right, abort_stub);
+        return tree->item + ItemCheck(tree->left) - ItemCheck(tree->right);
 } /* ItemCheck() */
 
 
-treeNode_t* BottomUpTree(long item, unsigned depth, i64 *abort_stub)
+treeNode_t* BottomUpTree(long item, unsigned depth)
 {
     if (depth > 0)
         return NewTreeNode
         (
-            BottomUpTree(2 * item - 1, depth - 1, abort_stub),
-            BottomUpTree(2 * item, depth - 1, abort_stub),
-            item,
-            abort_stub
+            BottomUpTree(2 * item - 1, depth - 1),
+            BottomUpTree(2 * item, depth - 1),
+            item
         );
     else
-        return NewTreeNode(NULL, NULL, item, abort_stub);
+        return NewTreeNode(NULL, NULL, item);
 } /* BottomUpTree() */
 
 
 void DeleteTree(treeNode_t* tree)
 {
     // if (tree == NULL) {
-    //     RAISE(abort_stub, 1, ());
+    //     RAISEZ(abort_stub, 1, ());
     // }
 
     if (tree->left != NULL)
@@ -118,28 +117,28 @@ int main(int argc, char* argv[])
 
     stretchDepth = maxDepth + 1;
 
-    HANDLE(
+    HANDLEZ(
         stretched_tree_handle_body, 
         ({ABORT, handler_malloc_exception},
         {ABORT, handler_null_exception}),
         ((i64)stretchDepth)
     );
 
-    HANDLE(
+    HANDLEZ(
         long_lived_tree_create_handle_body, 
         ({ABORT, handler_malloc_exception},
         {ABORT, handler_null_exception}),
         ((i64)&longLivedTree, (i64)maxDepth)
     );
 
-    HANDLE(
+    HANDLEZ(
         tree_handle_body,
         ({ABORT, handler_malloc_exception},
         {ABORT, handler_null_exception}),
         ((i64)minDepth, (i64)maxDepth)
     );
 
-    HANDLE(
+    HANDLEZ(
         long_lived_tree_test_handle_body, 
         ({ABORT, handler_malloc_exception},
         {ABORT, handler_null_exception}),
@@ -150,16 +149,16 @@ int main(int argc, char* argv[])
 } /* main() */
 
 FAST_SWITCH_DECORATOR
-i64 stretched_tree_handle_body(i64 *env, i64 *abort_stub) {
+i64 stretched_tree_handle_body(i64 *env) {
     treeNode_t *stretchTree;
     unsigned int stretchDepth = (unsigned int)env[0];
 
-    stretchTree = BottomUpTree(0, stretchDepth, abort_stub);
+    stretchTree = BottomUpTree(0, stretchDepth);
     // printf
     (
         "stretch tree of depth %u\t check: %li\n",
         stretchDepth,
-        ItemCheck(stretchTree, abort_stub)
+        ItemCheck(stretchTree)
     );
 
     DeleteTree(stretchTree);
@@ -167,7 +166,7 @@ i64 stretched_tree_handle_body(i64 *env, i64 *abort_stub) {
 }
 
 FAST_SWITCH_DECORATOR
-i64 tree_handle_body(i64 *env, i64 *abort_stub) {
+i64 tree_handle_body(i64 *env) {
     treeNode_t *tempTree;
     unsigned int minDepth = (unsigned int)env[0];
     unsigned int maxDepth = (unsigned int)env[1];
@@ -181,12 +180,12 @@ i64 tree_handle_body(i64 *env, i64 *abort_stub) {
 
         for (i = 1; i <= iterations; i++)
         {
-            tempTree = BottomUpTree(i, depth, abort_stub);
-            check += ItemCheck(tempTree, abort_stub);
+            tempTree = BottomUpTree(i, depth);
+            check += ItemCheck(tempTree);
             DeleteTree(tempTree);
 
-            tempTree = BottomUpTree(-i, depth, abort_stub);
-            check += ItemCheck(tempTree, abort_stub);
+            tempTree = BottomUpTree(-i, depth);
+            check += ItemCheck(tempTree);
             DeleteTree(tempTree);
         } /* for(i = 1...) */
 
@@ -202,15 +201,15 @@ i64 tree_handle_body(i64 *env, i64 *abort_stub) {
 }
 
 FAST_SWITCH_DECORATOR
-i64 long_lived_tree_create_handle_body(i64 *env, i64 *abort_stub) {
+i64 long_lived_tree_create_handle_body(i64 *env) {
     treeNode_t **longLivedTree = (treeNode_t **)env[0];
     int maxDepth = (int)env[1];
-    *longLivedTree = BottomUpTree(0, maxDepth, abort_stub);
+    *longLivedTree = BottomUpTree(0, maxDepth);
     return 0;
 }
 
 FAST_SWITCH_DECORATOR
-i64 long_lived_tree_test_handle_body(i64 *env, i64 *abort_stub) {
+i64 long_lived_tree_test_handle_body(i64 *env) {
     treeNode_t *longLivedTree = (treeNode_t *)env[0];
     unsigned int maxDepth = (unsigned int)env[1];
 
@@ -218,7 +217,7 @@ i64 long_lived_tree_test_handle_body(i64 *env, i64 *abort_stub) {
     (
         "long lived tree of depth %u\t check: %li\n",
         maxDepth,
-        ItemCheck(longLivedTree, abort_stub)
+        ItemCheck(longLivedTree)
     );
     return 0;
 }

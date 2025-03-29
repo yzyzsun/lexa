@@ -23,16 +23,21 @@ else:
 benchmarks = ["countdown", "fibonacci_recursive", "product_early", "iterator", "nqueens", "generator", "tree_explore", "triples", "resume_nontail", "parsing_dollars", "handler_sieve", "resume_nontail_2", "scheduler", "interruptible_iterator"]
 platforms = ["lexa", "lexaz", "effekt", "koka_named", "koka", "ocaml"]
 
+zero_cost_benchmarks = ["catalan", "bezout", "golomb", "hofstadterq", "karatsuba", "ackermann", "palindrome_partition", "latticepath", "two_threads_ackermann"]
+benchmarks += zero_cost_benchmarks
+
 config = {}
 
+username = pwd.getpwuid(os.getuid()).pw_name
+
 for benchmark in benchmarks:
-    LEXA_BUILD_COMMAND = "flock /tmp/dune_lockfile -c 'lexa main.lx -o main'"
+    LEXA_BUILD_COMMAND = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main'"
     LEXA_RUN_COMMAND = "./main {IN}"
     config[("lexa", benchmark)] = {
         "build": LEXA_BUILD_COMMAND, "run": LEXA_RUN_COMMAND,
     }
 
-    LEXA_BUILD_COMMAND = "flock /tmp/dune_lockfile -c 'lexa main.lx -o main'"
+    LEXA_BUILD_COMMAND = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main'"
     LEXA_RUN_COMMAND = "./main {IN}"
     config[("lexaz", benchmark)] = {
         "build": LEXA_BUILD_COMMAND, "run": LEXA_RUN_COMMAND,
@@ -81,6 +86,12 @@ config[("koka", "interruptible_iterator")]["fail_reason"] = "Koka type system li
 config[("koka_named", "scheduler")]["fail_reason"] = "Koka internal compiler error"
 # config[("koka_named", "concurrent_search")]["fail_reason"] = "Koka internal compiler error"
 # config[("effekt", "concurrent_search")]["fail_reason"] = "MLton typing error"
+config[("lexa", "two_threads_ackermann")] = {"fail_reason": "Need 1mb stacklet"}
+config[("lexaz", "two_threads_ackermann")] = {"fail_reason": "Need 1mb stacklet"}
+config[("lexaz", "scheduler")] = {"fail_reason": "Not implemented"}
+config[("lexaz", "interruptible_iterator")] = {"fail_reason": "Not implemented"}
+config[("lexaz", "resume_nontail_2")] = {"fail_reason": "Not implemented"}
+
 
 config[("effekt", "scheduler")]["scale"] = 1000
 config[("effekt", "interruptible_iterator")]["scale"] = 1000
@@ -104,3 +115,13 @@ for platform in platforms:
     config[(platform, "interruptible_iterator")]["bench_input"] = 3000
     # config[(platform, "concurrent_search")]["bench_input"] = 13
     config[(platform, "resume_nontail_2")]["bench_input"] = 10000
+
+    config[(platform, "catalan")]["bench_input"] = 18
+    config[(platform, "bezout")]["bench_input"] = 1000000
+    config[(platform, "golomb")]["bench_input"] = 60
+    config[(platform, "hofstadterq")]["bench_input"] = 38
+    config[(platform, "karatsuba")]["bench_input"] = 32767
+    config[(platform, "ackermann")]["bench_input"] = 4
+    config[(platform, "palindrome_partition")]["bench_input"] = None
+    config[(platform, "latticepath")]["bench_input"] = 16
+    config[(platform, "two_threads_ackermann")]["bench_input"] = 1000000

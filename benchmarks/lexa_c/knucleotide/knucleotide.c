@@ -12,6 +12,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <stacktrek.h>
 
 enum { ht_num_primes = 28 };
 
@@ -23,6 +24,14 @@ static unsigned long ht_prime_list[ht_num_primes] = {
     50331653ul,   100663319ul,  201326611ul, 402653189ul, 805306457ul, 
     1610612741ul, 3221225473ul, 4294967291ul
 };
+
+i64 handler_alloc_exception(i64*);
+i64 handler_null_exception(i64*);
+i64 handler_file_exception(i64*);
+FAST_SWITCH_DECORATOR
+i64 file_open_handle_body(i64*, i64*);
+FAST_SWITCH_DECORATOR
+i64 main_handle_body(i64*, i64*);
 
 struct ht_node {
     char *key;
@@ -41,6 +50,21 @@ struct ht_ht {
 #endif /* HT_DEBUG */
 };
 
+i64 handler_alloc_exception(i64 *env) {
+  printf("Exception: failed to allocate memory\n");
+  return 1;
+}
+
+i64 handler_null_exception(i64 *env) {
+  printf("Exception: null pointer\n");
+  return 1;
+}
+
+i64 handler_file_exception(i64 *env) {
+  printf("Exception: failed to open file\n");
+  return 1;
+}
+
 static inline int ht_val(struct ht_node *node) {
     return(node->val);
 }
@@ -49,22 +73,24 @@ static inline char *ht_key(struct ht_node *node) {
     return(node->key);
 }
 
-static inline int ht_hashcode(struct ht_ht *ht, char *key) {
+static inline int ht_hashcode(struct ht_ht *ht, char *key, i64 *abort_stub) {
+    if(ht == NULL) {
+      RAISE(abort_stub, 1, ());
+    }
+
     unsigned long val = 0;
     for (; *key; ++key) val = 5 * val + *key;
     return(val % ht->size);
 }
 
-struct ht_node *ht_node_create(char *key) {
+struct ht_node *ht_node_create(char *key, i64 *abort_stub) {
     char *newkey;
     struct ht_node *node;
     if ((node = (struct ht_node *)malloc(sizeof(struct ht_node))) == 0) {
-	perror("malloc ht_node");
-	exit(1);
+      RAISE(abort_stub, 0, ());
     }
     if ((newkey = malloc(strlen(key) + 1)) == 0) {
-	perror("strdup newkey");
-	exit(1);
+      RAISE(abort_stub, 0, ());
     }
     strcpy(newkey, key);
     node->key = newkey;
@@ -73,12 +99,18 @@ struct ht_node *ht_node_create(char *key) {
     return(node);
 }
 
-struct ht_ht *ht_create(int size) {
+struct ht_ht *ht_create(int size, i64 *abort_stub) {
     int i = 0;
     struct ht_ht *ht = (struct ht_ht *)malloc(sizeof(struct ht_ht));
+    if(ht == NULL) {
+      RAISE(abort_stub, 0, ());
+    }
     while (ht_prime_list[i] < size) { i++; }
     ht->size = ht_prime_list[i];
     ht->tbl = (struct ht_node **)calloc(ht->size, sizeof(struct ht_node *));
+    if(ht->tbl == NULL) {
+      RAISE(abort_stub, 0, ());
+    }
     ht->iter_index = 0;
     ht->iter_next = 0;
     ht->items = 0;
@@ -88,7 +120,11 @@ struct ht_ht *ht_create(int size) {
     return(ht);
 }
 
-void ht_destroy(struct ht_ht *ht) {
+void ht_destroy(struct ht_ht *ht, i64 *abort_stub) {
+  if(ht == NULL) {
+    RAISE(abort_stub, 1, ());
+  }
+
     struct ht_node *cur, *next;
     int i;
 #ifdef HT_DEBUG
@@ -129,8 +165,11 @@ void ht_destroy(struct ht_ht *ht) {
 #endif /* HT_DEBUG */
 }
 
-struct ht_node *ht_find(struct ht_ht *ht, char *key) {
-    int hash_code = ht_hashcode(ht, key);
+struct ht_node *ht_find(struct ht_ht *ht, char *key, i64 *abort_stub) {
+  if(ht == NULL) {
+    RAISE(abort_stub, 1, ());
+  }
+    int hash_code = ht_hashcode(ht, key, abort_stub);
     struct ht_node *node = ht->tbl[hash_code];
     while (node) {
 	if (strcmp(key, node->key) == 0) return(node);
@@ -139,8 +178,12 @@ struct ht_node *ht_find(struct ht_ht *ht, char *key) {
     return((struct ht_node *)NULL);
 }
 
-struct ht_node *ht_find_new(struct ht_ht *ht, char *key) {
-    int hash_code = ht_hashcode(ht, key);
+struct ht_node *ht_find_new(struct ht_ht *ht, char *key, i64 *abort_stub) {
+  if(ht == NULL) {
+    RAISE(abort_stub, 1, ());
+  }
+
+    int hash_code = ht_hashcode(ht, key, abort_stub);
     struct ht_node *prev = 0, *node = ht->tbl[hash_code];
     while (node) {
 	if (strcmp(key, node->key) == 0) return(node);
@@ -152,16 +195,19 @@ struct ht_node *ht_find_new(struct ht_ht *ht, char *key) {
     }
     ht->items++;
     if (prev) {
-	return(prev->next = ht_node_create(key));
+	return(prev->next = ht_node_create(key, abort_stub));
     } else {
-	return(ht->tbl[hash_code] = ht_node_create(key));
+	return(ht->tbl[hash_code] = ht_node_create(key, abort_stub));
     }
 }
 
 /*
  *  Hash Table iterator data/functions
  */
-struct ht_node *ht_next(struct ht_ht *ht) {
+struct ht_node *ht_next(struct ht_ht *ht, i64 *abort_stub) {
+  if(ht == NULL) {
+    RAISE(abort_stub, 1, ());
+  }
     unsigned long index;
     struct ht_node *node = ht->iter_next;
     if (node) {
@@ -179,10 +225,13 @@ struct ht_node *ht_next(struct ht_ht *ht) {
     return((struct ht_node *)NULL);
 }
 
-struct ht_node *ht_first(struct ht_ht *ht) {
+struct ht_node *ht_first(struct ht_ht *ht, i64 *abort_stub) {
+  if(ht == NULL) {
+    RAISE(abort_stub, 1, ());
+  }
     ht->iter_index = 0;
     ht->iter_next = (struct ht_node *)NULL;
-    return(ht_next(ht));
+    return(ht_next(ht, abort_stub));
 }
 
 static inline int ht_count(struct ht_ht *ht) {
@@ -204,7 +253,7 @@ hash_table_size (int fl, long buflen)
 }
 
 struct ht_ht *
-generate_frequencies (int fl, char *buffer, long buflen)
+generate_frequencies (int fl, char *buffer, long buflen, i64 *abort_stub)
 {
   struct ht_ht *ht;
   char *reader;
@@ -214,13 +263,13 @@ generate_frequencies (int fl, char *buffer, long buflen)
   if (fl > buflen)
     return NULL;
 
-  ht = ht_create (hash_table_size (fl, buflen));
+  ht = ht_create (hash_table_size (fl, buflen), abort_stub);
   for (i = 0; i < buflen - fl + 1; i++)
     {
       reader = &(buffer[i]);
       nulled = reader[fl];
       reader[fl] = 0x00;
-      ht_find_new (ht, reader)->val++;
+      ht_find_new (ht, reader, abort_stub)->val++;
       reader[fl] = nulled;
     }
   return ht;
@@ -233,7 +282,7 @@ typedef struct ssorter
 } sorter;
 
 void
-write_frequencies (int fl, char *buffer, long buflen)
+write_frequencies (int fl, char *buffer, long buflen, i64 *abort_stub)
 {
   struct ht_ht *ht;
   long total, i, j, size;
@@ -241,17 +290,17 @@ write_frequencies (int fl, char *buffer, long buflen)
   sorter *s;
   sorter tmp;
 
-  ht = generate_frequencies (fl, buffer, buflen);
+  ht = generate_frequencies (fl, buffer, buflen, abort_stub);
   total = 0;
   size = 0;
-  for (nd = ht_first (ht); nd != NULL; nd = ht_next (ht))
+  for (nd = ht_first (ht, abort_stub); nd != NULL; nd = ht_next (ht, abort_stub))
     {
       total = total + nd->val;
       size++;
     }
   s = calloc (size, sizeof (sorter));
   i = 0;
-  for (nd = ht_first (ht); nd != NULL; nd = ht_next (ht))
+  for (nd = ht_first (ht, abort_stub); nd != NULL; nd = ht_next (ht, abort_stub))
     {
       s[i].string = nd->key;
       s[i++].num = nd->val;
@@ -267,39 +316,65 @@ write_frequencies (int fl, char *buffer, long buflen)
   for (i = 0; i < size; i++)
     printf ("%s %.3f\n", s[i].string, 100 * (float) s[i].num / total);
   printf ("\n");
-  ht_destroy (ht);
+  ht_destroy (ht, abort_stub);
   free (s);
 }
 
 void
-write_count (char *searchFor, char *buffer, long buflen)
+write_count (char *searchFor, char *buffer, long buflen, i64 *abort_stub)
 {
   struct ht_ht *ht;
 
-  ht = generate_frequencies (strlen (searchFor), buffer, buflen);
-  printf ("%d\t%s\n", ht_find_new (ht, searchFor)->val, searchFor);
-  ht_destroy (ht);
+  ht = generate_frequencies (strlen (searchFor), buffer, buflen, abort_stub);
+  printf ("%d\t%s\n", ht_find_new (ht, searchFor, abort_stub)->val, searchFor);
+  ht_destroy (ht, abort_stub);
 }
 
-#define NRUNS 50
+int NRUNS;
 
 int
-main ()
+main (int argc, char *argv[])
 {
+  NRUNS = readInt();
+  return HANDLE(
+    file_open_handle_body,
+    ({ABORT, handler_file_exception}),
+    ()
+  );
+}
+
+FAST_SWITCH_DECORATOR
+i64 file_open_handle_body(i64 *env, i64 *abort_stub) {
+  FILE * f;
+
+  f = fopen("knucleotide-input.txt", "r");
+  if (f == NULL) 
+    RAISE(abort_stub, 0, ());
+
+  HANDLE(
+    main_handle_body,
+    ({ABORT, handler_alloc_exception},
+    {ABORT, handler_null_exception}),
+    ((i64)f)
+  );
+  
+  fclose (f);
+  return 0;
+}
+
+FAST_SWITCH_DECORATOR
+i64 main_handle_body(i64 *env, i64 *abort_stub) {
   char c;
   char *line, *buffer, *tmp, *x;
   int i, linelen, nothree;
   long buflen, seqlen;
-  FILE * f;
+  FILE *f = (FILE*)env[0];
 
   line = malloc (256);
   if (!line)
-    return 2;
+    RAISE(abort_stub, 0, ());
   seqlen = 0;
   nothree = 1;
-
-  f = fopen("Results/knucleotide-input.txt", "r");
-  if (f == NULL) return 2;
 
   while (nothree && fgets (line, 255, f))
     if (line[0] == '>' && line[1] == 'T' && line[2] == 'H')
@@ -309,7 +384,7 @@ main ()
   buflen = 10240;
   buffer = malloc (buflen + 1);
   if (!buffer)
-    return 2;
+    RAISE(abort_stub, 0, ());
   x = buffer;
 
   while (fgets (x, 255, f))
@@ -330,7 +405,7 @@ main ()
 		  buflen = buflen + 10240;
 		  tmp = realloc (buffer, buflen + 1);
 		  if (tmp == NULL)
-		    return 2;
+        RAISE(abort_stub, 0, ());
 		  buffer = tmp;
 		  x = &(buffer[seqlen]);
 		}
@@ -342,19 +417,19 @@ main ()
     }
   for (i = 0; i < seqlen; i++)
     buffer[i] = toupper (buffer[i]);
-  write_frequencies (1, buffer, seqlen);
-  write_frequencies (2, buffer, seqlen);
-  write_count ("GGT", buffer, seqlen);
-  write_count ("GGTA", buffer, seqlen);
-  write_count ("GGTATT", buffer, seqlen);
-  write_count ("GGTATTTTAATT", buffer, seqlen);
-  write_count ("GGTATTTTAATTTATAGT", buffer, seqlen);
+  write_frequencies (1, buffer, seqlen, abort_stub);
+  write_frequencies (2, buffer, seqlen, abort_stub);
+  write_count ("GGT", buffer, seqlen, abort_stub);
+  write_count ("GGTA", buffer, seqlen, abort_stub);
+  write_count ("GGTATT", buffer, seqlen, abort_stub);
+  write_count ("GGTATTTTAATT", buffer, seqlen, abort_stub);
+  write_count ("GGTATTTTAATTTATAGT", buffer, seqlen, abort_stub);
   for (i = 0; i < NRUNS; i++) {
-    struct ht_ht *  ht = generate_frequencies (6, buffer, seqlen);
-    ht_destroy(ht);
+    struct ht_ht *  ht = generate_frequencies (6, buffer, seqlen, abort_stub);
+    ht_destroy(ht, abort_stub);
   }
   free (buffer);
-  fclose (f);
+
   return 0;
 }
 
