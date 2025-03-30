@@ -86,11 +86,14 @@ config[("koka", "interruptible_iterator")]["fail_reason"] = "Koka type system li
 config[("koka_named", "scheduler")]["fail_reason"] = "Koka internal compiler error"
 # config[("koka_named", "concurrent_search")]["fail_reason"] = "Koka internal compiler error"
 # config[("effekt", "concurrent_search")]["fail_reason"] = "MLton typing error"
-config[("lexa", "two_threads_ackermann")] = {"fail_reason": "Need 1mb stacklet"}
-config[("lexaz", "two_threads_ackermann")] = {"fail_reason": "Need 1mb stacklet"}
-config[("lexaz", "scheduler")] = {"fail_reason": "Not implemented"}
-config[("lexaz", "interruptible_iterator")] = {"fail_reason": "Not implemented"}
-config[("lexaz", "resume_nontail_2")] = {"fail_reason": "Not implemented"}
+config[("lexa", "two_threads_ackermann")]["fail_reason"] = "Need 1mb stacklet"
+config[("lexaz", "two_threads_ackermann")]["fail_reason"] = "Need 1mb stacklet"
+config[("lexaz", "scheduler")]["fail_reason"] = "Not implemented"
+config[("lexaz", "interruptible_iterator")]["fail_reason"] = "Not implemented"
+config[("lexaz", "resume_nontail_2")]["fail_reason"] = "Not implemented"
+for benchmark in zero_cost_benchmarks:
+    for platform in ["effekt", "koka_named", "koka", "ocaml"]:
+        config[(platform, benchmark)]["fail_reason"] = "Not implemented"
 
 
 config[("effekt", "scheduler")]["scale"] = 1000
