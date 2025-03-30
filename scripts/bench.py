@@ -72,7 +72,8 @@ def main():
     pivoted_df.to_csv(result_csv)
 
     print(results)
-    print(pivoted_df)
+    with pd.option_context('display.max_columns', None):
+        print(pivoted_df)
     if any(df["mean_mili"].isna()):
         rt_code = 0
         for platform, benchmark, mean_mili, std_mili in results:
