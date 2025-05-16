@@ -40,21 +40,23 @@ benchmark-quick:
       nix --accept-flake-config --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c \
       "cd scripts && ./bench.py --quick --all-benchmarks --systems lexa lexaz"
 
-nightly-bench-job-intel:
-  stage: test
-  tags:
-    - intel
-  rules:
-    - if: $BENCH
-  script:
-    - |
-      nix --accept-flake-config --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c \
-      "opam init; \
-      opam switch create 5.3.0+trunk; \
-      opam install -y multicont; \
-      cd scripts && \
-      ./bench.py --all-benchmarks --systems lexa effekt koka_named koka ocaml && \
-      ./bench.py --all-vanilla-benchmarks --systems lexaz"
+
+# Temporarily disable until the LLVM build issue was resolved.
+# nightly-bench-job-intel:
+#   stage: test
+#   tags:
+#     - intel
+#   rules:
+#     - if: $BENCH
+#   script:
+#     - |
+#       nix --accept-flake-config --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c \
+#       "opam init; \
+#       opam switch create 5.3.0+trunk; \
+#       opam install -y multicont; \
+#       cd scripts && \
+#       ./bench.py --all-benchmarks --systems lexa effekt koka_named koka ocaml && \
+#       ./bench.py --all-vanilla-benchmarks --systems lexaz"
 
 nightly-bench-job-amd:
   stage: test
