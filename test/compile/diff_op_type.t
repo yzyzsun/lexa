@@ -8,6 +8,8 @@
   #include <stdlib.h>
   #include <string.h>
   
+  enum __effects__ { State };
+  
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_5__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
@@ -15,8 +17,8 @@
   FAST_SWITCH_DECORATOR
   i64 __handler_state2_stub_lifted_6___get(i64 *, i64, i64);
   static i64 __handle_body_lifted_7__(i64 *, i64 *);
-  i64 __handler_state1_stub_lifted_8___set(i64 *, i64);
-  i64 __handler_state1_stub_lifted_8___get(i64 *, i64);
+  i64 __tail__handler_state1_stub_lifted_8___set(i64 *, i64);
+  i64 __tail__handler_state1_stub_lifted_8___get(i64 *, i64);
   static i64 __run_lifted_3__(i64, i64);
   static i64 __body_lifted_2__(i64, i64, i64);
   static i64 __countdown_lifted_1__(i64, i64);
@@ -57,8 +59,8 @@
       }));
       ({
         (HANDLE(__handle_body_lifted_7__,
-                ({TAIL, __handler_state1_stub_lifted_8___get},
-                 {TAIL, __handler_state1_stub_lifted_8___set}),
+                ({TAIL, __tail__handler_state1_stub_lifted_8___get},
+                 {TAIL, __tail__handler_state1_stub_lifted_8___set}),
                 ((i64)countdown, (i64)s)));
         (HANDLE(__handle_body_lifted_5__,
                 ({SINGLESHOT, __handler_state2_stub_lifted_6___get},
@@ -93,7 +95,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __handler_state1_stub_lifted_8___get(i64 *__env__, i64 _) {
+  i64 __tail__handler_state1_stub_lifted_8___get(i64 *__env__, i64 _) {
     return (({
       i64 countdown = (i64)(((i64 *)__env__)[0]);
       ({
@@ -103,7 +105,7 @@
     }));
   }
   
-  i64 __handler_state1_stub_lifted_8___set(i64 *__env__, i64 i) {
+  i64 __tail__handler_state1_stub_lifted_8___set(i64 *__env__, i64 i) {
     return (({
       i64 countdown = (i64)(((i64 *)__env__)[0]);
       ({
@@ -132,7 +134,8 @@
       i64 countdown = (i64)(((i64 *)__env__)[0]);
       ({
         i64 s = (i64)(((i64 *)__env__)[1]);
-        (FINAL_THROW(k, (((i64 *)s)[0])));
+        (FINAL_THROW(k, (((i64 *)s)[0]),
+                     "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
       });
     }));
   }
@@ -145,7 +148,7 @@
         i64 s = (i64)(((i64 *)__env__)[1]);
         ({
           (((i64 *)s)[0] = i);
-          (FINAL_THROW(k, 0));
+          (FINAL_THROW(k, 0, "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
         });
       });
     }));

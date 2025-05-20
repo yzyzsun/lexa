@@ -8,6 +8,8 @@
   #include <stdlib.h>
   #include <string.h>
   
+  enum __effects__ { Choice };
+  
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_6__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
@@ -113,7 +115,9 @@
         i64 s = (i64)(((i64 *)__env__)[1]);
         ({
           i64 triple = (i64)(((i64 *)__env__)[2]);
-          (((THROW(k, 1)) + (FINAL_THROW(k, 0))) % 1000000007);
+          (((THROW(k, 1, "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")) +
+            (FINAL_THROW(k, 0, "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"))) %
+           1000000007);
         });
       });
     }));

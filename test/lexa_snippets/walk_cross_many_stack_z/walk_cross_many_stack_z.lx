@@ -1,52 +1,68 @@
-effect E {
-    dcl op
+effectz E1 {
+    dcl op1: () -> int
 }
 
-def main() {
-    handlez {
-        handlez {
-            handlez {
-                handlez {
-                    handlez {
-                        ~printInt(raisez <E, 4>.op());
-                        ~printInt(raisez <E, 3>.op());
-                        ~printInt(raisez <E, 2>.op());
-                        ~printInt(raisez <E, 1>.op());
-                        ~printInt(raisez <E, 0>.op());
+effectz E2 {
+    dcl op2: () -> int
+}
+
+effectz E3 {
+    dcl op3: () -> int
+}
+
+effectz E4 {
+    dcl op4: () -> int
+}
+
+effectz E5 {
+    dcl op5: () -> int
+}
+
+def main [;] (): int {
+    handle <> {
+        handle <e5> {
+            handle <e4, e5> {
+                handle <e3, e4, e5> {
+                    handle <e2, e3, e4, e5> {
+                        ~printInt(raise e5.op5());
+                        ~printInt(raise e4.op4());
+                        ~printInt(raise e3.op3());
+                        ~printInt(raise e2.op2());
+                        ~printInt(raise e1.op1());
                         0
-                    } with E {
-                        hdl_1 op(k) {
+                    } with e1: E1 {
+                        hdl_1 op1(k) {
                             ~printInt(1);
                             resume_final k 1;
                             0
                         }
                     };
                     0
-                } with E {
-                    hdl_1 op(k) {
+                } with e2: E2 {
+                    hdl_1 op2(k) {
                         ~printInt(2);
                         resume_final k 2;
                         0
                     }
                 };
                 0
-            } with E {
-                hdl_1 op(k) {
+            } with e3: E3 {
+                hdl_1 op3(k) {
                     ~printInt(3);
                     resume_final k 3;
                     0
                 }
             };
             0
-        } with E {
-            hdl_1 op(k) {
+        } with e4: E4 {
+            hdl_1 op4(k) {
                 ~printInt(4);
                 resume_final k 4;
                 0
             }
         }
-    } with E {
-        def op() {
+    } with e5: E5 {
+        def op5() {
             ~printInt(5);
             5
         }

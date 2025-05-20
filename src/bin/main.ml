@@ -1,4 +1,5 @@
 open Arg
+open Translation
 open Codegen
 
 module StringSet = Syntax__Varset
@@ -10,11 +11,13 @@ let output_file = ref ""
 
 let flag_no_format = ref false
 let flag_no_tail = ref false
+let lexaz = ref false
 
 let speclist = [
   ("-o", Set_string output_file, "Set the output file name");
   ("--no-format", Set flag_no_format, "do not format the output");
   ("--no-tail", Set flag_no_tail, "disable tail call optimization");
+  ("--lexaz", Set lexaz, "Compile with lexaz syntax and type checking");
 ]
 
 let clang_format code =
@@ -32,14 +35,25 @@ let clang_format code =
   result
 
 let rec get_open_filenames filename =
-  let toplevels = IRParser.Main.parseFile filename in
-  (* Get the list of filenames opened from a toplevel list *)
-  let get_cur_open_filenames = function
-    | Syntax.TLOpen x -> Some ((Filename.dirname filename) ^ "/" ^ x)
-    | _ -> None
+  let cur_opens = 
+    if !lexaz then 
+      let toplevels = SLParser.Main.parseFile filename in
+      (* Get the list of filenames opened from a toplevel list *)
+      let get_cur_open_filenames = function
+        | SLsyntax.TLOpen x -> Some ((Filename.dirname filename) ^ "/" ^ x)
+        | _ -> None
+      in
+      List.filter_map get_cur_open_filenames toplevels
+    else
+      let toplevels = IRParser.Main.parseFile filename in
+      (* Get the list of filenames opened from a toplevel list *)
+      let get_cur_open_filenames = function
+        | Syntax.TLOpen x -> Some ((Filename.dirname filename) ^ "/" ^ x)
+        | _ -> None
+      in
+    List.filter_map get_cur_open_filenames toplevels 
   in
-  let cur_opens = List.filter_map get_cur_open_filenames toplevels in
-  
+    
   let all_open_filenames = List.concat_map get_open_filenames cur_opens in
   all_open_filenames @ [filename]
 
@@ -54,9 +68,14 @@ let rec dedup l acc =
 
 let compile_file filename =
   let open_filenames = dedup (get_open_filenames filename) [] in
-  let all_toplevels = List.concat_map
-    (fun fn -> IRParser.Main.parseFile fn)
-    open_filenames
+  let all_toplevels = 
+    if !lexaz then
+      let sl_toplevels = List.concat_map
+        (fun fn -> SLParser.Main.parseFile fn)
+        open_filenames
+      in
+      translate_toplevels sl_toplevels
+    else List.concat_map (fun fn -> IRParser.Main.parseFile fn) open_filenames
   in
   
   let toplevels_closure = Codegen__Closure.closure_convert_toplevels all_toplevels in

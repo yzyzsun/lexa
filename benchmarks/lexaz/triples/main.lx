@@ -1,47 +1,47 @@
 effectz Choice {
-    dcl flip
-    dcl fail
+    dcl flip: () -> int
+    dcl fail: () -> int
 }
 
-def choice(n) {
+def choice [; choice_l: Choice](n: int): int {
     if n < 1 then
-        raisez <Choice, 0>.fail(0)
+        raise choice_l.fail()
     else
-        if raisez <Choice, 0>.flip(0) then
+        if raise choice_l.flip() > 0 then
             n
         else
-            choice(n - 1)
+            choice:[; choice_l](n - 1)
 }
 
-def triple(n, s) {
-    val i = choice(n);
-    val j = choice(i - 1);
-    val k = choice(j - 1);
+def triple [; choice_l: Choice] (n: int, s: int): int {
+    val i = choice:[; choice_l](n);
+    val j = choice:[; choice_l](i - 1);
+    val k = choice:[; choice_l](j - 1);
     if i + j + k == s then
         hash(i, j, k)
     else
-        raisez <Choice, 0>.fail(0)
+        raise choice_l.fail()
 }
 
-def run(n, s) {
-    handlez {
-        triple(n, s)
-    } with Choice {
-        exc fail(_) {
+def run(n: int, s: int): int {
+    handle <> {
+        triple:[; choice_l](n, s)
+    } with choice_l: Choice {
+        exc fail() {
             0
         }
 
-        hdl_s flip(_, k) {
-            (resume k true + resume_final k false) % 1000000007
+        hdl_s flip(k) {
+            (resume k 1 + resume_final k 0) % 1000000007
         }
     }
 }
 
-def hash(a,b,c) {
+def hash(a: int, b: int, c: int): int {
     (53 * a + 2809 * b + 148877 * c) % 1000000007
 }
 
-def main() {
+def main(): int {
     val n = ~readInt();
     val res = run(n, n);
     ~printInt(res);

@@ -1,0 +1,1 @@
+add_llvm_library(AttachMetadataPass MODULE AttachMetadata.cpp)

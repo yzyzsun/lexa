@@ -1,0 +1,8 @@
+(library
+ (name SLParser)
+ (libraries SLsyntax))
+
+(menhir
+ (modules parser))
+
+(ocamllex lexer)

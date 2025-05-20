@@ -196,6 +196,7 @@ i64 ENTER(i64* env, void* new_sp, void* body) {
         "pushq %%rcx\n\t" // Push the exchanger to the new stack
         "pushq %%rcx\n\t" // Align the stack to 16 bytes
         "callq *%%rdx\n\t"
+        "__callsite_metadata_ENTER___1_0_0_0:\n\t"
         "movq %%rax, %%r12\n\t" // Save the return value into a callee-saved register
         "movq %%rsp, %%rdi\n\t" // Move the current stack pointer to the first argument
         "callq free_stack\n\t" // Free the stack. NB HACK ATTENTTION!!!! This results in use-after-free in the next few instructions
@@ -233,6 +234,7 @@ i64 RESUME(i64 arg, void* exc, void* rsp_sp) {
 #define N_DEFS(...) ARG_N(_, ## __VA_ARGS__, 5, OOPS, 4, OOPS, 3, OOPS, 2, OOPS, 1, OOPS, 0)
 
 void mark_defs_invariant(void*, size_t); // marker to mark defs array as invariant
+void attach_metadata(const char *);
 
 #define HANDLE(body, m_defs, m_free_vars) \
 ({ \
@@ -304,7 +306,7 @@ void mark_defs_invariant(void*, size_t); // marker to mark defs array as invaria
     })
 
 
-#define HANDLEZ(body, m_defs, m_free_vars) \
+#define HANDLEZ(body, m_defs, m_free_vars, md) \
 ({ \
     i64 out; \
     handler_def_t defs[] = {EXPAND m_defs}; \
@@ -326,16 +328,15 @@ void mark_defs_invariant(void*, size_t); // marker to mark defs array as invaria
         mode = ABORT; \
     } \
     _Pragma("clang diagnostic pop") \
-    out = _HANDLEZ(mode, body, m_defs, m_free_vars); \
+    out = _HANDLEZ(mode, body, m_defs, m_free_vars, md); \
     out; \
 })
 
 // Be cautious when using stackmap, as it kills optimization
-void stackmap(void* obj);
-header_t* stackwalk(int clue_sig, int clue_dist);
+header_t* stackwalk(int clue_sig, int clue_type, int clue_dist);
 
 // TODO: GC_set_main_stack_sp does not work with nested general handlers
-#define _HANDLEZ(mode, body, m_defs, m_free_vars) \
+#define _HANDLEZ(mode, body, m_defs, m_free_vars, md) \
     ({ \
     i64 out; \
     if (mode == TAIL) { \
@@ -354,7 +355,7 @@ header_t* stackwalk(int clue_sig, int clue_dist);
             : [exc]"r"(&stub.exchanger) \
         ); \
         [[clang::noinline]]out = body((i64*)stub.env); \
-        stackmap(&stub); \
+        attach_metadata(md); \
     } else if (mode == ABORT) { \
         header_t stub = { \
             .mode = ABORT, \
@@ -371,7 +372,7 @@ header_t* stackwalk(int clue_sig, int clue_dist);
             : [exc]"r"(&stub.exchanger) \
         ); \
         [[clang::noinline]]out = ((i64(*FAST_SWITCH_DECORATOR)(__attribute__((noescape)) i64 *))body)((i64*)stub.env); \
-        stackmap(&stub); \
+        attach_metadata(md); \
     } else { \
         handler_def_t _defs[] = {EXPAND m_defs}; \
         i64 _env[] = {EXPAND m_free_vars}; \
@@ -385,7 +386,7 @@ header_t* stackwalk(int clue_sig, int clue_dist);
         stub->mode = MULTISHOT; \
         GC_set_main_stack_sp(); \
         out = ENTER(stub->env, new_sp, body); \
-        /*stackmap(stub);*/ \
+        attach_metadata(md); \
     } \
     out; \
     })
@@ -452,9 +453,10 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
     out; \
     })
 
-#define RAISEZ(clue_sig, clue_dist, index, m_args) \
+#define RAISEZ(clue_sig, clue_type, clue_index, index, m_args) \
     ({ \
-    header_t* stub = stackwalk(clue_sig, clue_dist); \
+    header_t* stub = stackwalk(clue_sig, clue_type, clue_index); \
+    attach_metadata("1_0_0_0"); /* dummy metadata so that stackwalker can walk through */ \
     i64 out; \
     i64 nargs = NARGS m_args; \
     i64 args[] = {EXPAND m_args}; \
@@ -462,13 +464,87 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
     _Pragma("clang diagnostic ignored \"-Warray-bounds\"") \
     if (stub->defs[index].mode == TAIL) { \
         if (nargs == 0) { \
-            out = ((i64(*)(i64*))stub->defs[index].func)(stub->env); \
+            i64 env = (i64)stub->env; \
+            i64 func = (i64)stub->defs[index].func; \
+            __asm__ __volatile__ ( \
+                "pushq $0x442\n\t" \
+                "pushq %[sig]\n\t" \
+                "pushq %[typ]\n\t" \
+                "pushq %[idx]\n\t" \
+                "callq *%[body_]\n\t" \
+                "__callsite_metadata_RAISE%=___1_0_0_0:\n\t" \
+                "addq $32, %%rsp\n\t" \
+                : "=a"(out), "+D"(env), [body_]"+r"(func) \
+                :  [sig]"i"((i64)clue_sig), [typ]"i"((i64)clue_type), [idx]"i"((i64)clue_index) \
+                : "rcx", "rdx", "r8", "r9", "r10", "r11", \
+                "xmm0","xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", \
+                "xmm8","xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", \
+                "mm0","mm1", "mm2", "mm3", "mm4", "mm5", "mm6", \
+                "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)" \
+            ); \
         } else if (nargs == 1) { \
-            out = ((i64(*)(i64*, i64))stub->defs[index].func)(stub->env, args[0]); \
+            i64 env = (i64)stub->env; \
+            i64 arg = args[0]; \
+            i64 func = (i64)stub->defs[index].func; \
+            __asm__ __volatile__ ( \
+                "pushq $0x442\n\t" \
+                "pushq %[sig]\n\t" \
+                "pushq %[typ]\n\t" \
+                "pushq %[idx]\n\t" \
+                "callq *%[body_]\n\t" \
+                "__callsite_metadata_RAISE%=___1_0_0_0:\n\t" \
+                "addq $32, %%rsp\n\t" \
+                : "=a"(out), "+D"(env), "+S"(arg), [body_]"+r"(func) \
+                :  [sig]"i"((i64)clue_sig), [typ]"i"((i64)clue_type), [idx]"i"((i64)clue_index) \
+                : "rcx", "rdx", "r8", "r9", "r10", "r11", \
+                "xmm0","xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", \
+                "xmm8","xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", \
+                "mm0","mm1", "mm2", "mm3", "mm4", "mm5", "mm6", \
+                "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)" \
+            ); \
         } else if (nargs == 2) { \
-            out = ((i64(*)(i64*, i64, i64))stub->defs[index].func)(stub->env, args[0], args[1]); \
+            i64 env = (i64)stub->env; \
+            i64 arg0 = args[0]; \
+            i64 arg1 = args[1]; \
+            i64 func = (i64)stub->defs[index].func; \
+            __asm__ __volatile__ ( \
+                "pushq $0x442\n\t" \
+                "pushq %[sig]\n\t" \
+                "pushq %[typ]\n\t" \
+                "pushq %[idx]\n\t" \
+                "callq *%[body_]\n\t" \
+                "__callsite_metadata_RAISE%=___1_0_0_0:\n\t" \
+                "addq $32, %%rsp\n\t" \
+                : "=a"(out), "+D"(env), "+S"(arg0), "+d"(arg1), [body_]"+r"(func) \
+                :  [sig]"i"((i64)clue_sig), [typ]"i"((i64)clue_type), [idx]"i"((i64)clue_index) \
+                : "rcx", "r8", "r9", "r10", "r11", \
+                "xmm0","xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", \
+                "xmm8","xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", \
+                "mm0","mm1", "mm2", "mm3", "mm4", "mm5", "mm6", \
+                "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)" \
+            ); \
         } else if (nargs == 3) { \
-            out = ((i64(*)(i64*, i64, i64, i64))stub->defs[index].func)(stub->env, args[0], args[1], args[2]); \
+            i64 env = (i64)stub->env; \
+            i64 arg0 = args[0]; \
+            i64 arg1 = args[1]; \
+            i64 arg2 = args[1]; \
+            i64 func = (i64)stub->defs[index].func; \
+            __asm__ __volatile__ ( \
+                "pushq $0x442\n\t" \
+                "pushq %[sig]\n\t" \
+                "pushq %[typ]\n\t" \
+                "pushq %[idx]\n\t" \
+                "callq *%[body_]\n\t" \
+                "__callsite_metadata_RAISE%=___1_0_0_0:\n\t" \
+                "addq $32, %%rsp\n\t" \
+                : "=a"(out), "+D"(env), "+S"(arg0), "+d"(arg1), "+c"(arg2), [body_]"+r"(func) \
+                :  [sig]"i"((i64)clue_sig), [typ]"i"((i64)clue_type), [idx]"i"((i64)clue_index) \
+                : "r8", "r9", "r10", "r11", \
+                "xmm0","xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7", \
+                "xmm8","xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15", \
+                "mm0","mm1", "mm2", "mm3", "mm4", "mm5", "mm6", \
+                "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)" \
+            ); \
         } else { \
             exit(EXIT_FAILURE); \
         } \
@@ -494,20 +570,22 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
     out; \
     })
 
-#define THROW(k, arg) \
+#define THROW(k, arg, md) \
     ({ \
     i64 out; \
     char* new_sp = dup_stack((char*)((resumption_t*)k)->rsp_sp); \
     GC_set_main_stack_sp(); \
     out = RESUME(arg, ((resumption_t*)k)->exchanger_ptr, new_sp); \
+    attach_metadata(md); \
     out; \
     })
 
-#define FINAL_THROW(k, arg) \
+#define FINAL_THROW(k, arg, md) \
     ({ \
     i64 out; \
     GC_set_main_stack_sp(); \
     out = RESUME(arg, ((resumption_t*)k)->exchanger_ptr, ((resumption_t*)k)->rsp_sp); \
+    attach_metadata(md); \
     out; \
     })
 

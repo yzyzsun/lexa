@@ -1,32 +1,32 @@
-effect Abort {
-  dcl invalid_arg
+effectz Abort {
+  dcl invalid_arg: (int) -> int
 }
 
-def catalan_loop(i, n, acc) {
+def catalan_loop [; abort_l: Abort] (i: int, n: int, acc: int): int {
     if i == n then
         acc
     else
-        catalan_loop(i + 1, n, acc + catalan(i) * catalan(n - 1 - i))
+        catalan_loop: [; abort_l] (i + 1, n, acc + catalan: [; abort_l] (i) * catalan: [; abort_l] (n - 1 - i))
 }
 
-def catalan(n) {
+def catalan [; abort_l: Abort] (n: int): int {
     if n == 0 then
         1
     else if n < 0 then
-        raisez <Abort, 0>.invalid_arg(n)
+        raise abort_l.invalid_arg(n)
     else
     (
-        catalan_loop(0, n, 0)  
+        catalan_loop: [; abort_l] (0, n, 0)  
     ) 
 }
 
-def main() {
+def main(): int {
     val n = ~readInt();
 
-    handlez {
-        ~printInt(catalan(n));
+    handle <> {
+        ~printInt(catalan: [; abort_l] (n));
         0
-    } with Abort {
+    } with abort_l: Abort {
         exc invalid_arg(n) {
             ~printf("Error: invalid argument %d\n", n);
             1

@@ -1,13 +1,13 @@
 effectz Hello {
-    dcl hello
+    dcl hello: () -> int
 }
 
-def run(n) {
+def run [;] (): int {
     val s = newref {42};
-    handlez {
-        raisez <Hello, 0>.hello() 
-    } with Hello {
-        def hello(_) { 
+    handle <> {
+        raise hello_l.hello() 
+    } with hello_l: Hello {
+        def hello() { 
             ~strPrint("hello\n");
             ~printInt(s[0]);
             0
@@ -15,6 +15,6 @@ def run(n) {
     }
 }
 
-def main() {
+def main [;] (): int {
     run()
 }

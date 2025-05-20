@@ -1,24 +1,25 @@
-effect Abort {
-  dcl invalid_arg
+effectz Abort {
+  dcl invalid_arg: (int) -> int
 }
 
-def hofstadterq(n) {
+def hofstadterq [; abort: Abort](n: int): int {
     if n < 1 then
-        raisez <Abort, 0>.invalid_arg(n)
+        raise abort.invalid_arg(n)
     else
         if n < 3 then
             1
         else
-            hofstadterq(n - hofstadterq(n - 1)) + hofstadterq(n - hofstadterq(n - 2))
+            hofstadterq: [; abort](n - hofstadterq: [; abort] (n - 1)) 
+            + hofstadterq: [; abort](n - hofstadterq: [; abort] (n - 2))
 }
 
-def main() {
+def main(): int {
     val n = ~readInt();
 
-    handlez {
-        ~printInt(hofstadterq(n));
+    handle <> {
+        ~printInt(hofstadterq: [; abort] (n));
         0
-    } with Abort {
+    } with abort: Abort {
         exc invalid_arg(n) {
             ~printf("Error: invalid argument %d\n", n);
             1

@@ -1,22 +1,22 @@
-effect Abort {
-  dcl invalid_denominator
+effectz Abort {
+  dcl invalid_denominator: () -> int
 }
 
-def mod(a, b) {
+def mod [; abort_l: Abort] (a: int, b: int): int {
     if !(b > 0) then
-        raisez <Abort, 0>.invalid_denominator()
+        raise abort_l.invalid_denominator()
     else 
         a % b
 }
 
-def divide(a, b) {
+def divide [; abort_l: Abort] (a: int, b: int): int {
     if b == 0 then
-        raisez <Abort, 0>.invalid_denominator()
+        raise abort_l.invalid_denominator()
     else 
         a / b
 }
 
-def extendedEuclid(a, b, x, y, gcd) {
+def extendedEuclid [; abort_l: Abort] (a: int, b: int, x: ref int, y: ref int, gcd: ref int): int {
     if b == 0 then
     (
         x[0] := 1;
@@ -28,25 +28,25 @@ def extendedEuclid(a, b, x, y, gcd) {
     (
         val x1 = newref {0};
         val y1 = newref {0};
-        extendedEuclid(b, mod(a, b), x1, y1, gcd);
+        extendedEuclid:[; abort_l] (b, mod:[; abort_l](a, b), x1, y1, gcd);
         x[0] := y1[0];
-        y[0] := x1[0] - divide(a, b) * y1[0];
+        y[0] := x1[0] - divide:[; abort_l](a, b) * y1[0];
         0
     )
 }
 
-def runExtendedEuclid(a, b, x, y, gcd) {
-    handlez {
-        extendedEuclid(a, b, x, y, gcd)
-    } with Abort {
+def runExtendedEuclid(a: int, b: int, x: ref int, y: ref int, gcd: ref int): int {
+    handle <> {
+        extendedEuclid:[; abort_l](a, b, x, y, gcd)
+    } with abort_l: Abort {
         exc invalid_denominator() {
-            ~printf("Error: Invalid denominator\n");
+            ~printf("abort_l: Invalid denominator\n");
             1
         }
     }
 }
 
-def loop(a, b, x, y, gcd, i, acc) {
+def loop(a: int, b: int, x: ref int, y: ref int, gcd: ref int, i: int, acc: int): int {
     if i == 0 then
         acc
     else
@@ -56,7 +56,7 @@ def loop(a, b, x, y, gcd, i, acc) {
     )
 }
 
-def run(n) {
+def run(n: int): int {
     val a = 660046610375530309;
     val b = 540113804746346429;
     val x = newref {0};
@@ -65,7 +65,7 @@ def run(n) {
     loop(a, b, x, y, gcd, n, 0)
 }
 
-def main() {
+def main(): int {
     val n = ~readInt(); // 1000000
     val res = run(n);
     ~printInt(res);

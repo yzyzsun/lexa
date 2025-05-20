@@ -10,5 +10,6 @@ list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 include(AddLLVM)
 
 add_subdirectory(addNoCapture)
+add_subdirectory(attachMetadata)
 add_subdirectory(markInvariant)
 add_subdirectory(generateStackMap)

@@ -2,6 +2,7 @@ open Syntax__Closure
 open Syntax__Common
 open Printf
 open Primitive
+open Hopper
 
 module Varset = Syntax__Varset
 
@@ -178,7 +179,7 @@ and gen_expr ?(is_tail = false) (e : Syntax__Closure.t) =
       sprintf "%s %s %s" (gen_expr e1 ~is_tail:false) (gen_cmp op) (gen_expr e2 ~is_tail:false)
     | Let (x, e1, e2) ->
         sprintf "{i64 %s = (i64)%s;\n%s;}" x (gen_expr e1 ~is_tail:false) (gen_expr e2 ~is_tail:is_tail)
-    | App (e1, args) ->
+    | App (e1, args, md) ->
         let func_cast =
           sprintf "i64(*)(%s)" (String.concat ", " (list_repeat (List.length args) "i64")) in
         let s =
@@ -206,12 +207,19 @@ and gen_expr ?(is_tail = false) (e : Syntax__Closure.t) =
             else
               sprintf "((%s)%s)(%s)" func_cast name (String.concat ", " casted_args) 
           | _ -> 
-            sprintf "((%s)%s)%s" func_cast (gen_expr e1) (gen_args args ~cast:true)) in
-        let do_tail = is_tail && (match e1 with
-        | Var callee_name -> callee_name = !cur_toplevel
-        | _ -> false) in 
-        (* Need a value after return to solve return type error by clang *)
-        if do_tail then sprintf "({__attribute__((musttail))\n return %s; 0;})" s else s
+            let s = sprintf "((%s)%s)%s" func_cast (gen_expr e1) (gen_args args ~cast:true) in 
+            let do_tail = is_tail && (match e1 with
+                | Var callee_name -> callee_name = !cur_toplevel
+                | _ -> false) in 
+            (
+              match (hopper_parsed_with_res md), do_tail with
+              | Empty, true | Const _, true -> 
+                  sprintf "({__attribute__((musttail))\n return %s; 0;})" s
+              | Empty, false -> s
+              | Const metadata, false | Regular metadata, _ ->
+                sprintf "({i64 out = ((%s)%s)%s; attach_metadata(\"%s\"); out; \n})" func_cast (gen_expr e1) (gen_args args ~cast:true) metadata)
+            ) in
+        s
     | If (v, e1, e2) ->
         sprintf "%s ? %s : %s" (gen_expr v) (gen_expr e1 ~is_tail:is_tail) (gen_expr e2 ~is_tail:is_tail)
     | New fields ->
@@ -232,30 +240,36 @@ and gen_expr ?(is_tail = false) (e : Syntax__Closure.t) =
         let hdl_list = lookup_eff_sig_dcls sig_name (get_eff_sig_env !env) in
         let gen_operation_arg operation_name =
           let operation_type = lookup_operation_type obj_name operation_name (get_eff_type_env !env) in
-          let full_operation_name = obj_name ^ "_" ^ operation_name in
+          let full_operation_name = if operation_type = "TAIL" 
+            then "__tail" ^ obj_name ^ "_" ^ operation_name
+            else obj_name ^ "_" ^ operation_name
+          in
           (sprintf "{%s, %s}" operation_type full_operation_name)
         in
         let hdl_str = "(" ^ (String.concat ", " (List.map gen_operation_arg hdl_list)) ^ ")" in
         let env_str = sprintf "(%s)" 
           (String.concat ", " (List.map (fun x -> "(i64)" ^ x) handle_env)) in
         sprintf "HANDLE(%s, %s, %s)" body_name hdl_str env_str
-    | HandleZ {env = handle_env; body_name; obj_name; sig_name} ->
+    | HandleZ {env = handle_env; body_name; obj_name; sig_name; captured_set} ->
       let hdl_list = lookup_eff_sig_dcls sig_name (get_eff_sig_env !env) in
       let gen_operation_arg operation_name =
         let operation_type = lookup_operation_type obj_name operation_name (get_eff_type_env !env) in
-        let full_operation_name = obj_name ^ "_" ^ operation_name in
+        let full_operation_name = if operation_type = "TAIL" 
+          then "__tail" ^ obj_name ^ "_" ^ operation_name
+          else obj_name ^ "_" ^ operation_name
+        in
         (sprintf "{%s, %s}" operation_type full_operation_name)
       in
       let hdl_str = "(" ^ (String.concat ", " (List.map gen_operation_arg hdl_list)) ^ ")" in
       let env_str = sprintf "(%s)" 
         (String.concat ", " (List.map (fun x -> "(i64)" ^ x) handle_env)) in
-      sprintf "HANDLEZ(%s, %s, %s)" body_name hdl_str env_str
+      sprintf "HANDLEZ(%s, %s, %s, \"%s\")" body_name hdl_str env_str (hopper_parsed (captured_set, [], []))
     | Raise {raise_stub; raise_op; raise_args} ->
         sprintf "RAISE(%s, %s, %s)" (gen_expr raise_stub) raise_op (gen_args raise_args ~cast:true)
-    | RaiseZ {clue_dist; raisez_op; raisez_args; _} ->
-      sprintf "RAISEZ(%d, %d, %s, %s)" 0 clue_dist raisez_op (gen_args raisez_args ~cast:true)
-    | Resume (k, e) -> sprintf "THROW(%s, %s)" (gen_expr k) (gen_expr e)
-    | ResumeFinal (k, e) -> sprintf "FINAL_THROW(%s, %s)" (gen_expr k) (gen_expr e)
+    | RaiseZ {clue_sig; clue_type; clue_label; raisez_op; raisez_args; _} ->
+      sprintf "RAISEZ(%s, %d, %d, %s, %s)" clue_sig clue_type clue_label raisez_op (gen_args raisez_args ~cast:true)
+    | Resume (k, e, cap) -> sprintf "THROW(%s, %s, \"%s\")" (gen_expr k) (gen_expr e) (hopper_parsed (cap, [], []))
+    | ResumeFinal (k, e, cap) -> sprintf "FINAL_THROW(%s, %s, \"%s\")" (gen_expr k) (gen_expr e) (hopper_parsed (cap, [], []))
     | Closure ({ entry = entry_name; fv = free_vars }) ->
       let fv_creation : string =
         if Varset.is_empty free_vars then
@@ -278,7 +292,7 @@ __c__->func_pointer = (i64)%s;
         entry_name fv_creation copy_fv
       in
       closure_creation
-    | AppClosure (e, args) ->
+    | AppClosure (e, args, md) ->
       (match e with
         | Prim _ ->
           let name = gen_expr e in (* name is prim with leading ~ stripped *)
@@ -303,13 +317,23 @@ __c__->func_pointer = (i64)%s;
           let cast_func_str =
             sprintf "i64(*)(%s)" 
               (String.concat ", " (list_repeat ((List.length args) + 1) "i64")) in
-          sprintf 
+          let metadata = (hopper_parsed md) in
+          let app_str = (
+            match (hopper_parsed_with_res md) with
+            | Empty -> sprintf "((%s)__f__)%s;" cast_func_str (gen_args (Var "__env__" :: args) ~cast:true)
+            | _ -> sprintf
+{|i64 out = ((%s)__f__)%s;
+attach_metadata("%s"); 
+out;|}
+            cast_func_str (gen_args (Var "__env__" :: args) ~cast:true) metadata) 
+          in
+          (sprintf 
 {|({closure_t* __clo__ = (closure_t*)%s;
 i64 __f__ = (i64)(__clo__->func_pointer);
 i64 __env__ = (i64)(__clo__->env);
-((%s)__f__)%s;
+%s
 })|}
-          (gen_expr e) cast_func_str (gen_args (Var "__env__" :: args) ~cast:true))
+          (gen_expr e) app_str))
     | Stmt (e1, e2) ->
       sprintf "{%s;\n%s;}" (gen_expr e1) (gen_expr e2 ~is_tail:is_tail)
     | Recdef (clo_map, e) -> 
@@ -475,7 +499,10 @@ return((int)__res__);}|}
       | HDef -> CANone
       | HExc -> CANone
       | _ -> CANoneLocalGoto) in
-      let hdl_name = obj_name ^ "_" ^ op_name in
+      let hdl_name = if op_anno = HDef 
+        then "__tail" ^ obj_name ^ "_" ^ op_name 
+        else obj_name ^ "_" ^ op_name 
+      in
       let c_def = CDef (annotation, CKNone, CTI64, hdl_name, concated_params, op_body) in
       let c_dec = CDec (annotation, CKNone, CTI64, hdl_name, (List.map (fun (a, _) -> a) concated_params)) in
       c_decs := (hdl_name, c_dec) :: !c_decs;
@@ -516,6 +543,7 @@ let gen_top_level_s ((toplevels, toplevel_closures) : ((top_level list) * (strin
   let eff_type_env = eff_type_pass toplevels in
   let fun_type_env = fun_type_pass toplevels in
   let toplevel_func_env = toplevel_closures in
+  let effects_enum = if (List.is_empty eff_sig_env) then "" else Printf.sprintf "enum __effects__ {%s};\n" (String.concat ", " (List.map fst eff_sig_env)) in
   env := {eff_sig = eff_sig_env; eff_type = eff_type_env; fun_type = fun_type_env; toplevel_closure = toplevel_func_env};
 
   type_con_map_pass toplevels;
@@ -527,4 +555,4 @@ let gen_top_level_s ((toplevels, toplevel_closures) : ((top_level list) * (strin
       toplevels)) in
   let declarations = String.concat "\n" (List.map 
     (fun (_, d) -> gen_c_dec d) !c_decs) in
-  sprintf "%s\n%s\n%s\n%s" header declarations declare_closures prog
+  sprintf "%s\n%s\n%s\n%s\n%s" header effects_enum declarations declare_closures prog

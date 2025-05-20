@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/helloz/helloz.lx -o main &> /dev/null
+  $ lexa ../lexa_snippets/helloz/helloz.lx -o main --lexaz &> /dev/null
   $ cat ../lexa_snippets/helloz/helloz.c
   #include <datastructure.h>
   #include <stacktrek.h>
@@ -8,13 +8,15 @@
   #include <stdlib.h>
   #include <string.h>
   
+  enum __effects__ { Hello };
+  
   static i64 __handle_body_lifted_3__(i64 *);
-  i64 __handler_Hello_lifted_4___hello(i64 *, i64);
-  static i64 __run_lifted_1__(i64, i64);
+  i64 __tail__handler_Hello_lifted_4___hello(i64 *);
+  static i64 __run_lifted_1__(i64);
   static closure_t *run;
   enum Hello { hello };
   
-  static i64 __run_lifted_1__(i64 __env__, i64 n) {
+  static i64 __run_lifted_1__(i64 __env__) {
     return (({
       i64 s = (i64)(({
         i64 __field_0__ = (i64)42;
@@ -23,7 +25,8 @@
         (i64) __newref__;
       }));
       (HANDLEZ(__handle_body_lifted_3__,
-               ({TAIL, __handler_Hello_lifted_4___hello}), ((i64)s)));
+               ({TAIL, __tail__handler_Hello_lifted_4___hello}), ((i64)s),
+               "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
     }));
   }
   
@@ -37,7 +40,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __handler_Hello_lifted_4___hello(i64 *__env__, i64 _) {
+  i64 __tail__handler_Hello_lifted_4___hello(i64 *__env__) {
     return (({
       i64 s = (i64)(((i64 *)__env__)[0]);
       ({
@@ -57,7 +60,7 @@
   static i64 __handle_body_lifted_3__(i64 *__env__) {
     return (({
       i64 s = (i64)(((i64 *)__env__)[0]);
-      (RAISEZ(0, 0, hello, ()));
+      (RAISEZ(Hello, 0, 0, hello, ()));
     }));
   }
   

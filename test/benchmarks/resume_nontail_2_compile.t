@@ -8,6 +8,8 @@
   #include <stdlib.h>
   #include <string.h>
   
+  enum __effects__ { Operator };
+  
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_6__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
@@ -86,7 +88,8 @@
         ({
           i64 s = (i64)(((i64 *)__env__)[2]);
           ({
-            i64 y = (i64)(FINAL_THROW(k, 0));
+            i64 y = (i64)(FINAL_THROW(k, 0,
+                                      "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
             (((i64)(mathAbs((int64_t)((x - (503 * y)) + 37)))) % 1009);
           });
         });

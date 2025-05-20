@@ -1,0 +1,38 @@
+effectz F {
+    dcl eff: () -> int
+}
+
+effectz F2 {
+    dcl eff2: () -> int
+}
+
+def fun0 [a0; l0: F, l1: F](f: <a0; l0> [;] () -> int): int {
+    val fun1 = fun <l1> [a1; l2: F] (g: <a1;> [;] () -> int): int {
+        raise l2.eff();
+        raise l1.eff();
+        g()
+    };
+    fun1: [(a0; l0); l0] (f)
+}
+
+def main(): int {
+    handle <> {
+        handle <handle1> {
+            val test = fun <handle1, handle2> [;] (): int {
+                raise handle1.eff();
+                raise handle2.eff2()
+            };
+
+            fun0: [(handle2); handle1, handle1] (test)
+        } with handle2: F2 {
+            def eff2() {
+                ~printf("2\n")
+            }
+        }
+    } with handle1: F {
+        def eff () {
+            ~printf("1\n")
+        }
+    };
+    0
+}

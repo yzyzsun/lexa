@@ -18,9 +18,6 @@ and hdl = { op_anno : hdl_anno;
             op_params : var list;
             op_body : expr }
 
-and pattern =
-  | PTypecon of var * var list
-
 and expr =
   | Var of var
   | Int of int
@@ -33,7 +30,7 @@ and expr =
   | Cmp of expr * cmp * expr 
   | Neg of expr
   | BArith of expr * barith * expr
-  | App of expr * expr list
+  | App of expr * expr list * metadata
   | New of expr list
   | Get of expr * expr
   | Set of expr * expr * expr
@@ -44,12 +41,13 @@ and expr =
   }
   | RaiseZ of {
     clue_sig : var;
-    clue_dist : int;
+    clue_type: int;
+    clue_label : int;
     raisez_op : var;
     raisez_args : expr list
   }
-  | Resume of expr * expr
-  | ResumeFinal of expr * expr
+  | Resume of expr * expr * capability
+  | ResumeFinal of expr * expr * capability
   | Handle of { handle_body : expr;
     stub : var;
     sig_name : var;
@@ -58,7 +56,8 @@ and expr =
   | HandleZ of {
     handle_body : expr;
     sig_name : var;
-    handler_defs : hdl list
+    handler_defs : hdl list;
+    captured_set : capability
   }
   | Recdef of fundef list * expr
   | Fun of var list * expr

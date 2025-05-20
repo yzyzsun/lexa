@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/walk_cross_many_stack_z/walk_cross_many_stack_z.lx -o main &> /dev/null
+  $ lexa ../lexa_snippets/walk_cross_many_stack_z/walk_cross_many_stack_z.lx -o main --lexaz &> /dev/null
   $ ./main
   5
   5

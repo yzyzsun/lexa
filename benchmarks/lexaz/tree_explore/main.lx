@@ -1,5 +1,5 @@
 effectz Choice {
-  dcl choose
+  dcl choose: () -> bool
 }
 
 type list =
@@ -10,7 +10,7 @@ type tree =
     | Leaf
     | Node of int * tree * tree
 
-def append(l1, l2) {
+def append(l1: list, l2: list): list {
     match l1 with
     | Nil -> { l2 }
     | Cons (h, t) -> {
@@ -18,8 +18,8 @@ def append(l1, l2) {
     }
 }
 
-def list_max(l) {
-    rec def list_max_rec(l, acc) {
+def list_max(l: list): int {
+    rec def list_max_rec <> (l: list, acc: int): int {
         match l with
         | Nil -> { acc }
         | Cons (h, t) -> { 
@@ -34,11 +34,11 @@ def list_max(l) {
 }
 
 
-def operator(x, y) {
+def operator(x: int, y: int): int {
     ~mathAbs((x - 503 * y) + 37) % 1009
 }
 
-def make(n) {
+def make(n: int): tree {
     if n == 0 then
         Leaf
     else
@@ -46,26 +46,26 @@ def make(n) {
         Node(n, t, t)
 }
 
-def explore(state, tre) {
+def explore [; choice: Choice] (state: ref int, tre: tree): int {
     match tre with
     | Leaf -> { state[0] }
     | Node (value, left, right) -> {
         val next = 
-            if raisez <Choice, 0>.choose(0) then 
+            if raise choice.choose() then 
                 left
             else
                 right
         ;
         state[0] := operator(state[0], value);
-        operator(value, explore(state, next))
+        operator(value, explore:[; choice](state, next))
     }
 }
 
-def paths(state, tre) {
-    handlez {
-        Cons (explore(state, tre), Nil)
-    } with Choice {
-        hdl_s choose(_, k) {
+def paths(state: ref int, tre: tree): list {
+    handle <> {
+        Cons (explore:[; choice](state, tre), Nil)
+    } with choice: Choice {
+        hdl_s choose(k) {
             val arg1 = resume k true;
             val arg2 = resume_final k false;
             append(arg1, arg2)
@@ -73,7 +73,7 @@ def paths(state, tre) {
     }
 }
 
-def loop(state, tre, i) {
+def loop(state: ref int, tre: tree, i: int): int {
     if i == 0 then
         state[0]
     else
@@ -81,13 +81,13 @@ def loop(state, tre, i) {
         loop(state, tre, i - 1))
 }
 
-def run(n) {
+def run(n: int): int {
     val tre = make(n);
     val state = newref {0};
         loop(state, tre, 10)
 }
 
-def main() {
+def main(): int {
     val n = ~readInt();
     val res = run(n);
     ~printInt(res);

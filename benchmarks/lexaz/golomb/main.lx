@@ -1,24 +1,24 @@
-effect Abort {
-  dcl invalid_arg
+effectz Abort {
+  dcl invalid_arg: (int) -> int
 }
 
-def golomb(n) {
+def golomb [; abort_l: Abort] (n: int): int {
     if !(n > 0) then
-        raisez <Abort, 0>.invalid_arg(n)
+        raise abort_l.invalid_arg(n)
     else
         if n == 1 then
             1
         else
-            1 + golomb(n - golomb(golomb(n - 1)))
+            1 + golomb:[; abort_l](n - golomb:[; abort_l](golomb:[; abort_l](n - 1)))
 }
 
-def main() {
+def main(): int {
     val n = ~readInt();
 
-    handlez {
-        ~printInt(golomb(n));
+    handle <> {
+        ~printInt(golomb:[; abort_l](n));
         0
-    } with Abort {
+    } with abort_l: Abort {
         exc invalid_arg(n) {
             ~printf("Error: invalid argument %d\n", n);
             1

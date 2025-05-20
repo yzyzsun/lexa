@@ -27,13 +27,13 @@ let rec free_var (e : Syntax.expr) : Varset.t =
   | Syntax.Cmp (e1, _, e2) -> Varset.union (free_var e1) (free_var e2)
   | Syntax.Let (x, e1, e2) -> Varset.(diff ((free_var e1) @@@ (free_var e2)) (singleton x))
   | Syntax.If (e1, e2, e3) -> Varset.((free_var e1) @@@ (free_var e2) @@@ (free_var e3))
-  | Syntax.App (e, args) -> Varset.((free_var e) @@@ (union_map free_var args))
+  | Syntax.App (e, args, _) -> Varset.((free_var e) @@@ (union_map free_var args))
   | Syntax.New hv -> Varset.union_map free_var hv
   | Syntax.Get (e1, e2) -> Varset.union (free_var e1) (free_var e2)
   | Syntax.Set (e1, e2, e3) -> Varset.((free_var e1) @@@ (free_var e2) @@@ (free_var e3))
   | Syntax.Raise {raise_stub; raise_args; _} -> Varset.((union_map free_var raise_args) @@@ (free_var raise_stub))
   | Syntax.RaiseZ {raisez_args; _} -> Varset.((union_map free_var raisez_args))
-  | Syntax.Resume (k, e) | Syntax.ResumeFinal (k, e) -> Varset.(free_var e @@@ (free_var k))
+  | Syntax.Resume (k, e, _) | Syntax.ResumeFinal (k, e, _) -> Varset.(free_var e @@@ (free_var k))
   | Syntax.Handle {handle_body; stub; handler_defs; _} ->
     let handler_fvs = Varset.union_map 
       (fun ({op_params; op_body; _} : Syntax.hdl) -> Varset.(diff (free_var op_body) (of_list op_params))) handler_defs in
@@ -57,7 +57,7 @@ let rec free_var (e : Syntax.expr) : Varset.t =
   | Syntax.Match {match_expr; pattern_matching} -> 
     let fv_pattern_matching (pattern, clause_body) = 
       let params = (match pattern with
-      | Syntax.PTypecon (_, params) -> params) in
+      | PTypecon (_, params) -> params) in
       Varset.(diff (free_var clause_body) (of_list params)) in
     Varset.((union_map fv_pattern_matching pattern_matching) @@@ (free_var match_expr))
     
@@ -93,16 +93,17 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
       raise_op;
       raise_args = List.map (fun x -> convert_expr x env) raise_args
     }
-  | Syntax.RaiseZ {clue_sig; clue_dist; raisez_op; raisez_args} -> 
+  | Syntax.RaiseZ {clue_sig; clue_type; clue_label; raisez_op; raisez_args} -> 
     RaiseZ {
       clue_sig;
-      clue_dist;
+      clue_type;
+      clue_label;
       raisez_op;
       raisez_args = List.map (fun x -> convert_expr x env) raisez_args
     }
-  | Syntax.Resume (k, e) -> Resume (convert_expr k env, convert_expr e env)
-  | Syntax.ResumeFinal (k, e) -> ResumeFinal (convert_expr k env, convert_expr e env)
-  | Syntax.Handle {handle_body; stub; sig_name; handler_defs} -> 
+  | Syntax.Resume (k, e, md) -> Resume (convert_expr k env, convert_expr e env, md)
+  | Syntax.ResumeFinal (k, e, md) -> ResumeFinal (convert_expr k env, convert_expr e env, md)
+  | Syntax.Handle {handle_body; stub; sig_name; handler_defs;_} -> 
     let handle_body' = convert_expr handle_body Varset.(env |> add stub) in
     let body_lifted_name = gen_lifted_name "handle_body" in
     let obj_lifted_name = gen_lifted_name ("handler_" ^ stub) in
@@ -130,7 +131,7 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
              body_name = body_lifted_name;
              obj_name = obj_lifted_name;
              sig_name }
-  | Syntax.HandleZ {handle_body; sig_name; handler_defs} ->
+  | Syntax.HandleZ {handle_body; sig_name; handler_defs; captured_set} ->
     (* TODO: Repeating code *)
     let handle_body' = convert_expr handle_body env in
     let body_lifted_name = gen_lifted_name "handle_body" in
@@ -158,7 +159,8 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
     HandleZ { env = Varset.to_list fvs; 
              body_name = body_lifted_name;
              obj_name = obj_lifted_name;
-             sig_name }
+             sig_name;
+             captured_set }
   | Syntax.Let (x, e1, e2) -> Let (x, convert_expr e1 env, convert_expr e2 Varset.(env |> add x))
   | Syntax.If (e1, e2, e3) -> If (convert_expr e1 env, convert_expr e2 env, convert_expr e3 env)
   | Syntax.Stmt (e1, e2) -> Stmt (convert_expr e1 env, convert_expr e2 env)
@@ -188,7 +190,7 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
       extra_toplevels := lifted_func :: !extra_toplevels;
       (name, clo) in
     Recdef (List.map convert_fun funs, convert_expr e Varset.(union (of_list names) env))
-  | Syntax.App (e, es) -> 
+  | Syntax.App (e, es, md) -> 
     (match e with
     | Syntax.Var name -> if not (Varset.mem name env) then
         (* Function name is not in the environment, callee must be a top level function *)
@@ -198,17 +200,17 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
           | None -> raise (UnboundVariable name))
         in
         (* Pass 0 as the closure environment argument *)
-        App (Var lifted_name, Int 0 :: (List.map (fun x -> convert_expr x env) es))
+        App (Var lifted_name, Int 0 :: (List.map (fun x -> convert_expr x env) es), md)
       else
-        AppClosure(convert_expr e env, List.map (fun x -> convert_expr x env) es)
-    | Syntax.Prim p -> App (Prim p, List.map (fun x -> convert_expr x env) es)
-    | _ -> AppClosure(convert_expr e env, List.map (fun x -> convert_expr x env) es))
+        AppClosure(convert_expr e env, List.map (fun x -> convert_expr x env) es, md)
+    | Syntax.Prim p -> App (Prim p, List.map (fun x -> convert_expr x env) es, md)
+    | _ -> AppClosure(convert_expr e env, List.map (fun x -> convert_expr x env) es, md))
   | Syntax.Typecon (con_name, args) ->
     Typecon (con_name, List.map (fun x -> convert_expr x env) args)
   | Syntax.Match {match_expr; pattern_matching} -> 
     let convert_pattern_matching (pattern, clause_body) = 
       (match pattern with
-      | Syntax.PTypecon (con_name, args) -> (PTypecon (con_name, args), (convert_expr clause_body Varset.(env @@@ (of_list args)))))
+      | PTypecon (con_name, args) -> (PTypecon (con_name, args), (convert_expr clause_body Varset.(env @@@ (of_list args)))))
       in
     Match {match_expr = (convert_expr match_expr env); pattern_matching = (List.map convert_pattern_matching pattern_matching)}
     
