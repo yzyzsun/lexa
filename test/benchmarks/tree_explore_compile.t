@@ -8,6 +8,8 @@
   #include <stdlib.h>
   #include <string.h>
   
+  enum __effects__ { Choice };
+  
   static i64 __list_max_rec_lifted_10__(i64, i64, i64);
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_11__(i64 *, i64 *);
@@ -253,9 +255,11 @@
           ({
             i64 tre = (i64)(((i64 *)__env__)[3]);
             ({
-              i64 arg1 = (i64)(THROW(k, 1));
+              i64 arg1 =
+                  (i64)(THROW(k, 1, "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
               ({
-                i64 arg2 = (i64)(FINAL_THROW(k, 0));
+                i64 arg2 = (i64)(FINAL_THROW(
+                    k, 0, "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
                 (((i64(*)(i64, i64, i64))__append_lifted_1__)((i64)0, (i64)arg1,
                                                               (i64)arg2));
               });

@@ -1,28 +1,28 @@
-open "../../../stdlib/list.lx"
+open "../../../stdlib/lexaz/list.lx"
 
-effect Abort {
-    dcl invalid_arg
+effectz Abort {
+    dcl invalid_arg: () -> int
 }
 
-def partition(s) {
-    val res = newref {Nil};
-    val path = newref {Nil};
-    backtrack(0, s, path, res);
+def partition [; abort_l: Abort] (s: string): ref (list::[ref list::[string]]) {
+    val res = newref {Nil::[ref list::[string]]};
+    val path = newref {Nil::[string]};
+    backtrack:[; abort_l](0, s, path, res);
     res
 }
 
-def list_pop(l) {
+def list_pop::['a] [;] (l: list::['a]): list::['a] {
     match l with
-    | Nil -> { Nil }
+    | Nil -> { Nil::['a] }
     | Cons (h, t) -> {
         (match t with
-        | Nil -> { Nil }
-        | Cons (hh, tt) -> { Cons(h, list_pop(t)) })
+        | Nil -> { Nil::['a] }
+        | Cons (hh, tt) -> { Cons::['a](h, list_pop::['a](t)) })
     }
 }
 
-def is_palindrome(s, a, b) {
-    rec def iter(start, end) {
+def is_palindrome(s: string, a: int, b: int): bool {
+    rec def iter <> [;] (start: int, end: int): bool {
         if (start > end || start == end) then
             true
         else
@@ -34,45 +34,47 @@ def is_palindrome(s, a, b) {
     iter(a, b)
 }
 
-def backtrack_loop(i, s, index, path, res) {
+def backtrack_loop [; abort_l: Abort] (i: int, s: string, index: int, path: ref list::[string], res: ref (list::[ref list::[string]])): int {
     if (i == ~strlen(s) || i > ~strlen(s)) then
         0
     else (
         if is_palindrome(s, index, i) then (
             val ss = ~stringSubStr(s, index, i + 1);
-            path[0] := list_append(Nil, Cons(ss, Nil));
-            backtrack(i + 1, s, path, res);
-            path[0] := list_pop(path[0])
+            path[0] := list_append::[string](Nil::[string], Cons::[string](ss, Nil::[string]));
+            backtrack:[; abort_l](i + 1, s, path, res);
+            path[0] := list_pop::[string](path[0]);
+            0
         ) else (
             0
         );
-        backtrack_loop(i + 1, s, index, path, res)
+        backtrack_loop:[; abort_l](i + 1, s, index, path, res)
     )
 }
 
-def backtrack(index, s, path, res) {
-    if (index < 0 || index > ~strlen(s) || path == 0 || res == 0) then
-        raisez <Abort, 0>.invalid_arg()
+def backtrack [; abort_l: Abort](index: int, s: string, path: ref list::[string], res: ref (list::[ref list::[string]])): int  {
+    if (index < 0 || index > ~strlen(s)) then
+        raise abort_l.invalid_arg()
     else
     if (index == ~strlen(s)) then
-        res[0] := list_append(res[0], Cons(path, Nil))
+        res[0] := list_append::[ref list::[string]](res[0], Cons::[ref list::[string]](path, Nil::[ref list::[string]]));
+        0
     else
-        backtrack_loop(index, s, index, path, res)
+        backtrack_loop:[; abort_l](index, s, index, path, res)
 }
 
-def run(s) {
-    handlez {
-        val res = partition(s);
-        list_length(res[0])
-    } with Abort {
-        exc invalid_arg(_) {
+def run(s: string): int {
+    handle <> {
+        val res = partition:[;abort_l](s);
+        list_length::[ref list::[string]](res[0])
+    } with abort_l: Abort {
+        exc invalid_arg() {
             ~printf("Error: invalid argument\n");
             1
         }
     }
 }
 
-def main() {
+def main(): int {
     ~printInt(run("aababbaaaaabababaaa"));
     0
 }

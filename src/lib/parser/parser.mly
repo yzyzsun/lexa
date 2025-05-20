@@ -135,7 +135,7 @@ match_clause:
 
 app_expr:
   | simple_expr { $1 }
-  | e1 = app_expr LPAREN args = separated_list(COMMA, expr) RPAREN { App (e1, args) }
+  | e1 = app_expr LPAREN args = separated_list(COMMA, expr) RPAREN { App (e1, args, ((None,[]), [], [])) }
   | v = app_expr LSB v2 = expr RSB { Get (v, v2) }
 
 expr:
@@ -159,14 +159,14 @@ expr:
   | VALDEF x = VAR EQ t1 = expr SEMICOLON t2 = expr %prec HIGHER_THAN_STMT { Let (x, t1, t2) }
   | IF v = expr THEN t1 = expr ELSE t2 = expr { If (v, t1, t2) }
   | RAISE raise_stub = simple_expr DOT raise_op = VAR LPAREN raise_args = separated_list(COMMA, expr) RPAREN { Raise {raise_stub; raise_op; raise_args} }
-  | RAISEZ LTS clue_sig = CAPITALIZED_VAR COMMA clue_dist = INT GTS DOT raisez_op = VAR LPAREN raisez_args = separated_list(COMMA, expr) RPAREN
-    { RaiseZ {clue_sig; clue_dist; raisez_op; raisez_args} }
-  | RESUME k = simple_expr v = app_expr { Resume (k, v) }
-  | RESUMEFINAL k = simple_expr v = app_expr { ResumeFinal (k, v) }
+  | RAISEZ LTS clue_sig = CAPITALIZED_VAR COMMA clue_type = INT COMMA clue_label = INT GTS DOT raisez_op = VAR LPAREN raisez_args = separated_list(COMMA, expr) RPAREN
+    { RaiseZ {clue_sig; clue_type; clue_label; raisez_op; raisez_args} }
+  | RESUME k = simple_expr v = app_expr { Resume (k, v, (None, [])) }
+  | RESUMEFINAL k = simple_expr v = app_expr { ResumeFinal (k, v, (None, [])) }
   | HANDLE LCB handle_body = expr RCB WITH stub = VAR COLON sig_name = CAPITALIZED_VAR LCB handler_defs = list(hdl_def) RCB 
     { Handle {handle_body; stub; sig_name; handler_defs} }
   | HANDLEZ LCB handle_body = expr RCB WITH sig_name = CAPITALIZED_VAR LCB handler_defs = list(hdl_def) RCB 
-    { HandleZ {handle_body; sig_name; handler_defs} }
+    { HandleZ {handle_body; sig_name; handler_defs; captured_set = (None, [])} }
   | FUN LPAREN params = separated_list(COMMA, VAR) RPAREN LCB body = expr RCB { Fun (params, body) }
   | REC DEF fs = separated_list(AND, recfun) SEMICOLON e = expr { Recdef (fs, e) }
   | e1 = expr SEMICOLON e2 = expr %prec STMT { Stmt (e1, e2) }

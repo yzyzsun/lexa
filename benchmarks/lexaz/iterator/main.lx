@@ -1,21 +1,21 @@
 effectz Emit {
-    dcl emit
+    dcl emit: (int) -> int
 }
 
-def range(l, u) {
+def range [; emit_l: Emit] (l: int, u: int): int {
     if l > u then
         0
     else (
-        raisez <Emit, 0>.emit(l);
-        range(l + 1, u)
+        raise emit_l.emit(l);
+        range:[; emit_l](l + 1, u)
     )
 }
 
-def run(n) {
+def run(n: int): int {
     val s = newref {0};
-    handlez {
-        range(0, n)
-    } with Emit {
+    handle <> {
+        range:[; emit_l](0, n)
+    } with emit_l: Emit {
         def emit(e) {
             s[0] := s[0] + e;
             0
@@ -24,7 +24,7 @@ def run(n) {
     s[0]
 }
 
-def main() {
+def main(): int {
     ~printInt(run(~readInt()));
     0
 }

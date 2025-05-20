@@ -1,24 +1,24 @@
 effectz State {
-    dcl get
-    dcl set
+    dcl get: () -> int
+    dcl set: (int) -> int
 }
 
-def countdown() {
-    val i = raisez <State, 0>.get(0);
+def countdown [; state: State] (): int {
+    val i = raise state.get();
     if i == 0 then
         i
     else (
-        raisez <State, 0>.set(i-1);
-        countdown()
+        raise state.set(i-1);
+        countdown:[; state]()
     )
 }
 
-def run(n) {
+def run(n: int): int {
     val s = newref {n};
-    handlez {
-        countdown()
-    } with State {
-        def get(_) { 
+    handle <> {
+        countdown:[; state]()
+    } with state: State {
+        def get() { 
             s[0]
         }
 
@@ -29,7 +29,7 @@ def run(n) {
     }
 }
 
-def main() {
+def main(): int {
     ~printInt(run(~readInt()));
     0
 }

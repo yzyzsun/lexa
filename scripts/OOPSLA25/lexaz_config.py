@@ -33,10 +33,10 @@ for benchmark in benchmarks:
         "build": LEXA_BUILD_COMMAND, "run": LEXA_RUN_COMMAND,
     }
 
-    LEXA_BUILD_COMMAND = "flock /tmp/dune_lockfile -c 'lexa main.lx -o main'"
-    LEXA_RUN_COMMAND = "./main {IN}"
+    LEXAZ_BUILD_COMMAND = "flock /tmp/dune_lockfile -c 'lexa main.lx -o main --lexaz'"
+    LEXAZ_RUN_COMMAND = "./main {IN}"
     config[("lexaz", benchmark)] = {
-        "build": LEXA_BUILD_COMMAND, "run": LEXA_RUN_COMMAND,
+        "build": LEXAZ_BUILD_COMMAND, "run": LEXAZ_RUN_COMMAND,
     }
 
 for platform in platforms:

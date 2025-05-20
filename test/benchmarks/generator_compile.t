@@ -8,6 +8,8 @@
   #include <stdlib.h>
   #include <string.h>
   
+  enum __effects__ { Yield };
+  
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_7__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
@@ -122,8 +124,10 @@
           i64 v = (i64)(((__generator_t__ *)__expr_res__)->Thunk[0]);
           i64 f = (i64)(((__generator_t__ *)__expr_res__)->Thunk[1]);
   
-          (((i64(*)(i64, i64, i64))__sum_lifted_4__)((i64)0, (i64)(v + a),
-                                                     (i64)(FINAL_THROW(f, 0))));
+          (((i64(*)(i64, i64, i64))__sum_lifted_4__)(
+              (i64)0, (i64)(v + a),
+              (i64)(FINAL_THROW(f, 0,
+                                "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"))));
         });
       }
       __match_res__;

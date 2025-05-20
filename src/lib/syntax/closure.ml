@@ -7,9 +7,6 @@ type hdl = { op_anno : hdl_anno;
             op_params : var list;
             op_body : t }
 
-and pattern =
-  | PTypecon of var * var list
-
 and t = (* expressions AFTER closure conversion *)
   | Var of var
   | Int of int
@@ -32,12 +29,13 @@ and t = (* expressions AFTER closure conversion *)
   }
   | RaiseZ of {
     clue_sig : var;
-    clue_dist : int;
+    clue_type: int;
+    clue_label : int;
     raisez_op : var;
     raisez_args : t list
   }
-  | Resume of t * t
-  | ResumeFinal of t * t
+  | Resume of t * t * capability
+  | ResumeFinal of t * t * capability
   | Handle of { env : var list;
     body_name: var;
     obj_name : var;
@@ -48,10 +46,11 @@ and t = (* expressions AFTER closure conversion *)
     body_name: var;
     obj_name : var;
     sig_name : var;
+    captured_set : capability
   }
   | Closure of closure
-  | AppClosure of t * t list
-  | App of t * t list
+  | AppClosure of t * t list * metadata
+  | App of t * t list * metadata
   | Let of var * t * t
   | If of t * t * t
   | Stmt of t * t

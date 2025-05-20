@@ -1,12 +1,12 @@
-effect E {
-    dcl op
+effectz E {
+    dcl op: () -> int
 }
 
-def main() {
-    handlez {
-        raisez <E, 0>.op();
+def main [;] (): int {
+    handle <> {
+        raise e.op();
         ~printInt(1)
-    } with E {
+    } with e: E {
         exc op() {
             ~printInt(2);
             0

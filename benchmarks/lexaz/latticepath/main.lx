@@ -1,26 +1,26 @@
-effect Abort {
-  dcl invalid_arg
+effectz Abort {
+  dcl invalid_arg: () -> int
 }
 
-def latticepaths(x1, y1, x2, y2, xbad, ybad) {
+def latticepaths [; abort_l: Abort] (x1: int, y1: int, x2: int, y2: int, xbad: int, ybad: int): int {
     if x2 < x1 || y2 < y1 then
-        raisez <Abort, 0>.invalid_arg()
+        raise abort_l.invalid_arg()
     else if x1 == x2 || y1 == y2 then
         1
     else if x1 == xbad && y1 == ybad then
         0
     else
-        latticepaths(x1 + 1, y1, x2, y2, xbad, ybad) + latticepaths(x1, y1 + 1, x2, y2, xbad, ybad)
+        latticepaths:[; abort_l](x1 + 1, y1, x2, y2, xbad, ybad) + latticepaths:[; abort_l](x1, y1 + 1, x2, y2, xbad, ybad)
 }
 
 
-def main() {
+def main(): int {
     val n = ~readInt();
 
-    handlez {
-        ~printInt(latticepaths(0, 0, n, n, n/2, n/2));
+    handle <> {
+        ~printInt(latticepaths:[; abort_l](0, 0, n, n, n/2, n/2));
         0
-    } with Abort {
+    } with abort_l: Abort {
         exc invalid_arg() {
             ~printf("Error: invalid argument\n");
             1

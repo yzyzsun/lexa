@@ -8,6 +8,8 @@
   #include <stdlib.h>
   #include <string.h>
   
+  enum __effects__ { Search };
+  
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_6__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
@@ -66,12 +68,18 @@
   }
   
   static i64 __loop_lifted_4__(i64 __env__, i64 i, i64 a, i64 size, i64 k) {
-    return (((i == size) ? (a + (FINAL_THROW(k, i))) : (({
-      __attribute__((musttail)) return (
-          (i64(*)(i64, i64, i64, i64, i64))__loop_lifted_4__)(
-          (i64)0, (i64)(i + 1), (i64)(a + (THROW(k, i))), (i64)size, (i64)k);
-      0;
-    }))));
+    return (
+        ((i == size)
+             ? (a + (FINAL_THROW(k, i, "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")))
+             : (({
+                 __attribute__((musttail)) return (
+                     (i64(*)(i64, i64, i64, i64, i64))__loop_lifted_4__)(
+                     (i64)0, (i64)(i + 1),
+                     (i64)(a + (THROW(k, i,
+                                      "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"))),
+                     (i64)size, (i64)k);
+                 0;
+               }))));
   }
   
   int main(int argc, char *argv[]) {

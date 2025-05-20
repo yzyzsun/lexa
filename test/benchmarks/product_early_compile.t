@@ -8,6 +8,8 @@
   #include <stdlib.h>
   #include <string.h>
   
+  enum __effects__ { Abort };
+  
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_7__(i64 *, i64 *);
   i64 __handler_abort_stub_lifted_8___done(i64 *, i64);

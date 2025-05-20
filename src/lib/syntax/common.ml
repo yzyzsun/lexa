@@ -1,3 +1,5 @@
+module Varmap = Map.Make(String)
+
 type var = string
 
 type arith =
@@ -30,7 +32,22 @@ type typedef = {
   type_cons : (var * type_expr list) list
 }
 
+type pattern =
+  | PTypecon of var * var list
+
 type funcAnno =
   | CANoneLocalComeFrom (* abortive or general handled body. Control can come back to caller non-locally *)
   | CANoneLocalGoto (* general handler. Control goes to a different stack. *)
   | CANone
+
+type label_index =
+  | LabelInfty
+  | LabelIndex of int
+
+and cap_index = 
+  | CapInfty
+  | CapIndex of int
+
+and capability = cap_index option * (label_index * int) list
+
+and metadata = capability * (capability list) * label_index list

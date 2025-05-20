@@ -37,10 +37,10 @@ for benchmark in benchmarks:
         "build": LEXA_BUILD_COMMAND, "run": LEXA_RUN_COMMAND,
     }
 
-    LEXA_BUILD_COMMAND = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main'"
-    LEXA_RUN_COMMAND = "./main {IN}"
+    LEXAZ_BUILD_COMMAND = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main --lexaz'"
+    LEXAZ_RUN_COMMAND = "./main {IN}"
     config[("lexaz", benchmark)] = {
-        "build": LEXA_BUILD_COMMAND, "run": LEXA_RUN_COMMAND,
+        "build": LEXAZ_BUILD_COMMAND, "run": LEXAZ_RUN_COMMAND,
     }
 
     OCAML_BUILD_COMMAND = "flock /tmp/opam_lockfile -c 'opam exec --switch=5.3.0+trunk -- ocamlopt -O3 -o main -I $(opam var lib)/multicont multicont.cmxa main.ml -o main'"
@@ -128,3 +128,5 @@ for platform in platforms:
     config[(platform, "palindrome_partition")]["bench_input"] = None
     config[(platform, "latticepath")]["bench_input"] = 16
     config[(platform, "two_threads_ackermann")]["bench_input"] = 1000000
+
+config[("lexaz", "handler_sieve")]["bench_input"] = 2000

@@ -1,63 +1,64 @@
 effectz Read {
-    dcl read
+    dcl read: () -> int
 }
 
 effectz Emit {
-    dcl emit
+    dcl emit: (int) -> int
 }
 
 effectz Stop {
-    dcl stop
+    dcl stop: () -> int
 }
 
-def newline() {
+def newline(): int {
     10
 }
 
-def is_newline(c) {
+def is_newline(c: int): bool {
     c == 10
 }
 
-def dollar() {
+def dollar(): int {
     36
 }
 
-def is_dollar(c) {
+def is_dollar(c: int): bool {
     c == 36
 }
 
-def sum(action) {
+def sum(action: <> [; emit_l: Emit] () -> int): int {
     val s = newref {0};
-    handlez {
-        action()
-    } with Emit {
+    handle <> {
+        action: [; emit_l] ()
+    } with emit_l: Emit {
         def emit(e) {
-            s[0] := s[0] + e
+            s[0] := s[0] + e;
+            0
         }
     };
     s[0]
 }
 
-def catch(action) {
-    handlez {
-        action()
-    } with Stop {
-        exc stop(_) { 0 }
+def catch [; emit_l: Emit] (action: <emit_l> [; emit_l: Emit, stop_l: Stop] () -> int): int {
+    handle <emit_l> {
+        action: [; emit_l, stop_l] ()
+    } with stop_l: Stop {
+        exc stop() { 0 }
     }
 }
 
-def feed(n, action) {
+def feed [; emit_l: Emit, stop_l: Stop] (n: int, action: <emit_l, stop_l> [; read_l: Read, emit_l: Emit, stop_l: Stop] () -> int): int {
     val i_ref = newref {0};
     val j_ref = newref {0};
-    handlez {
-        action()
+    handle <emit_l, stop_l> {
+        action :[; read_l, emit_l, stop_l] ()
     }
-    with Read {
+    with read_l: Read {
         def read() {
             val i = i_ref[0];
             val j = j_ref[0];
             if i > n then
-                raisez <Stop, 1>.stop(0)
+                raise stop_l.stop()
             else (
                 if j == 0 then
                     i_ref[0] := i + 1;
@@ -66,33 +67,34 @@ def feed(n, action) {
                 else
                     (j_ref[0] := j - 1;
                     dollar())
-            )    
+            )
         }
-    
     }
 }
 
-def parse(a) {
-    val c = raisez <Read, 0>.read(0);
+def parse [; read_l: Read, emit_l: Emit, stop_l: Stop] (a: int): int {
+    val c = raise read_l.read();
     if is_dollar(c) then
-        parse(a + 1)
+        parse: [; read_l, emit_l, stop_l](a + 1)
     else
         if is_newline(c) then
-            raisez <Emit, 2>.emit(a);
-            parse(0)
+            raise emit_l.emit(a);
+            parse: [; read_l, emit_l, stop_l](0)
         else
-            raisez <Stop, 1>.stop(0)
+            raise stop_l.stop()
 }
 
-def run(n) {
-    sum(fun() {
-        catch(fun() {
-            feed(n, fun() { parse(0) })
+def run(n: int): int {
+    sum(fun <> [; emit_l: Emit] (): int {
+        catch: [; emit_l] (fun <emit_l> [; emit_l: Emit, stop_l: Stop] (): int {
+            feed: [; emit_l, stop_l] (n, fun <emit_l, stop_l> [; read_l: Read, emit_l: Emit, stop_l: Stop] (): int {
+                parse: [; read_l, emit_l, stop_l] (0) 
+            })
         })
     })
 }
 
-def main() {
+def main(): int {
     val n = ~readInt();
     ~printInt(run(n));
     0

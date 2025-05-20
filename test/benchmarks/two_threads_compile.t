@@ -8,6 +8,8 @@
   #include <stdlib.h>
   #include <string.h>
   
+  enum __effects__ { Process, Tick, Exn };
+  
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_11__(i64 *, i64 *);
   i64 __handler_exn_stub_lifted_12___throw(i64 *, i64);
@@ -19,7 +21,7 @@
   i64 __handler_process_stub_lifted_14___yield(i64 *, i64, i64);
   static i64 __fun_lifted_15__(i64, i64);
   static i64 __handle_body_lifted_16__(i64 *, i64 *);
-  i64 __handler_tick_stub_lifted_17___tick(i64 *, i64);
+  i64 __tail__handler_tick_stub_lifted_17___tick(i64 *, i64);
   static i64 __repeat_lifted_9__(i64, i64);
   static i64 __step_lifted_8__(i64, i64, i64, i64);
   static i64 __run_lifted_7__(i64, i64, i64);
@@ -107,7 +109,7 @@
       }));
       ({
         (HANDLE(__handle_body_lifted_16__,
-                ({TAIL, __handler_tick_stub_lifted_17___tick}),
+                ({TAIL, __tail__handler_tick_stub_lifted_17___tick}),
                 ((i64)c, (i64)jobs, (i64)n_jobs, (i64)scheduler)));
         (((i64 *)c)[0]);
       });
@@ -175,7 +177,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __handler_tick_stub_lifted_17___tick(i64 *__env__, i64 _) {
+  i64 __tail__handler_tick_stub_lifted_17___tick(i64 *__env__, i64 _) {
     return (({
       i64 c = (i64)(((i64 *)__env__)[0]);
       ({
@@ -314,7 +316,7 @@
               i64 k = (i64)(((i64(*)(i64, i64, i64))__queueDeqExn_lifted_1__)(
                   (i64)0, (i64)job_queue, (i64)exn_stub));
               ({
-                (FINAL_THROW(k, 0));
+                (FINAL_THROW(k, 0, "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
                 (((i64(*)(i64, i64))__driver_lifted_4__)((i64)0, (i64)job_queue));
               });
             });
