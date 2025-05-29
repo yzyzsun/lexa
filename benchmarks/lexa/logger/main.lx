@@ -1,0 +1,55 @@
+effect Logging {
+    dcl lognum
+}
+
+def countdown(i, logging_stub) {
+    if i == 0 then
+        i
+    else (
+        raise logging_stub.lognum(i);
+        countdown(i - 1, logging_stub)
+    )
+}
+
+def libFun(x, logging_stub) {
+    countdown(x, logging_stub)
+}
+
+def plugin(x, logging_stub) {
+    libFun(x * 2, logging_stub)
+}
+
+def framework(addon, x) {
+    val file_log = newref{0};
+    handle {
+        addon(x);
+        libFun(x, fileLogger);
+        0
+    } with fileLogger: Logging {
+        def lognum(s) {
+            file_log[0] := file_log[0] + s;
+            0
+        }
+    };
+    ~printf("%ld\n", file_log[0])
+}
+
+def main() {
+    val n = ~readInt();
+    val console_log = newref{0};
+    handle {
+        val plugginFun = fun(x) {
+            plugin(x, consoleLogger)
+        };
+
+        framework(plugginFun, n);
+        0
+    } with consoleLogger: Logging {
+        def lognum(s) {
+            console_log[0] := console_log[0] + s;
+            0
+        }
+    };
+    ~printf("%ld\n", console_log[0]);
+    0
+}

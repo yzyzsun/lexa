@@ -21,7 +21,7 @@ def ackermann [; thread: Thread] (m: int, n: int, quota: ref int): int {
 def run(quota_each: int): int {
     val acc = newref {0};
     val storage = newref {~listEnd::[cont <> int -> int]()};
-    val total = newref {400000000};
+    val total = newref {100000000};
 
     val work = fun <> (): int {
         handle <> {

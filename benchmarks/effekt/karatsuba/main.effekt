@@ -1,0 +1,85 @@
+import list
+import args
+import bench
+
+effect Abort[A](): A
+
+def mod_safe(a: Int, b: Int): Int / Abort = 
+  if (b <= 0) {
+    do Abort()
+  } else {
+    mod(a, b)
+  }
+
+def divide(a: Int, b: Int): Int / Abort = 
+  if (b == 0) {
+    do Abort()
+  } else {
+    a / b
+  }
+
+def numdigits(a: Int): Int =
+  if (a < 2) {
+    1
+  } else {
+    1 + numdigits(a / 2)
+  }
+
+def pow2(n: Int): Int =
+  if (n == 0) {
+    1
+  } else {
+    2 * pow2(n - 1)
+  } 
+
+
+def karatsuba(num1: Int, num2: Int, threshold: Int): Int / Abort = 
+  if (num1 < threshold || num2 < threshold) {
+    num1 * num2
+  } else {
+    val m = max(numdigits(num1), numdigits(num2));
+    val m2 = divide(m, 2);
+    val powm2 = pow2(m2);
+    
+    val high1 = divide(num1, powm2);
+    val low1 = mod_safe(num1, powm2);
+    val high2 = divide(num2, powm2);
+    val low2 = mod_safe(num2, powm2);
+
+    val z0 = karatsuba(low1, low2, threshold);
+    val z1 = karatsuba(low1 + high1, low2 + high2, threshold);
+    val z2 = karatsuba(high1, high2, threshold);
+
+    z2 * powm2 * powm2 + ((z1 - z2 - z0) * powm2) + z0
+  }
+
+
+def loop (n: Int, i: Int, acc: Int): Int / Abort = 
+  if (i == 0) {
+    acc
+  } else {
+    loop(n, i - 1, acc + karatsuba(n, n, 2))
+  }
+
+
+def run(n: Int): Int = {
+  try {
+    loop(n, 1000000, 0)
+  } with Abort {
+    () => println("invalid denominator"); 1
+  }
+}
+
+def main() = ignore[WrongFormat] {commandLineArgs() match {
+  case Nil() => println("Expects one argument")
+  case Cons(x, Cons(y, Nil())) => 
+    println("Measuring internal running time")
+    val i = x.toInt; var r = 0; val t = timed{ r = run(i); };
+    println("Nanosecond used: " ++ show(t))
+    println(r)
+  case Cons(x, Nil()) =>
+    val i = x.toInt; val r = run(i);
+    println(r)
+  case other => println("Expects one argument, not '" ++ show(size(other)) ++ "'")
+}
+}

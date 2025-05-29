@@ -2,39 +2,53 @@ effectz Logging {
     dcl lognum: (int) -> int
 }
 
+def countdown [; logger: Logging] (i: int): int {
+    if i == 0 then
+        i
+    else
+        (raise logger.lognum(i);
+        countdown:[; logger](i - 1))
+}
+
 def libFun [; logger: Logging] (x: int): int {
-    raise logger.lognum(x)
+    countdown:[; logger](x)
 }
 
 def plugin [; logger: Logging] (x: int): int {
-    libFun: [; logger](x)
+    libFun: [; logger](x * 2)
 }
 
 def framework [a; ] (addon: <a;> [;] (int) -> int, x:int): int {
+    val file_log = newref{0};
     handle <a; > {
         addon(x);
         libFun: [; fileLogger](x);
         0
     } with fileLogger: Logging {
         def lognum(s) {
-            ~printf("log to file: %d\n", s);
+            file_log[0] := file_log[0] + s;
             0
         }
-    }
+    };
+    ~printf("%ld\n", file_log[0])
 }
 
 def main(): int {
+    val n = ~readInt();
+    val console_log = newref{0};
     handle <> {
         val plugginFun = fun <consoleLogger> (x: int): int {
             plugin: [; consoleLogger] (x)
         };
 
-        framework: [(consoleLogger);] (plugginFun, 10);
+        framework: [(consoleLogger);] (plugginFun, n);
         0
     } with consoleLogger: Logging {
         def lognum(s) {
-            ~printf("log to console: %d\n", s);
+            console_log[0] := console_log[0] + s;
             0
         }
-    }
+    };
+    ~printf("%ld\n", console_log[0]);
+    0
 }

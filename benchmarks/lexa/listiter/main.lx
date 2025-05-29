@@ -1,0 +1,53 @@
+effect Emit {
+    dcl emit
+}
+
+type list = 
+    | Nil
+    | Cons of int * list
+
+
+def iter(l, f) {
+    match l with
+    | Nil -> { 0 }
+    | Cons (h, t) -> {
+        f(h);
+        iter(t, f)
+    }
+}
+
+def enumerate(i) {
+    if i < 0 then
+        Nil()
+    else
+        Cons(i, enumerate(i - 1))
+}
+
+def runIter(l) {
+    val res = newref{0};
+    handle {
+        val f = fun(x) {
+            raise emit_l.emit(x)
+        };
+        iter(l, f)
+    } with emit_l: Emit {
+        def emit(x) {
+            res[0] := res[0] + x
+        }
+    };
+    res[0]
+}
+
+def loop(i, l, acc) {
+    if i == 0 then
+        acc
+    else
+        loop(i - 1, l, acc + runIter(l))
+}
+
+
+def main() {
+    val n = ~readInt();
+    ~printf("%ld\n", loop(n, enumerate(1000), 0));
+    0
+}

@@ -1,0 +1,74 @@
+import list
+import args
+import bench
+import ref
+
+effect Abort[A](): A
+
+def mod_safe(a: Int, b: Int): Int / Abort = 
+  if (b <= 0) {
+    do Abort()
+  } else {
+    mod(a, b)
+  }
+
+def divide(a: Int, b: Int): Int / Abort = 
+  if (b == 0) {
+    do Abort()
+  } else {
+    a / b
+  }
+
+def extendedEuclid(a: Int, b: Int, x: Ref[Int], y: Ref[Int], gcd: Ref[Int]): Unit / Abort =
+  if (b == 0) { 
+    x.set(1);
+    y.set(0);
+    gcd.set(a);
+  } else {
+    val x1 = ref(0);
+    val y1 = ref(0);
+    extendedEuclid(b, mod_safe(a, b), x1, y1, gcd);
+    x.set(y1.get);
+    y.set(x1.get - divide(a, b) * y1.get)
+  }
+
+def runExtendedEuclid(a: Int, b: Int, x: Ref[Int], y: Ref[Int], gcd: Ref[Int]): Unit = {
+  try {
+    extendedEuclid(a, b, x, y, gcd)
+  } with Abort {
+    () => println("invalid denominator")
+  }
+}
+
+def loop(a: Int, b: Int, x: Ref[Int], y: Ref[Int], gcd: Ref[Int], i: Int, acc: Int): Int =
+  if (i == 0) {
+    acc
+  } else {
+    runExtendedEuclid(a, b, x, y, gcd);
+    loop(a, b + 1, x, y, gcd, i - 1, acc + x.get + y.get + gcd.get)
+  }
+
+
+
+def run(n: Int): Int = {
+  val a = 660046610375530309;
+  val b = 540113804746346429;
+  val x = ref(0);
+  val y = ref(0);
+  val gcd = ref(0);
+  loop(a, b, x, y, gcd, n, 0)
+}
+
+def main() = ignore[WrongFormat] {commandLineArgs() match {
+  case Nil() => println("Expects one argument")
+  case Cons(x, Cons(y, Nil())) => 
+    println("Measuring internal running time")
+    val i = x.toInt; var r = 0; val t = timed{ r = run(i); };
+    println("Nanosecond used: " ++ show(t))
+    println(r)
+  case Cons(x, Nil()) =>
+    val i = x.toInt; val r = run(i);
+    println(r)
+  case other => println("Expects one argument, not '" ++ show(size(other)) ++ "'")
+}
+}

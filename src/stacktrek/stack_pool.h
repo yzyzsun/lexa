@@ -6,7 +6,9 @@
 #include <common.h>
 #include <datastructure.h>
 
-#define STACK_SIZE (1024LL * 8)
+#ifndef STACK_SIZE
+    #define STACK_SIZE (1024LL * 8)
+#endif
 #define PREALLOCATED_STACKS 64
 
 static char* buffer = 0;

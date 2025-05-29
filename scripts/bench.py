@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from config import config, platforms, benchmarks, bench_CPUs, zero_cost_benchmarks
+from config import config, platforms, benchmarks, bench_CPUs, zero_cost_benchmarks, higher_order_benchmarks
 from utils import build_and_bench
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--benchmarks", nargs="+")
     parser.add_argument("--all-benchmarks", action="store_true")
     parser.add_argument("--all-vanilla-benchmarks", action="store_true")
+    parser.add_argument("--all-higher-order-benchmarks", action="store_true")
     parser.add_argument("--all-zero-cost-benchmarks", action="store_true")
     args = parser.parse_args()
 
@@ -28,11 +29,16 @@ def main():
     if args.all_systems:
         config_tups = [c for c in config_tups if c[0] in platforms]
 
-    if (args.benchmarks and args.all_benchmarks) or (args.benchmarks and args.all_vanilla_benchmarks):
-        raise ValueError("Cannot specify both --benchmarks and --all-benchmarks or --all-vanilla-benchmarks")
+    if args.benchmarks and (args.all_benchmarks 
+                            or args.all_vanilla_benchmarks
+                            or args.all_higher_order_benchmarks
+                            or args.all_zero_cost_benchmarks):
+        raise ValueError("Cannot specify both --benchmarks and --all-*-benchmarks")
     if args.all_vanilla_benchmarks:
         vanilla_benchmarks = ["countdown", "fibonacci_recursive", "product_early", "iterator", "nqueens", "generator", "tree_explore", "triples", "resume_nontail", "parsing_dollars", "handler_sieve"]
         config_tups = [c for c in config_tups if c[1].strip("_z") in vanilla_benchmarks]
+    if args.all_higher_order_benchmarks:
+        config_tups = [c for c in config_tups if c[1] in higher_order_benchmarks]
     if args.all_zero_cost_benchmarks:
         config_tups = [c for c in config_tups if c[1] in zero_cost_benchmarks]
     if args.all_benchmarks:

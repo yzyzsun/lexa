@@ -1,0 +1,39 @@
+import list
+import args
+import bench
+
+effect Abort[A](): A
+
+def ackermann(m: Int, n: Int): Int / Abort = 
+  if (m < 0 || n < 0) {
+    do Abort()
+  } else if (m == 0) {
+    n + 1
+  } else if (n == 0) {
+    ackermann(m - 1, 1)
+  } else {
+    ackermann(m - 1, ackermann(m, n - 1))
+  }
+
+
+def run(m: Int) = {
+  try {
+    ackermann(m, 1)
+  } with Abort {
+    () => println("invalid argument"); 1
+  }
+}
+
+def main() = ignore[WrongFormat] {commandLineArgs() match {
+  case Nil() => println("Expects one argument")
+  case Cons(x, Cons(y, Nil())) => 
+    println("Measuring internal running time")
+    val i = x.toInt; var r = 0; val t = timed{ r = run(i); };
+    println("Nanosecond used: " ++ show(t))
+    println(r)
+  case Cons(x, Nil()) =>
+    val i = x.toInt; val r = run(i);
+    println(r)
+  case other => println("Expects one argument, not '" ++ show(size(other)) ++ "'")
+}
+}

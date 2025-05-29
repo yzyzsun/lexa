@@ -1,0 +1,69 @@
+import list
+import args
+import bench
+import ref
+
+effect Abort[A](): A
+
+def partition(s: String): Int / Abort = {
+  var res = ref(0);
+  backtrack(0, s, res)
+  res.get
+}
+
+
+def is_palindrome(s: String, start: Int, end: Int): Bool = {
+  if (start >= end) {
+      true
+  } else if (s.unsafeCharAt(start) != s.unsafeCharAt(end)) {
+      false
+  } else {
+      is_palindrome(s, start + 1, end - 1)
+  }
+}
+
+
+def backtrack(index: Int, s: String, res: Ref[Int]): Unit / Abort = {
+
+  def backtrack_loop(i: Int, s: String, index: Int, res: Ref[Int]): Unit / Abort = 
+    if (i >= s.length) {
+      ()
+    } else {
+      if (is_palindrome(s, index, i)) {
+      backtrack(i + 1, s, res);
+      }
+      backtrack_loop(i + 1, s, index, res)
+    }
+
+  if (index < 0 || index > s.length) {
+    do Abort()
+  } else if (index == s.length) {
+    res.set(res.get + 1)
+  } else {
+    backtrack_loop(index, s, index, res)
+  }
+
+}
+
+
+def run() = {
+  try {
+    partition("aababbaaaaabababaaabbabaaaababbaabaaaa")
+  } with Abort {
+    () => println("invalid argument"); -1
+  }
+}
+
+
+def main() = ignore[WrongFormat] {commandLineArgs() match {
+  case Nil() => 
+    val r = run();
+    println(r)
+  case Cons(x, Nil()) =>
+    println("Measuring internal running time")
+    var r = 0; val t = timed{ r = run(); };
+    println("Nanosecond used: " ++ show(t))
+    println(r)
+  case other => println("Expects no argument, not '" ++ show(size(other)) ++ "'")
+}
+}
