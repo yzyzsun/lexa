@@ -20,7 +20,7 @@ def ackermann(m, n, quota, thread_stub) {
 def run(quota_each) {
     val acc = newref {0};
     val storage = newref {0};
-    val total = newref {400000000};
+    val total = newref {100000000};
 
     val work = fun() {
         handle {

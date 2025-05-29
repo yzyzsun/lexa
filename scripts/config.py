@@ -23,6 +23,9 @@ else:
 benchmarks = ["countdown", "fibonacci_recursive", "product_early", "iterator", "nqueens", "generator", "tree_explore", "triples", "resume_nontail", "parsing_dollars", "handler_sieve", "resume_nontail_2", "scheduler", "interruptible_iterator"]
 platforms = ["lexa", "lexaz", "effekt", "koka_named", "koka", "ocaml"]
 
+higher_order_benchmarks = ["logger", "listiter"]
+benchmarks += higher_order_benchmarks
+
 zero_cost_benchmarks = ["catalan", "bezout", "golomb", "hofstadterq", "karatsuba", "ackermann", "palindrome_partition", "latticepath", "two_threads_ackermann"]
 benchmarks += zero_cost_benchmarks
 
@@ -80,19 +83,22 @@ config[("effekt", "scheduler")]["adjust_warmup"] = True
 config[("effekt", "interruptible_iterator")]["build"] = "effekt_latest.sh --backend js --compile main.effekt"
 config[("effekt", "interruptible_iterator")]["run"] = "node --eval \"require(\'\"\'./out/main.js\'\"\').main()\" -- _ {IN} 0"
 config[("effekt", "interruptible_iterator")]["adjust_warmup"] = True
+config[("effekt", "two_threads_ackermann")]["build"] = "effekt_latest.sh --backend chez-lift --compile main.effekt"
+config[("effekt", "two_threads_ackermann")]["run"] = "scheme --script out/main.ss {IN} 0"
+config[("lexa", "two_threads_ackermann")]["build"] = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main --stack-size 1024'"
+config[("lexaz", "two_threads_ackermann")]["build"] = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main --lexaz --stack-size 1024'"
 
 # Known Failures
 config[("koka", "interruptible_iterator")]["fail_reason"] = "Koka type system limitation"
 config[("koka_named", "scheduler")]["fail_reason"] = "Koka internal compiler error"
+config[("koka_named", "two_threads_ackermann")]["fail_reason"] = "Koka internal compiler error"
 # config[("koka_named", "concurrent_search")]["fail_reason"] = "Koka internal compiler error"
 # config[("effekt", "concurrent_search")]["fail_reason"] = "MLton typing error"
-config[("lexa", "two_threads_ackermann")]["fail_reason"] = "Need 1mb stacklet"
-config[("lexaz", "two_threads_ackermann")]["fail_reason"] = "Need 1mb stacklet"
 config[("lexaz", "scheduler")]["fail_reason"] = "Not implemented"
 config[("lexaz", "interruptible_iterator")]["fail_reason"] = "Not implemented"
 config[("lexaz", "resume_nontail_2")]["fail_reason"] = "Not implemented"
 for benchmark in zero_cost_benchmarks:
-    for platform in ["effekt", "koka_named", "koka", "ocaml"]:
+    for platform in ["koka", "ocaml"]:
         config[(platform, benchmark)]["fail_reason"] = "Not implemented"
 
 
@@ -113,11 +119,14 @@ for platform in platforms:
     config[(platform, "triples")]["bench_input"] = 300
     config[(platform, "resume_nontail")]["bench_input"] = 10000
     config[(platform, "parsing_dollars")]["bench_input"] = 20000
-    config[(platform, "handler_sieve")]["bench_input"] = 60000
+    config[(platform, "handler_sieve")]["bench_input"] = 10000
     config[(platform, "scheduler")]["bench_input"] = 3000
     config[(platform, "interruptible_iterator")]["bench_input"] = 3000
     # config[(platform, "concurrent_search")]["bench_input"] = 13
     config[(platform, "resume_nontail_2")]["bench_input"] = 10000
+
+    config[(platform, "logger")]["bench_input"] = 50000000
+    config[(platform, "listiter")]["bench_input"] = 100000
 
     config[(platform, "catalan")]["bench_input"] = 18
     config[(platform, "bezout")]["bench_input"] = 1000000
@@ -128,5 +137,3 @@ for platform in platforms:
     config[(platform, "palindrome_partition")]["bench_input"] = None
     config[(platform, "latticepath")]["bench_input"] = 16
     config[(platform, "two_threads_ackermann")]["bench_input"] = 1000000
-
-config[("lexaz", "handler_sieve")]["bench_input"] = 2000

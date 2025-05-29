@@ -1,0 +1,55 @@
+import list
+import args
+import bench
+
+effect Emit(i: Int): Unit
+
+def iter[A] (l: List[A]) {f: A => Unit / {}}: Unit / {} = 
+  l match {
+    case Nil() => ()
+    case Cons(h, t) => f(h); iter (t) {f}
+  }
+
+
+def enumerate(i: Int): List[Int] =
+  if (i < 0) {
+      Nil()
+  } else {
+      Cons(i, enumerate(i - 1))
+  }
+
+def runIter(l: List[Int]): Int = {
+  var res = 0;
+  try {
+    iter(l) { (x: Int) => do Emit(x) }
+  } with Emit {
+    (x) => res = res + x; resume(())
+  }
+  res
+}
+
+
+def run(n: Int) = {
+  val l = enumerate(1000);
+  def loop(i: Int, acc: Int): Int =
+    if (i == 0) {
+      acc
+    } else {
+      loop(i - 1, acc + runIter(l))
+    }
+  loop(n, 0)
+}
+
+def main() = ignore[WrongFormat] {commandLineArgs() match {
+  case Nil() => println("Expects one argument")
+  case Cons(x, Cons(y, Nil())) => 
+    println("Measuring internal running time")
+    val i = x.toInt; var r = 0; val t = timed{ r = run(i); };
+    println("Nanosecond used: " ++ show(t))
+    println(r)
+  case Cons(x, Nil()) =>
+    val i = x.toInt; val r = run(i);
+    println(r)
+  case other => println("Expects one argument, not '" ++ show(size(other)) ++ "'")
+}
+}

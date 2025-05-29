@@ -1,0 +1,53 @@
+effectz Emit {
+    dcl emit: (int) -> unit
+}
+
+type list = 
+    | Nil
+    | Cons of int * list
+
+
+def iter [a; ] (l: list, f: <a; > (int) -> unit): unit {
+    match l with
+    | Nil -> { () }
+    | Cons (h, t) -> {
+        f(h);
+        iter:[(a;);](t, f)
+    }
+}
+
+def enumerate(i: int): list {
+    if i < 0 then
+        Nil()
+    else
+        Cons(i, enumerate(i - 1))
+}
+
+def runIter(l: list): int {
+    val res = newref{0};
+    handle <> {
+        val f = fun <emit_l> (x: int): unit {
+            raise emit_l.emit(x)
+        };
+        iter:[(emit_l); ](l, f)
+    } with emit_l: Emit {
+        def emit(x) {
+            res[0] := res[0] + x
+        }
+    };
+    res[0]
+}
+
+def loop(i: int, l: list, acc: int): int {
+    if i == 0 then
+        acc
+    else
+        loop(i - 1, l, acc + runIter(l))
+}
+
+
+def main(): int {
+    val n = ~readInt();
+    ~printf("%ld\n", loop(n, enumerate(1000), 0));
+    0
+}

@@ -1,0 +1,57 @@
+import list
+import args
+import bench
+
+effect Log(i: Int): Int
+
+def countdown(i: Int): Int / Log =
+  if (i == 0) {
+    i
+  } else {
+    do Log(i)
+    countdown(i - 1)
+  }
+
+def libFun(x: Int): Int / Log =
+  countdown(x)
+
+def plugin(x: Int): Int / Log =
+  libFun(x * 2)
+
+def framework(x: Int) { addon: Int => Int / {} }: Int / {} = {
+  var file_log = 0;
+  try {
+    addon(x)
+    libFun(x)
+  } with Log {
+    (s) => file_log = file_log + s; resume(0)
+  }
+  println(file_log)
+  0
+}
+
+def run(n: Int) = {
+  var console_log = 0;
+  try {
+    framework(n) { (x: Int) => plugin(x) }
+    0
+  } with Log {
+    (s) => console_log = console_log + s; resume(0)
+  }
+  console_log
+}
+
+
+def main() = ignore[WrongFormat] {commandLineArgs() match {
+  case Nil() => println("Expects one argument")
+  case Cons(x, Cons(y, Nil())) => 
+    println("Measuring internal running time")
+    val i = x.toInt; var r = 0; val t = timed{ r = run(i); };
+    println("Nanosecond used: " ++ show(t))
+    println(r)
+  case Cons(x, Nil()) =>
+    val i = x.toInt; val r = run(i);
+    println(r)
+  case other => println("Expects one argument, not '" ++ show(size(other)) ++ "'")
+}
+}

@@ -1,0 +1,37 @@
+import list
+import args
+import bench
+
+effect Abort[A](): A
+
+def hofstadterq(n: Int): Int / Abort = 
+  if (n < 1) {
+    do Abort()
+  } else if (n < 3) {
+    1
+  } else {
+    hofstadterq(n - hofstadterq(n - 1)) + hofstadterq(n - hofstadterq(n - 2))
+  }
+
+
+def run(n: Int) = {
+  try {
+    hofstadterq(n)
+  } with Abort {
+    () => println("invalid argument"); 1
+  }
+}
+
+def main() = ignore[WrongFormat] {commandLineArgs() match {
+  case Nil() => println("Expects one argument")
+  case Cons(x, Cons(y, Nil())) => 
+    println("Measuring internal running time")
+    val i = x.toInt; var r = 0; val t = timed{ r = run(i); };
+    println("Nanosecond used: " ++ show(t))
+    println(r)
+  case Cons(x, Nil()) =>
+    val i = x.toInt; val r = run(i);
+    println(r)
+  case other => println("Expects one argument, not '" ++ show(size(other)) ++ "'")
+}
+}
