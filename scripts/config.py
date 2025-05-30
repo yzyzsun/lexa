@@ -92,12 +92,13 @@ config[("lexaz", "two_threads_ackermann")]["build"] = f"flock /tmp/dune_lockfile
 config[("koka", "interruptible_iterator")]["fail_reason"] = "Koka type system limitation"
 config[("koka_named", "scheduler")]["fail_reason"] = "Koka internal compiler error"
 config[("koka_named", "two_threads_ackermann")]["fail_reason"] = "Koka internal compiler error"
+config[("effekt", "bezout")]["fail_reason"] = "Stack Overflow"
 # config[("koka_named", "concurrent_search")]["fail_reason"] = "Koka internal compiler error"
 # config[("effekt", "concurrent_search")]["fail_reason"] = "MLton typing error"
 config[("lexaz", "scheduler")]["fail_reason"] = "Not implemented"
 config[("lexaz", "interruptible_iterator")]["fail_reason"] = "Not implemented"
 config[("lexaz", "resume_nontail_2")]["fail_reason"] = "Not implemented"
-for benchmark in zero_cost_benchmarks:
+for benchmark in zero_cost_benchmarks + higher_order_benchmarks:
     for platform in ["koka", "ocaml"]:
         config[(platform, benchmark)]["fail_reason"] = "Not implemented"
 
