@@ -158,13 +158,14 @@ expr:
   | v1 = app_expr LSB v2 = expr RSB COLONEQ v3 = expr { Set (v1, v2, v3) }
   | VALDEF x = VAR EQ t1 = expr SEMICOLON t2 = expr %prec HIGHER_THAN_STMT { Let (x, t1, t2) }
   | IF v = expr THEN t1 = expr ELSE t2 = expr { If (v, t1, t2) }
-  | RAISE raise_stub = simple_expr DOT raise_op = VAR LPAREN raise_args = separated_list(COMMA, expr) RPAREN { Raise {raise_stub; raise_op; raise_args} }
+  | RAISE raise_stub = simple_expr DOT raise_op = VAR LPAREN raise_args = separated_list(COMMA, expr) RPAREN 
+    { Raise {raise_stub; raise_op; raise_args} }
   | RAISEZ LTS clue_sig = CAPITALIZED_VAR COMMA clue_type = INT COMMA clue_label = INT GTS DOT raisez_op = VAR LPAREN raisez_args = separated_list(COMMA, expr) RPAREN
     { RaiseZ {clue_sig; clue_type; clue_label; raisez_op; raisez_args} }
   | RESUME k = simple_expr v = app_expr { Resume (k, v, (None, [])) }
   | RESUMEFINAL k = simple_expr v = app_expr { ResumeFinal (k, v, (None, [])) }
   | HANDLE LCB handle_body = expr RCB WITH stub = VAR COLON sig_name = CAPITALIZED_VAR LCB handler_defs = list(hdl_def) RCB 
-    { Handle {handle_body; stub; sig_name; handler_defs} }
+    { Handle {handle_body; stub; sig_name; handler_defs; captured_set = (None, [])} }
   | HANDLEZ LCB handle_body = expr RCB WITH sig_name = CAPITALIZED_VAR LCB handler_defs = list(hdl_def) RCB 
     { HandleZ {handle_body; sig_name; handler_defs; captured_set = (None, [])} }
   | FUN LPAREN params = separated_list(COMMA, VAR) RPAREN LCB body = expr RCB { Fun (params, body) }

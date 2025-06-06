@@ -64,10 +64,10 @@ let rec type_to_str (ty: ty) =
     let effect_ty_str = type_to_str effect_return_ty in
     let return_ty_str = type_to_str return_ty in
     Printf.sprintf "{ %s } cont %s -> %s" captured_set_str effect_ty_str return_ty_str
-  | TNode t -> Printf.sprintf "node_t<%s>" (type_to_str t)
-  | TTree t -> Printf.sprintf "tree_t<%s>" (type_to_str t)
-  | TQueue t -> Printf.sprintf "queue_t<%s>" (type_to_str t)
-  | TArray t -> Printf.sprintf "array_t<%s>" (type_to_str t)
+  | TNode t -> Printf.sprintf "node_t::[%s]" (type_to_str t)
+  | TTree t -> Printf.sprintf "tree_t::[%s]" (type_to_str t)
+  | TQueue t -> Printf.sprintf "queue_t::[%s]" (type_to_str t)
+  | TArray t -> Printf.sprintf "array_t::[%s]" (type_to_str t)
   | TCon (t, t_args) -> 
     if (List.is_empty t_args)
       then t else Printf.sprintf "%s::[%s]" t (String.concat ", " (List.map type_to_str t_args))

@@ -1,22 +1,22 @@
 open "../../../stdlib/assert.lx"
 open "../../../stdlib/stack.lx"
 
-def test_stack() {
-    val s = stack_make();
-    stack_push(s, 1);
-    stack_push(s, 2);
-    stack_push(s, 3);
-    assert(stack_peek(s) == 3);
-    assert(stack_size(s) == 3);
+def test_stack(): int {
+    val s = stack_make::[int]();
+    stack_push::[int](s, 1);
+    stack_push::[int](s, 2);
+    stack_push::[int](s, 3);
+    assert(stack_peek::[int](s) == 3);
+    assert(stack_size::[int](s) == 3);
 
-    assert(stack_pop(s) == 3);
-    assert(stack_pop(s) == 2);
-    assert(stack_pop(s) == 1);
-    assert(stack_is_empty(s));
+    assert(stack_pop::[int](s) == 3);
+    assert(stack_pop::[int](s) == 2);
+    assert(stack_pop::[int](s) == 1);
+    assert(stack_is_empty::[int](s));
     0
 }
 
-def main() {
+def main(): int {
     test_stack();
     ~strPrint("OK");
     0

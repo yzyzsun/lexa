@@ -103,7 +103,7 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
     }
   | Syntax.Resume (k, e, md) -> Resume (convert_expr k env, convert_expr e env, md)
   | Syntax.ResumeFinal (k, e, md) -> ResumeFinal (convert_expr k env, convert_expr e env, md)
-  | Syntax.Handle {handle_body; stub; sig_name; handler_defs;_} -> 
+  | Syntax.Handle {handle_body; stub; sig_name; handler_defs; captured_set} -> 
     let handle_body' = convert_expr handle_body Varset.(env |> add stub) in
     let body_lifted_name = gen_lifted_name "handle_body" in
     let obj_lifted_name = gen_lifted_name ("handler_" ^ stub) in
@@ -130,7 +130,8 @@ let rec convert_expr (e : Syntax.expr) (env : Varset.t) =
     Handle { env = Varset.to_list fvs; 
              body_name = body_lifted_name;
              obj_name = obj_lifted_name;
-             sig_name }
+             sig_name;
+             captured_set }
   | Syntax.HandleZ {handle_body; sig_name; handler_defs; captured_set} ->
     (* TODO: Repeating code *)
     let handle_body' = convert_expr handle_body env in

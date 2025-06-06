@@ -1,4 +1,4 @@
-def main() {
+def main(): int {
         (if !!!!true then
             ~printInt(42)
         else

@@ -75,22 +75,33 @@ def get_header_offset_in_handler(input, clue_table):
         for (addr, cfa_offset, ip_offset, function_name, handler_indicator, in_tail_handler, is_const, cap_num, label_num, hopper_md) in clue_table:
             if not handler_indicator:
                 continue
-
-            # The offset for ENTER is always the same since we manually put the header in location
-            if function_name == 'ENTER':
-                offset_map[addr] = 24
-                continue
             
             for var in locations[function_name]:
-                if var['variable'] != 'stub':
+                if not 'stub' in var['variable']:
                     continue
+
+                # There is a chance that multiple stubs are present in same stack frame due to inlining.
+                # This can happen only under the following conditions:
+                #   1. There are multiple tail-resumptive stock lexa stubs in the stack frame, and
+                #   2. There is at most 1 tail-resumptive or abortive lexaz stubs in the frame.
+                # If there is a lexaz stub, we must pick its offset in offset_functions.h in case it is raised.
+                # Otherwise, any stub's offset in the stack frame will suffice, since walking through tail-resumptive
+                # and abortive handlers both involve simply skipping the current frame.
+                stub_found = False
 
                 for loc in var['locations']:
                     if loc['start'] <= addr < loc['end']:
                         ops = expr_parser.parse_expr(loc['expr'])
+                        for op in ops:
                         # Offset from the stack pointer
-                        if ops[0].op_name == 'DW_OP_breg7' or ops[0].op_name == 'DW_OP_fbreg':
-                            offset_map[addr] = ops[0].args[0] + 8
+                            if op.op_name == 'DW_OP_breg7' or op.op_name == 'DW_OP_fbreg':
+                                offset_map[addr] = op.args[0] + 8
+                                stub_found = True
+                                break
+                        
+                # If the variable found is stub_z, break
+                if stub_found and var['variable'] == 'stub_z':
+                    break
 
         return offset_map
 
@@ -167,10 +178,10 @@ def get_clue_table(input):
             #       Here we assume there are less than 4-byte offset between the call and the label.
             #       This may assign a metadata to a callsite that shouldn't have a metadata, but if it is never
             #       accessed by the stackwalker it should be fine.
-            for i in range(32):
-                if addr - i in clue_table:
+            for i in range(1, 32):
+                if addr + i in clue_table:
                     metadata_nums = metadata.split("_")
-                    meta = clue_table[addr - i]
+                    meta = clue_table[addr + i]
                     meta["is_const"] = int(metadata_nums[0])
                     meta["cap_num"] = int(metadata_nums[1])
                     meta["label_num"] = int(metadata_nums[2])
@@ -209,6 +220,7 @@ def main():
     parser = argparse.ArgumentParser(description="Find CALL instructions and their function names in a binary file.")
     parser.add_argument("input", type=str, help="The path to the binary file to analyze.")
     parser.add_argument("--gen-offset", action="store_true", help="Generate offset_functions.h")
+    parser.add_argument("--path", "--output", type=str, default="", help="The path to generate offset_function.h at")
     args = parser.parse_args()
 
     clue_table = get_clue_table(args.input)
@@ -245,14 +257,14 @@ def main():
 
     if args.gen_offset:
         # Create offset_functions.h
-        with open("offset_functions.h", "w") as file:
+        with open(args.path + "/offset_functions.h", "w") as file:
             file.write("#define GET_HEADER_OFFSET_IN_HANDLER(ret_addr) \\\nswitch(ret_addr) { \\\n")
 
             header_offsets = get_header_offset_in_handler(args.input, clue_table)
             for addr in header_offsets:
                 file.write(f"\tcase 0x{addr:x}: header_offset = {header_offsets[addr]}; break; \\\n")
 
-            file.write('\tdefault: error_int("GET_HEADER_OFFSET_IN_HANDLER: invalid ret_addr: ", ret_addr); break; \\\n}')
+            file.write('\tdefault: header_offset = 24; break; \\\n}')
 
 if __name__ == "__main__":
     main()

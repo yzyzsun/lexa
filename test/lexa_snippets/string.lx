@@ -1,4 +1,4 @@
-def main() {
+def main(): int {
     ~strPrint("hello\nworld\n");
     ~strPrint("escape sequences:\n\f\t\"\\");
     ~strPrint(~strConcat("foo", "bar"));

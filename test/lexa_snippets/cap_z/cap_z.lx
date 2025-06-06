@@ -1,13 +1,13 @@
 effectz F {
-    dcl eff: () -> int
+    dcl eff: () -> unit
 }
 
 effectz F2 {
-    dcl eff2: () -> int
+    dcl eff2: () -> unit
 }
 
-def fun0 [a0; l0: F, l1: F](f: <a0; l0> [;] () -> int): int {
-    val fun1 = fun <l1> [a1; l2: F] (g: <a1;> [;] () -> int): int {
+def fun0 [a0; l0: F, l1: F](f: <a0; l0> [;] () -> unit): unit {
+    val fun1 = fun <l1> [a1; l2: F] (g: <a1;> [;] () -> unit): unit {
         raise l2.eff();
         raise l1.eff();
         g()
@@ -18,7 +18,7 @@ def fun0 [a0; l0: F, l1: F](f: <a0; l0> [;] () -> int): int {
 def main(): int {
     handle <> {
         handle <handle1> {
-            val test = fun <handle1, handle2> [;] (): int {
+            val test = fun <handle1, handle2> [;] (): unit {
                 raise handle1.eff();
                 raise handle2.eff2()
             };

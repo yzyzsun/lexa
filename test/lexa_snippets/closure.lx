@@ -1,7 +1,7 @@
-def main() {
+def main(): int {
     val local1 = newref {1};
     val local2 = newref {2};
-    val f1 = fun() {
+    val f1 = fun <> (): unit {
         local1[0] := local1[0] + local2[0]
     };
     val _ = f1();

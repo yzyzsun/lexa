@@ -1,8 +1,8 @@
-def f(x) {
+def f(x: int): int {
     val z = 1;
-    val g = fun(x) {
+    val g = fun <> (x: int): int {
         val y = 2;
-        val h = fun(x) {
+        val h = fun <> (x: int): int {
             x + y + z
         };
         h(x)
@@ -10,7 +10,7 @@ def f(x) {
     g(x)
 }
 
-def main() {
+def main(): int {
     val _ = ~printInt(f(3));
     0
 }

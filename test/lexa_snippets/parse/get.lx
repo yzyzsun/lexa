@@ -1,8 +1,8 @@
-def foo() {
+def foo(): ref int {
     newref{42}
 }
 
-def main() {
+def main(): int {
     ~printInt(foo()[0]);
     0
 }

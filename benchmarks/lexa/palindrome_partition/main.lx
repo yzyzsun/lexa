@@ -1,14 +1,14 @@
 effect Abort {
-    dcl invalid_arg
+    dcl invalid_arg: () -> unit
 }
 
-def partition(s, abort_stub) {
+def partition [; abort_l: Abort] (s: string): int {
     val res = newref {0};
-    backtrack(0, ~strlen(s), s, res, abort_stub);
+    backtrack:[; abort_l](0, ~strlen(s), s, res);
     res[0]
 }
 
-def is_palindrome(s, start, end) {
+def is_palindrome(s: string, start: int, end: int): bool {
     if (start > end || start == end) then
         true
     else
@@ -18,42 +18,41 @@ def is_palindrome(s, start, end) {
         is_palindrome(s, start + 1, end - 1)
 }
 
-
-def backtrack_loop(i, n, s, index, res, abort_stub) {
+def backtrack_loop [; abort_l: Abort] (i: int, n: int, s: string, index: int, res: ref int): unit {
     if (i == n || i > n) then
-        0
+        ()
     else (
         if is_palindrome(s, index, i) then (
-            backtrack(i + 1, n, s, res, abort_stub)
+            backtrack:[; abort_l](i + 1, n, s, res)
         ) else (
-            0
+            ()
         );
-        backtrack_loop(i + 1, n, s, index, res, abort_stub)
+        backtrack_loop:[; abort_l](i + 1, n, s, index, res)
     )
 }
 
-def backtrack(index, n, s, res, abort_stub) {
+def backtrack [; abort_l: Abort](index: int, n: int, s: string, res: ref int): unit  {
     if (index < 0 || index > n) then
-        raise abort_stub.invalid_arg()
+        raise abort_l.invalid_arg()
     else
     if (index == n) then
         res[0] := res[0] + 1
     else
-        backtrack_loop(index, n, s, index, res, abort_stub)
+        backtrack_loop:[; abort_l](index, n, s, index, res)
 }
 
-def run(s) {
-    handle {
-        partition(s, abort_stub)
-    } with abort_stub : Abort {
-        exc invalid_arg(_) {
+def run(s: string): int {
+    handle <> {
+        partition:[;abort_l](s)
+    } with abort_l: Abort {
+        exc invalid_arg() {
             ~printf("Error: invalid argument\n");
             1
         }
     }
 }
 
-def main() {
+def main(): int {    
     ~printInt(run("aababbaaaaabababaaabbabaaaababbaabaaaa"));
     0
 }

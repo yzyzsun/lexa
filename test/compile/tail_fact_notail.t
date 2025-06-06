@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/tail_fact.lx -o main --lexac-args=--no-tail &> /dev/null
+  $ lexa ../lexa_snippets/tail_fact.lx -o main &> /dev/null
   $ cat ../lexa_snippets/tail_fact.c
   #include <datastructure.h>
   #include <stacktrek.h>

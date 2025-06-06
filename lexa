@@ -3,7 +3,7 @@ import argparse
 import subprocess
 import os
 
-def run_commands(source_file, output_file, lexac_args, output_ll, lexaz, gen_offset, stack_size):
+def run_commands(source_file, output_file, lexac_args, output_ll, tl, gen_offset, stack_size):
     src_path = os.path.abspath(source_file)
 
     if source_file.endswith(".c"):
@@ -15,8 +15,8 @@ def run_commands(source_file, output_file, lexac_args, output_ll, lexaz, gen_off
         c_file = os.path.dirname(src_path) + "/" + os.path.splitext(base_name)[0] + ".c"
 
         dune_command = ["dune", "exec", "lexac", "--", src_path, "-o", c_file]
-        if lexaz:
-            dune_command.append("--lexaz")
+        if tl:
+            dune_command.append("--tl")
         if lexac_args:
             dune_command += lexac_args.split()
         subprocess.run(dune_command, check=True)
@@ -54,7 +54,7 @@ def run_commands(source_file, output_file, lexac_args, output_ll, lexaz, gen_off
     if gen_offset:
         # We compile twice. The first time we produce the binary for analysis.
         subprocess.run(clang_command + ["-DNO_OFFSET"], check=True)
-        analyze_command = [os.path.dirname(os.path.realpath(__file__)) + "/src/stackwalk/analyze_binary.py", output_file, "--gen-offset"]
+        analyze_command = [os.path.dirname(os.path.realpath(__file__)) + "/src/stackwalk/analyze_binary.py", output_file, "--gen-offset", "--path", os.path.dirname(src_path)]
         subprocess.run(analyze_command, check=True)
 
         # The second time we produce the binary for execution
@@ -74,12 +74,12 @@ def main():
     parser.add_argument("-o", "--output", type=str, default="a.out", help="The binary output file")
     parser.add_argument("--stack-size", type=int, default=8, help="The binary output file")
     parser.add_argument("--lexac-args", type=str, default="", help="Arguments to pass to lexac")
-    parser.add_argument("--lexaz", action="store_true", help="Compile with lexaz syntax and type checking")
+    parser.add_argument("--tl", action="store_true", help="Compile with TL syntax")
     parser.add_argument("--gen-offset", action="store_true", help="Generate offset_functions.h")
     
     args = parser.parse_args()
 
-    run_commands(args.source_file, args.output, args.lexac_args, args.output_ll, args.lexaz, args.gen_offset, args.stack_size)
+    run_commands(args.source_file, args.output, args.lexac_args, args.output_ll, args.tl, args.gen_offset, args.stack_size)
 
 if __name__ == "__main__":
     main()

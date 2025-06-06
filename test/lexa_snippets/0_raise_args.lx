@@ -1,14 +1,14 @@
 effect E {
-    dcl op
+    dcl op: () -> int
 }
 
-def main() {
+def main(): int {
     run();
     0
 }
 
-def run() {
-    val out = handle {
+def run(): int {
+    val out = handle <> {
         val out = raise multi_stub.op();
         ~printInt(out);
         0
@@ -21,7 +21,7 @@ def run() {
     };
     ~printInt(out);
     
-    val out = handle {
+    val out = handle <> {
         val out = raise single_stub.op();
         ~printInt(out);
         0
@@ -34,7 +34,7 @@ def run() {
     };
     ~printInt(out);
     
-    val out = handle {
+    val out = handle <> {
         val out = raise abort_stub.op();
         ~printInt(out);
         0

@@ -1,26 +1,26 @@
 effect State {
-    dcl get
-    dcl set
+    dcl get: (int) -> int
+    dcl set: (int) -> int
 }
 
-def countdown(state_stub) {
+def countdown [; state_stub: State] (): int {
     val i = raise state_stub.get(0);
     if i == 0 then
         i
     else
         val arg = i - 1;
         raise state_stub.set(arg);
-        countdown(state_stub)
+        countdown:[; state_stub]()
 }
 
-def body(env, state_stub) {
-    countdown(state_stub)
+def body [; state_stub: State] (env: int): int {
+    countdown:[; state_stub]()
 }
 
-def run(n) {
+def run(n: int): int {
     val s = newref {n};
-    handle {
-        countdown(state1_stub)
+    handle <> {
+        countdown:[; state1_stub]()
     } with state1_stub: State {
         def get(_) { 
             s[0]
@@ -31,8 +31,8 @@ def run(n) {
             0
         }
     };
-    handle {
-        countdown(state2_stub)
+    handle <> {
+        countdown:[; state2_stub]()
     } with state2_stub: State {
         hdl_1 get(_, k) { 
             resume_final k s[0]
@@ -45,7 +45,7 @@ def run(n) {
     }
 }
 
-def main() {
+def main(): int {
     val arg1 = ~readInt();
     val arg2 = run(arg1);
     ~printInt(arg2);

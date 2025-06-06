@@ -5,13 +5,14 @@ open Typecheck
 open Common
 open Syntax__Common
 
-let get_effect_index effect_name =
-  match List.find_index (fun (eff, _) -> eff = effect_name) !effect_sigs_context with
+let get_effectz_index effect_name =
+  match List.find_index ((=) effect_name) !effectz_names with
   | Some i -> i
-  | None -> typing_error "Unknown effect name %s\n" effect_name
+  | None -> typing_error "Unknown zero-cost effect name %s\n" effect_name
 
-let find_label_index label captured_vars label_vars =
-  match List.find_index (fun (l, _) -> l = label) label_vars with
+let find_labelz_index label captured_vars label_vars =
+  let labelz_vars = List.filter (fun (_, eff) -> List.exists ((=) eff) !effectz_names) label_vars in
+  match List.find_index (fun (l, _) -> l = label) labelz_vars with
   | None -> 
     (
       match captured_vars with
@@ -30,9 +31,20 @@ let find_cap_index cap captured_vars cap_vars =
     (
       match captured_vars with
       | Capability c -> if c = cap then CapInfty else typing_error "Couldn't find capability variable %s in context\n" cap
-      | Labels _ -> typing_error "Couldn't find capability variable %s in context 2\n" cap
+      | Labels _ -> typing_error "Couldn't find capability variable %s in context\n" cap
     )
   | Some i -> CapIndex i
+
+let is_lexaz_effect_label captured_vars label_vars label =
+  match List.assoc_opt label label_vars with
+  | Some effect_name -> List.exists ((=) effect_name) !effectz_names
+  | None ->
+    (match captured_vars with
+    | Labels labels -> 
+      let effect_name = List.assoc label labels in
+      List.exists ((=) effect_name) !effectz_names
+    | _ -> typing_error "Label %s not found\n" label
+    )
 
 let translate_capability (cap: SLsyntax.capability) captured_vars cap_vars label_vars: capability =
   let (cap_var, labels) = cap in
@@ -41,7 +53,11 @@ let translate_capability (cap: SLsyntax.capability) captured_vars cap_vars label
     | Some cap -> Some (find_cap_index cap captured_vars cap_vars)
     | None -> None
   ) in
-  let labels' = Varset.fold (fun label ls -> ((find_label_index label captured_vars label_vars), get_effect_index (find_effect_name label captured_vars label_vars))::ls) labels [] in
+  (* Filter out stock lexa effect labels *)
+  let labels' = Varset.fold (fun label ls -> 
+    if is_lexaz_effect_label captured_vars label_vars label
+      then ((find_labelz_index label captured_vars label_vars), get_effectz_index (find_effect_name label captured_vars label_vars))::ls
+      else ls) labels [] in
   (cap_var', labels')
 
 let rec translate_SL (te: typed_expr): Syntax.expr =
@@ -54,8 +70,9 @@ let rec translate_SL (te: typed_expr): Syntax.expr =
   in
 
   let translate_fundef (fundef: Typed_ast.fundef): Syntax.fundef =
-    let { name; params; body; _ } = fundef in
-    { name; params = List.map fst params; body = translate_SL body }
+    let { name; params; body; label_params; _ } = fundef in
+    let effect_labels = List.map fst (List.filter (fun (_, name) -> List.exists ((=) name) !effect_names) label_params) in
+    { name; params = (List.map fst params)@effect_labels; body = translate_SL body }
   in
   
   let { expr_desc = e; captured_vars; label_vars; cap_vars; _ } = te in
@@ -108,50 +125,68 @@ let rec translate_SL (te: typed_expr): Syntax.expr =
     let e2' = translate_SL e2 in
     If (cond', e1', e2')
   | Prim f ->  Prim f
-  | Fun { params; body;_ } ->
+  | Fun { params; body; label_params; _ } ->
     let body' = translate_SL body in
     let params' = List.map fst params in
-    Fun (params', body')
+    let effect_labels = List.map fst (List.filter (fun (_, name) -> List.exists ((=) name) !effect_names) label_params) in
+    Fun (params'@effect_labels, body')
   | App { func; cap_insts; label_args; args } -> 
     let func' = translate_SL func in
     let fun_ty = type_of func in
     let args' = List.map translate_SL args in
+    let labels_args = List.filter (fun arg -> not (is_lexaz_effect_label captured_vars label_vars arg)) label_args in
+    let labelz_args = List.filter (is_lexaz_effect_label captured_vars label_vars) label_args in
     let metadata = (match fun_ty with
       | TFun { captured_set; _ } ->
         let captured_set' = translate_capability captured_set captured_vars cap_vars label_vars in
         let cap_insts' = List.map (fun inst -> translate_capability inst captured_vars cap_vars label_vars) cap_insts in
-        let label_args' = List.map (fun arg -> find_label_index arg captured_vars label_vars) label_args in
+        let label_args' = List.map (fun arg -> find_labelz_index arg captured_vars label_vars) labelz_args in
         (captured_set', cap_insts', label_args')
       | _ -> ((None, []), [], [])
     ) in
-    App (func', args', metadata)
+    App (func', args'@(List.map (fun label -> Syntax.Var label) labels_args), metadata)
 
-  | Handle { captured_set; handle_body; handler_label = _; sig_name; handler_defs } ->
+  | Handle { captured_set; handle_body; handler_label; sig_name; handler_defs } ->
     let handle_body' = translate_SL handle_body in
     let handler_defs' = List.map translate_hdl handler_defs in
     let captured_set' = translate_capability captured_set captured_vars cap_vars label_vars in
-    HandleZ { 
-      handle_body = handle_body';
-      sig_name;
-      handler_defs = handler_defs';
-      captured_set = captured_set';
-    }
+    if (List.exists ((=) sig_name) !effectz_names)
+      then HandleZ { 
+        handle_body = handle_body';
+        sig_name;
+        handler_defs = handler_defs';
+        captured_set = captured_set';
+      }
+      else Handle { 
+        handle_body = handle_body';
+        stub = handler_label;
+        sig_name;
+        handler_defs = handler_defs';
+        captured_set = captured_set';
+      }
 
   | Raise { raise_label; raise_op; raise_args } ->
     let raise_args' = List.map translate_SL raise_args in
-    let clue = find_label_index raise_label captured_vars label_vars in
-    let clue_type, clue_label = (
-      match clue with
-      | LabelIndex i -> 0, i
-      | LabelInfty -> 2, 0
-    ) in
-    RaiseZ { 
-      clue_sig = find_effect_name raise_label captured_vars label_vars;
-      clue_type;
-      clue_label;
-      raisez_op = raise_op;
-      raisez_args = raise_args';
-    }
+    if (is_lexaz_effect_label captured_vars label_vars raise_label) then
+      let clue = find_labelz_index raise_label captured_vars label_vars in
+      let clue_type, clue_label = (
+        match clue with
+        | LabelIndex i -> 0, i
+        | LabelInfty -> 2, 0
+      ) in
+      RaiseZ { 
+        clue_sig = find_effect_name raise_label captured_vars label_vars;
+        clue_type;
+        clue_label;
+        raisez_op = raise_op;
+        raisez_args = raise_args';
+      }
+    else 
+      Raise {
+        raise_stub = Var raise_label;
+        raise_op;
+        raise_args = raise_args'
+      }
 
   | Resume (cont, arg) ->
     let cont' = translate_SL cont in
@@ -199,8 +234,14 @@ let rec gen_top_level_types (tls : top_level list) =
   match tls with
     | tl::rest -> 
     (match tl with
+      | TLEffSig (name, effect_sigs) -> 
+        effect_sigs_context := !effect_sigs_context@[(name, effect_sigs)];
+        effect_names := !effect_names@[name];
+        gen_top_level_types rest
+
       | TLEffZSig (name, effect_sigs) -> 
         effect_sigs_context := !effect_sigs_context@[(name, effect_sigs)];
+        effectz_names := !effectz_names@[name];
         gen_top_level_types rest
 
       | TLPolyAbs (name, type_params, cap_params, label_params, params, return_ty, _) ->
@@ -237,7 +278,7 @@ let translate_toplevels (tls : top_level list) =
           | _ -> typing_error "Something went wrong\n"
         )
       | TLEffZSig (name, effect_sigs) -> TLEffZSig (name, List.map fst effect_sigs)
-      | TLEffSig (name, effect_sigs) -> TLEffSig (name, effect_sigs) (* TODO *)
+      | TLEffSig (name, effect_sigs) -> TLEffSig (name, List.map fst effect_sigs)
       | TLOpen f -> TLOpen f
       | TLOpenC f -> TLOpenC f
       | TLType defs -> TLType (List.map 

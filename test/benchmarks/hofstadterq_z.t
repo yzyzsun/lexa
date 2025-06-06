@@ -1,3 +1,3 @@
-  $ lexa ../../benchmarks/lexaz/hofstadterq/main.lx -o main --lexaz &> /dev/null
+  $ lexa ../../benchmarks/lexaz/hofstadterq/main.lx -o main &> /dev/null
   $ ./main 10
   6

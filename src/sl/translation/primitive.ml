@@ -6,7 +6,7 @@ let prim_sigs = [
   ("listMax", ([TNode TInt], TInt));
   ("readInt", ([], TInt));
   ("printInt", ([TInt], TInt));
-  ("printFloat", ([TFloat], TInt));
+  ("printFloat", ([TInt], TInt));
   ("printChar", ([TChar], TInt));
   ("stringMake", ([TChar; TInt], TStr));
   ("stringSubStr", ([TStr; TInt; TInt], TStr));
@@ -27,8 +27,9 @@ let prim_sigs = [
   ("floatSin", ([TInt], TInt));
   ("floatSqrt", ([TInt], TInt));
   ("floatLog", ([TInt], TInt));
-  ("floatLt", ([TInt; TInt], TInt));
-  ("floatLeq", ([TInt; TInt], TInt));
+  ("floatLt", ([TInt; TInt], TBool));
+  ("floatLeq", ([TInt; TInt], TBool));
+  ("intToFloat", ([TInt], TInt));
   ("mathAbs", ([TInt], TInt));
   ("arrayPrint", ([TArray TInt], TInt));
   ("arrayPrintChars", ([TArray TChar], TInt));
@@ -40,7 +41,7 @@ let prim_sigs = [
   ("strEq", ([TStr; TStr], TBool));
   ("strcmp", ([TStr; TStr], TInt));
   ("strlen", ([TStr], TInt));
-  ("strCharAt", ([TStr; TInt], TInt))
+  ("strCharAt", ([TStr; TInt], TChar))
 ]
 
 let prim_polymophic_sigs = [
@@ -78,6 +79,8 @@ let prim_polymophic_sigs = [
   ("arraySet", ("'a", [TArray (TVar "'a"); TInt; TVar "'a"], TVar "'a"));
   ("arrayPush", ("'a", [TArray (TVar "'a"); TVar "'a"], TVar "'a"));
   ("arrayPop", ("'a", [TArray (TVar "'a")], TVar "'a"));
+
+  ("safe_malloc", ("'a", [TInt], TRef (TVar "'a")))
 ]
 
 let prim_variable_args_sigs = [

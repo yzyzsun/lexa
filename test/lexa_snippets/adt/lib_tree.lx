@@ -1,23 +1,23 @@
-type tree = 
+type tree::['a] = 
     | Leaf
-    | Node of int * tree * tree
+    | Node of 'a * tree::['a] * tree::['a]
 
-def make_tree(i) {
+def make_tree(i: int): tree::[int] {
     if i == 0 then
-        Leaf()
+        Leaf::[int]()
     else
-        Node(i, make(i - 1), make(i - 1))
+        Node::[int](i, make_tree(i - 1), make_tree(i - 1))
 }
 
-def traverse(t) {
+def traverse(t: tree::[int]): unit {
     match t with
     | Leaf -> {
-        0
+        ()
     }
     | Node (i, l, r) -> {
         ~printInt(i);
         traverse(l);
         traverse(r);
-        0
+        ()
     }
 }

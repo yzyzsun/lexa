@@ -39,33 +39,25 @@
             ({
               (((i64(*)(i64))rewind)((int64_t)file));
               ({
-                i64 buffer =
-                    (i64)(((i64(*)(i64))malloc)((int64_t)((file_size + 1) * 8)));
+                i64 buffer = (i64)(((i64(*)(i64))safe_malloc)(
+                    (int64_t)((file_size + 1) * 8)));
                 ({
-                  ((buffer == 0) ? ((i64)(error((char *)(({
-                    i64 *__s__ = (i64 *)xmalloc(28 * sizeof(char));
-                    strcpy((char *)__s__, "Memory allocation failed.\n");
-                    __s__;
-                  })))))
-                                 : 0);
+                  (((i64(*)(i64, i64, i64, i64))fread)(
+                      (int64_t)buffer, (int64_t)8, (int64_t)file_size,
+                      (int64_t)file));
                   ({
-                    (((i64(*)(i64, i64, i64, i64))fread)(
-                        (int64_t)buffer, (int64_t)8, (int64_t)file_size,
-                        (int64_t)file));
+                    (((i64 *)buffer)[file_size] = ('\000'));
                     ({
-                      (((i64 *)buffer)[file_size] = 0);
+                      (((i64(*)(i64, i64))printf)(
+                          (int64_t)(({
+                            i64 *__s__ = (i64 *)xmalloc(18 * sizeof(char));
+                            strcpy((char *)__s__, "File Content:\n%s");
+                            __s__;
+                          })),
+                          (int64_t)buffer));
                       ({
-                        (((i64(*)(i64, i64))printf)(
-                            (int64_t)(({
-                              i64 *__s__ = (i64 *)xmalloc(18 * sizeof(char));
-                              strcpy((char *)__s__, "File Content:\n%s");
-                              __s__;
-                            })),
-                            (int64_t)buffer));
-                        ({
-                          (((i64(*)(i64))fclose)((int64_t)file));
-                          0;
-                        });
+                        (((i64(*)(i64))fclose)((int64_t)file));
+                        0;
                       });
                     });
                   });

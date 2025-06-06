@@ -8,8 +8,6 @@
   #include <stdlib.h>
   #include <string.h>
   
-  enum __effects__ { State };
-  
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_5__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
@@ -34,11 +32,7 @@
         i64 arg = (i64)(i - 1);
         ({
           (RAISE(state_stub, set, ((i64)arg)));
-          (({
-            __attribute__((musttail)) return ((
-                i64(*)(i64, i64))__countdown_lifted_1__)((i64)0, (i64)state_stub);
-            0;
-          }));
+          (((i64(*)(i64, i64))__countdown_lifted_1__)((i64)0, (i64)state_stub));
         });
       }));
     }));
@@ -61,11 +55,13 @@
         (HANDLE(__handle_body_lifted_7__,
                 ({TAIL, __tail__handler_state1_stub_lifted_8___get},
                  {TAIL, __tail__handler_state1_stub_lifted_8___set}),
-                ((i64)countdown, (i64)s)));
+                ((i64)countdown, (i64)s),
+                "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
         (HANDLE(__handle_body_lifted_5__,
                 ({SINGLESHOT, __handler_state2_stub_lifted_6___get},
                  {SINGLESHOT, __handler_state2_stub_lifted_6___set}),
-                ((i64)countdown, (i64)s)));
+                ((i64)countdown, (i64)s),
+                "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
       });
     }));
   }

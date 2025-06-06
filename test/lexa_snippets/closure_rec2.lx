@@ -1,16 +1,16 @@
-def f() {
+def f(): int {
     val env_var1 = 100;
     val env_var2 = 200;
-    rec def f() {
+    rec def f <> (): int {
         g()
-    } and g() {
+    } and g <> (): int {
         val _ = ~printInt(env_var1);
         ~printInt(env_var2)
     };
     f()
 }
 
-def main() {
+def main(): int {
     val _ = f();
     0
 }

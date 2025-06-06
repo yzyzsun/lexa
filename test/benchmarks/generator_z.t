@@ -1,3 +1,3 @@
-  $ lexa ../../benchmarks/lexaz/generator/main.lx -o main --lexaz &> /dev/null
+  $ lexa ../../benchmarks/lexaz/generator/main.lx -o main --gen-offset &> /dev/null
   $ ./main 5
   57

@@ -123,8 +123,14 @@ public:
 
                         std::string LabelName = "__callsite_metadata_${:uid}___" + metadata.str();
 
-                        // Create a label right after the function call
-                        IRBuilder<> Builder(CI->getNextNode());
+                        // Disable TCO for the callee
+                        if (CI->isTailCall() && metadata[0] != '1')
+                        {
+                            CI->setTailCallKind(CallInst::TailCallKind::TCK_None);
+                        }
+
+                        // Create a label right before the function call
+                        IRBuilder<> Builder(CI);
                         Builder.CreateCall(
                             InlineAsm::get(FunctionType::get(Builder.getVoidTy(), false), LabelName + ":\n", "", true),
                             {});

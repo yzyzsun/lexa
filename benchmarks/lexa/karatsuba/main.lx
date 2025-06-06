@@ -1,76 +1,76 @@
 effect Abort {
-  dcl illegal_denominator
+  dcl illegal_denominator: () -> int
 }
 
-def mod(a, b, abort_stub) {
+def mod [; abort_l: Abort] (a: int, b: int): int {
     if !(b > 0) then
-        raise abort_stub.illegal_denominator()
+        raise abort_l.illegal_denominator()
     else 
         a % b
 }
 
-def divide(a, b, abort_stub) {
+def divide [; abort_l: Abort] (a: int, b: int): int {
     if b == 0 then
-        raise abort_stub.illegal_denominator()
+        raise abort_l.illegal_denominator()
     else 
         a / b
 }
 
-def numdigits(a) {
+def numdigits(a: int): int {
     if a < 2 then
         1
     else 
         1 + numdigits(a / 2)
 }
 
-def pow2(n) {
+def pow2(n: int): int {
     if n == 0 then
         1
     else
         2 * pow2(n - 1)
 }
 
-def max(a, b) {
+def max(a: int, b: int): int {
     if a > b then
         a
     else 
         b
 }
 
-def karatsuba(num1, num2, threshold, abort_stub) {
+def karatsuba [; abort_l: Abort] (num1: int, num2: int, threshold: int): int {
     if num1 < threshold || num2 < threshold then
         num1 * num2
     else 
         val m = max(numdigits(num1), numdigits(num2));
-        val m2 = divide(m, 2, abort_stub);
+        val m2 = divide:[; abort_l](m, 2);
         val powm2 = pow2(m2);
     
-        val high1 = divide(num1, powm2, abort_stub);
-        val low1 = mod(num1, powm2, abort_stub);
-        val high2 = divide(num2, powm2, abort_stub);
-        val low2 = mod(num2, powm2, abort_stub);
+        val high1 = divide:[; abort_l](num1, powm2);
+        val low1 = mod:[; abort_l](num1, powm2);
+        val high2 = divide:[; abort_l](num2, powm2);
+        val low2 = mod:[; abort_l](num2, powm2);
 
-        val z0 = karatsuba(low1, low2, threshold, abort_stub);
-        val z1 = karatsuba(low1 + high1, low2 + high2, threshold, abort_stub);
-        val z2 = karatsuba(high1, high2, threshold, abort_stub);
+        val z0 = karatsuba:[; abort_l](low1, low2, threshold);
+        val z1 = karatsuba:[; abort_l](low1 + high1, low2 + high2, threshold);
+        val z2 = karatsuba:[; abort_l](high1, high2, threshold);
 
         z2 * powm2 * powm2 + ((z1 - z2 - z0) * powm2) + z0
 }
 
 
-def loop(n, i, acc, abort_stub) {
+def loop [; abort_l: Abort] (n: int, i: int, acc: int): int {
     if i == 0 then
         acc
     else
     (
-        loop(n, i - 1, acc + karatsuba(n, n, 2, abort_stub), abort_stub)
+        loop:[; abort_l](n, i - 1, acc + karatsuba:[; abort_l](n, n, 2))
     )
 }
 
-def run(n, i) {
-    handle {
-        loop(n, i, 0, abort_stub)
-    } with abort_stub: Abort {
+def run(n: int, i: int): int {
+    handle <> {
+        loop:[; abort_l](n, i, 0)
+    } with abort_l: Abort {
         exc illegal_denominator() {
             ~printf("Error: illegal denominator\n");
             1
@@ -79,7 +79,7 @@ def run(n, i) {
     
 }
 
-def main() {
+def main(): int {
     val n = ~readInt();
     val res = run(n, 1000000);
     ~printInt(res);

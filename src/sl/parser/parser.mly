@@ -184,15 +184,12 @@ top_level:
         TLPolyAbs (name, type_params, cap_params, label_params, params, return_ty, e) 
       }
   | EFFECT name = CAPITALIZED_VAR LCB l = list(effect_sig) RCB { TLEffSig (name, l) }
-  | EFFECTZ name = CAPITALIZED_VAR LCB ops = list(effectz_sig) RCB { TLEffZSig (name, ops) }
+  | EFFECTZ name = CAPITALIZED_VAR LCB ops = list(effect_sig) RCB { TLEffZSig (name, ops) }
   | TYPE l = separated_nonempty_list(AND, type_def) { TLType l }
   | OPEN filename = STRING { TLOpen filename }
   | OPEN_C_HEADER filename = STRING { TLOpenC filename }
       
 effect_sig:
-  | DCL v = VAR { v }
-
-effectz_sig:
   | DCL v = VAR COLON LPAREN inputs_ty = separated_list(COMMA, type_exp) RPAREN RARROW return_ty = type_exp 
     { (v, (inputs_ty, return_ty)) }
 

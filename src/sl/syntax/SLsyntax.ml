@@ -2,9 +2,9 @@ open Syntax__Common
 open Syntax__Varset
 
 type top_level =
-  | TLPolyAbs of var * (var list) * (var list) * (var * var) list * parameter list * ty * expr (* name ; cap vars ; labels ; params ; body *)
+  | TLPolyAbs of var * (var list) * (var list) * (var * var) list * parameter list * ty * expr (* name ; type params; cap vars ; labels ; params ; body *)
   | TLAbs of var * (var list) * (var * var) list * parameter list * ty * expr (* name ; cap vars ; labels ; params ; body *)
-  | TLEffSig of var * var list
+  | TLEffSig of var * (var * (ty list * ty)) list
   | TLEffZSig of var * (var * (ty list * ty)) list
   | TLType of typedef list
   | TLOpen of var

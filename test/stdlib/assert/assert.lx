@@ -1,6 +1,6 @@
 open "../../../stdlib/assert.lx"
 
-def main() {
+def main(): int {
     assert(true);
     ~strPrint("assertion passed\n");
     assert(false);

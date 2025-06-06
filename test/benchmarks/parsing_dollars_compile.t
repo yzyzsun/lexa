@@ -8,13 +8,11 @@
   #include <stdlib.h>
   #include <string.h>
   
-  enum __effects__ { Read, Emit, Stop };
-  
   static i64 __handle_body_lifted_14__(i64 *, i64 *);
   i64 __tail__handler_emit_stub_lifted_15___emit(i64 *, i64);
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_16__(i64 *, i64 *);
-  i64 __handler_stop_stub_lifted_17___stop(i64 *, i64);
+  i64 __handler_stop_stub_lifted_17___stop(i64 *);
   static i64 __handle_body_lifted_18__(i64 *, i64 *);
   i64 __tail__handler_read_stub_lifted_19___read(i64 *);
   static i64 __run_lifted_12__(i64, i64);
@@ -66,16 +64,18 @@
       ({
         (HANDLE(__handle_body_lifted_14__,
                 ({TAIL, __tail__handler_emit_stub_lifted_15___emit}),
-                ((i64)action, (i64)n, (i64)s)));
+                ((i64)action, (i64)n, (i64)s),
+                "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
         (((i64 *)s)[0]);
       });
     }));
   }
   
-  static i64 __catch_lifted_6__(i64 __env__, i64 action, i64 emit_stub, i64 n) {
+  static i64 __catch_lifted_6__(i64 __env__, i64 action, i64 n, i64 emit_stub) {
     return ((HANDLE(__handle_body_lifted_16__,
                     ({ABORT, __handler_stop_stub_lifted_17___stop}),
-                    ((i64)action, (i64)emit_stub, (i64)n))));
+                    ((i64)action, (i64)emit_stub, (i64)n),
+                    "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")));
   }
   
   static i64 __feed_lifted_7__(i64 __env__, i64 n, i64 action, i64 stop_stub,
@@ -97,7 +97,8 @@
         (HANDLE(__handle_body_lifted_18__,
                 ({TAIL, __tail__handler_read_stub_lifted_19___read}),
                 ((i64)action, (i64)dollar, (i64)emit_stub, (i64)i_ref, (i64)j_ref,
-                 (i64)n, (i64)newline, (i64)stop_stub)));
+                 (i64)n, (i64)newline, (i64)stop_stub),
+                "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
       });
     }));
   }
@@ -105,27 +106,19 @@
   static i64 __parse_lifted_8__(i64 __env__, i64 a, i64 read_stub, i64 emit_stub,
                                 i64 stop_stub) {
     return (({
-      i64 c = (i64)(RAISE(read_stub, read, ((i64)0)));
+      i64 c = (i64)(RAISE(read_stub, read, ()));
       ((((i64(*)(i64, i64))__is_dollar_lifted_4__)((i64)0, (i64)c))
-           ? (({
-               __attribute__((musttail)) return (
-                   (i64(*)(i64, i64, i64, i64, i64))__parse_lifted_8__)(
-                   (i64)0, (i64)(a + 1), (i64)read_stub, (i64)emit_stub,
-                   (i64)stop_stub);
-               0;
-             }))
+           ? (((i64(*)(i64, i64, i64, i64, i64))__parse_lifted_8__)(
+                 (i64)0, (i64)(a + 1), (i64)read_stub, (i64)emit_stub,
+                 (i64)stop_stub))
            : ((((i64(*)(i64, i64))__is_newline_lifted_2__)((i64)0, (i64)c))
                   ? ({
                       (RAISE(emit_stub, emit, ((i64)a)));
-                      (({
-                        __attribute__((musttail)) return (
-                            (i64(*)(i64, i64, i64, i64, i64))__parse_lifted_8__)(
-                            (i64)0, (i64)0, (i64)read_stub, (i64)emit_stub,
-                            (i64)stop_stub);
-                        0;
-                      }));
+                      (((i64(*)(i64, i64, i64, i64, i64))__parse_lifted_8__)(
+                          (i64)0, (i64)0, (i64)read_stub, (i64)emit_stub,
+                          (i64)stop_stub));
                     })
-                  : (RAISE(stop_stub, stop, ((i64)0)))));
+                  : (RAISE(stop_stub, stop, ()))));
     }));
   }
   
@@ -135,16 +128,16 @@
         (i64)0, (i64)0, (i64)read_stub, (i64)emit_stub, (i64)stop_stub)));
   }
   
-  static i64 __sum_action_lifted_10__(i64 __env__, i64 emit_stub, i64 n) {
+  static i64 __sum_action_lifted_10__(i64 __env__, i64 n, i64 emit_stub) {
     return (({
       i64 catch_action_i64 = (i64)catch_action;
       (((i64(*)(i64, i64, i64, i64))__catch_lifted_6__)(
-          (i64)0, (i64)catch_action_i64, (i64)emit_stub, (i64)n));
+          (i64)0, (i64)catch_action_i64, (i64)n, (i64)emit_stub));
     }));
   }
   
-  static i64 __catch_action_lifted_11__(i64 __env__, i64 stop_stub, i64 emit_stub,
-                                        i64 n) {
+  static i64 __catch_action_lifted_11__(i64 __env__, i64 n, i64 stop_stub,
+                                        i64 emit_stub) {
     return (({
       i64 feed_action_i64 = (i64)feed_action;
       (((i64(*)(i64, i64, i64, i64, i64))__feed_lifted_7__)(
@@ -202,12 +195,9 @@
     i64 __res__ = ({
       i64 n = (i64)((i64)(readInt()));
       ({
-        i64 run_result =
-            (i64)(((i64(*)(i64, i64))__run_lifted_12__)((i64)0, (i64)n));
-        ({
-          ((i64)(printInt((int64_t)run_result)));
-          0;
-        });
+        ((i64)(printInt(
+            (int64_t)(((i64(*)(i64, i64))__run_lifted_12__)((i64)0, (i64)n)))));
+        0;
       });
     });
     destroy_stack_pool();
@@ -235,7 +225,7 @@
                       ({
                         i64 j = (i64)(((i64 *)j_ref)[0]);
                         ((i > n)
-                             ? (RAISE(stop_stub, stop, ((i64)0)))
+                             ? (RAISE(stop_stub, stop, ()))
                              : ((j == 0) ? ({
                                  (((i64 *)i_ref)[0] = (i + 1));
                                  ({
@@ -295,7 +285,7 @@
     }));
   }
   
-  i64 __handler_stop_stub_lifted_17___stop(i64 *__env__, i64 _) {
+  i64 __handler_stop_stub_lifted_17___stop(i64 *__env__) {
     return (({
       i64 action = (i64)(((i64 *)__env__)[0]);
       ({
@@ -321,8 +311,8 @@
               closure_t *__clo__ = (closure_t *)action;
               i64 __f__ = (i64)(__clo__->func_pointer);
               i64 __env__ = (i64)(__clo__->env);
-              ((i64(*)(i64, i64, i64, i64))__f__)((i64)__env__, (i64)stop_stub,
-                                                  (i64)emit_stub, (i64)n);
+              ((i64(*)(i64, i64, i64, i64))__f__)((i64)__env__, (i64)n,
+                                                  (i64)stop_stub, (i64)emit_stub);
             }));
           });
         });
@@ -356,7 +346,7 @@
             closure_t *__clo__ = (closure_t *)action;
             i64 __f__ = (i64)(__clo__->func_pointer);
             i64 __env__ = (i64)(__clo__->env);
-            ((i64(*)(i64, i64, i64))__f__)((i64)__env__, (i64)emit_stub, (i64)n);
+            ((i64(*)(i64, i64, i64))__f__)((i64)__env__, (i64)n, (i64)emit_stub);
           }));
         });
       });

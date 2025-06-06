@@ -6,6 +6,8 @@ open Primitive
 module Varset = Syntax__Varset
 
 let effect_sigs_context = ref []
+let effect_names: string list ref = ref []
+let effectz_names: string list ref = ref[]
 let type_defs_context = ref []
 
 (** Check for the presence of a capability variable. Raises an exception if not. *)
@@ -30,11 +32,22 @@ let check_capture_set_as_unamb (captured_set: capability) captured_vars cap_vars
   check_capability captured_set captured_vars cap_vars label_vars;
   match captured_set with
   | Some cap, labels -> if not (Varset.is_empty labels) then
-      typing_error "Captured set contains both a capability variable and labels\n"
+      typing_error "Captured set contains both a capability variable and a label\n"
     else Capability cap
   | None, labels ->
     let labels' = Varset.fold (fun label acc -> (label, find_effect_name label captured_vars label_vars)::acc) labels [] in
-    Labels labels'
+
+    (* check effect name uniqueness for zero-cost effects *)
+    let rec check_uniqueness effect_names = 
+      match effect_names with
+      | [] -> true
+      | name::rest -> if (List.exists ((=) name) !effectz_names) && (List.exists ((=) name) rest) 
+          then false 
+          else check_uniqueness rest
+    in
+    if check_uniqueness (List.map snd labels') 
+      then Labels labels'
+      else typing_error "Captured set contains labels with duplicate zero-cost effect names\n"
 
 (** Fetches the effect signature given the effect name and operation. *)
 let get_effect_sig (effect_name: string) effect_op =
@@ -70,9 +83,15 @@ and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (stri
       let e2' = check_ty captured_vars cap_vars label_vars term_vars e2 TInt in (*TODO: Add float types*)
       Arith (e1', op, e2'), TInt
     | Cmp (e1, op, e2) ->
-      let e1' = check_ty captured_vars cap_vars label_vars term_vars e1 TInt in
-      let e2' = check_ty captured_vars cap_vars label_vars term_vars e2 TInt in
-      Cmp (e1', op, e2'), TBool
+      if op == CEq || op == CNeq then
+        let e1' = type_expr captured_vars cap_vars label_vars term_vars e1 in
+        let ty = type_of e1' in
+        let e2' = check_ty captured_vars cap_vars label_vars term_vars e2 ty in
+        Cmp (e1', op, e2'), TBool
+      else
+        let e1' = check_ty captured_vars cap_vars label_vars term_vars e1 TInt in
+        let e2' = check_ty captured_vars cap_vars label_vars term_vars e2 TInt in
+        Cmp (e1', op, e2'), TBool
     | Neg e -> 
       let e' = check_ty captured_vars cap_vars label_vars term_vars e TBool in
       Neg e', TBool
@@ -164,7 +183,7 @@ and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (stri
               let (params_ty, return_ty) = (
                 match List.assoc_opt name prim_sigs with
                 | Some f_sig -> f_sig
-                | None -> typing_error "Could not find signature of primitive function: %s" f
+                | None -> ([], TInt) (* Default to int*)
               ) in
               TFun {
                 captured_set=None, Varset.empty;
@@ -210,8 +229,14 @@ and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (stri
                   let app_args' = List.map (fun arg -> type_expr captured_vars cap_vars label_vars term_vars arg) app_args in
                   App { func = func'; cap_insts; label_args; args = app_args' }, return_ty
                 | None -> 
-                  let app_args' = List.map2 (fun var ty -> check_ty captured_vars cap_vars label_vars term_vars var ty ~msg:"App: Argument types don't match") app_args params_ty in 
-                  App { func = func'; cap_insts; label_args; args = app_args' }, return_ty
+                  if List.exists (fun (prim_name, _) -> prim_name = name) prim_sigs
+                    || List.exists (fun (prim_name, _) -> prim_name = name) prim_polymophic_sigs then
+                    let app_args' = List.map2 (fun var ty -> check_ty captured_vars cap_vars label_vars term_vars var ty ~msg:"App: Argument types don't match") app_args params_ty in 
+                    App { func = func'; cap_insts; label_args; args = app_args' }, return_ty
+                  else (* Primitive type info not found: Skip type checking arguments *)
+                    let app_args' = List.map (fun var -> type_expr captured_vars cap_vars label_vars term_vars var) app_args in 
+                    App { func = func'; cap_insts; label_args; args = app_args' }, return_ty
+
               )
             | _ ->
               let effect_names = List.map (fun label -> find_effect_name label captured_vars label_vars) label_args in
@@ -222,7 +247,7 @@ and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (stri
               (* Check capability and label arguments *)
               if not (effect_names = (List.map snd label_params)) then 
                 typing_error "App: Effect names for labels don't match\n\tExpected: %s\n\tActual: %s\n\n" (String.concat ", " (List.map snd label_params)) (String.concat ", " effect_names)
-              else if not ((List.length cap_params) = (List.length cap_params)) then
+              else if not ((List.length cap_insts) = (List.length cap_params)) then
                 typing_error "App: Capability length don't match\n"
               else
                 (* Check argument types *)
@@ -255,7 +280,10 @@ and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (stri
           then typing_error "Handle: Incorrect numbers of handler arguments\n\tExpected: %d\n\tActual: %d" (List.length effect_inputs_ty) (List.length op_params) 
           else
             let handler_params = List.map2 (fun x y -> (x, y)) op_params effect_inputs_ty in
-            let op_body' = check_ty captured_vars' [] [] (handler_params@term_vars) op_body return_ty ~msg:"Handle: Effect return types doesn't match body's return type" in
+            let op_body' = if op_anno == HDef 
+              then type_expr captured_vars' [] [] (handler_params@term_vars) op_body (* For tail-resumptive handler, the effect body type doesn't have to match return type *)
+              else check_ty captured_vars' [] [] (handler_params@term_vars) op_body return_ty ~msg:"Handle: Effect return types doesn't match body's return type"
+            in
             { op_anno; op_name; op_params; op_body = op_body' }
       ) handler_defs in
       Handle { captured_set; handle_body = handle_body'; handler_label; sig_name; handler_defs = handler_defs' }, return_ty
@@ -273,7 +301,8 @@ and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (stri
       let cont' = type_expr captured_vars cap_vars label_vars term_vars cont in
       let type_cont = type_of cont' in 
       (match type_cont with
-      | TCont { effect_return_ty; return_ty; _ } ->
+      | TCont { effect_return_ty; return_ty; captured_set } ->
+        check_capability captured_set captured_vars cap_vars label_vars;
         let arg' = check_ty captured_vars cap_vars label_vars term_vars arg effect_return_ty ~msg:"Resume: Argument doesn't match expected effect return type" in
         Resume (cont', arg'), return_ty
       | _ -> typing_error "Resume: Continuation type expected\n"
@@ -283,7 +312,8 @@ and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (stri
       let cont' = type_expr captured_vars cap_vars label_vars term_vars cont in
       let type_cont = type_of cont' in 
       (match type_cont with
-      | TCont { effect_return_ty; return_ty; _ } ->
+      | TCont { effect_return_ty; return_ty; captured_set } ->
+        check_capability captured_set captured_vars cap_vars label_vars;
         let arg' = check_ty captured_vars cap_vars label_vars term_vars arg effect_return_ty ~msg:"Resume: Argument doesn't match expected effect return type" in
         ResumeFinal (cont', arg'), return_ty
       | _ -> typing_error "Resume: Continuation type expected\n"
@@ -371,7 +401,7 @@ and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (stri
 
 
   in
-  { expr_desc; expr_ty; captured_vars; cap_vars; label_vars; term_vars; }
+  { expr_desc; expr_ty; captured_vars; cap_vars; label_vars }
 
 
 let check_type_defs (defs: typedef list) =

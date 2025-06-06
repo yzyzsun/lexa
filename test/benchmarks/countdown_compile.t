@@ -8,11 +8,9 @@
   #include <stdlib.h>
   #include <string.h>
   
-  enum __effects__ { State };
-  
   static i64 __handle_body_lifted_4__(i64 *, i64 *);
   i64 __tail__handler_state_stub_lifted_5___set(i64 *, i64);
-  i64 __tail__handler_state_stub_lifted_5___get(i64 *, i64);
+  i64 __tail__handler_state_stub_lifted_5___get(i64 *);
   static i64 __run_lifted_2__(i64, i64);
   static i64 __countdown_lifted_1__(i64, i64);
   static closure_t *run;
@@ -21,14 +19,10 @@
   
   static i64 __countdown_lifted_1__(i64 __env__, i64 state_stub) {
     return (({
-      i64 i = (i64)(RAISE(state_stub, get, ((i64)0)));
+      i64 i = (i64)(RAISE(state_stub, get, ()));
       ((i == 0) ? i : ({
         (RAISE(state_stub, set, ((i64)(i - 1))));
-        (({
-          __attribute__((musttail)) return (
-              (i64(*)(i64, i64))__countdown_lifted_1__)((i64)0, (i64)state_stub);
-          0;
-        }));
+        (((i64(*)(i64, i64))__countdown_lifted_1__)((i64)0, (i64)state_stub));
       }));
     }));
   }
@@ -44,7 +38,8 @@
       (HANDLE(__handle_body_lifted_4__,
               ({TAIL, __tail__handler_state_stub_lifted_5___get},
                {TAIL, __tail__handler_state_stub_lifted_5___set}),
-              ((i64)countdown, (i64)s)));
+              ((i64)countdown, (i64)s),
+              "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
     }));
   }
   
@@ -65,7 +60,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __tail__handler_state_stub_lifted_5___get(i64 *__env__, i64 _) {
+  i64 __tail__handler_state_stub_lifted_5___get(i64 *__env__) {
     return (({
       i64 countdown = (i64)(((i64 *)__env__)[0]);
       ({

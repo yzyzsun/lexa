@@ -8,8 +8,6 @@
   #include <stdlib.h>
   #include <string.h>
   
-  enum __effects__ { Yield };
-  
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_7__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
@@ -110,7 +108,7 @@
   static i64 __generate_lifted_3__(i64 __env__, i64 f) {
     return ((HANDLE(__handle_body_lifted_7__,
                     ({SINGLESHOT, __handler_yield_stub_lifted_8___yield}),
-                    ((i64)f))));
+                    ((i64)f), "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")));
   }
   
   static i64 __sum_lifted_4__(i64 __env__, i64 a, i64 g) {

@@ -1,32 +1,43 @@
 open "../../../stdlib/assert.lx"
 open "../../../stdlib/option.lx"
 
-def test_option_get_success() {
-    assert(option_get(Some(3)) == 3)
+def test_option_get_success(): unit {
+    assert(option_get::[int] (Some::[int](3)) == 3)
 }
 
-def test_option_bind() {
-    assert(option_get(option_bind(Some(3), fun(x) { Some(x + 1) })) == 4);
-    assert(is_none(option_bind(Some(3), fun(_) { None })));
-    assert(is_none(option_bind(None, fun(x) { Some(x + 1) })))
+def test_option_bind(): unit {
+    assert(option_get::[int] (option_bind::[int, int](
+        Some::[int](3), 
+        fun <> (x: int): option::[int] { Some::[int](x + 1) }
+    )) == 4);
+
+    assert(is_none::[int](option_bind::[int, int](
+        Some::[int](3), 
+        fun <> (_: int): option::[int] { None::[int] }
+    )));
+
+    assert(is_none::[int](option_bind::[int, int](
+        None::[int], 
+        fun <> (x: int): option::[int] { Some::[int](x + 1) }
+    )))
 }
 
-def test_option_map() {
-    assert(option_get(option_map(Some(3), fun(x) { x + 1 })) == 4);
-    assert(is_none(option_map(None, fun(x) { x + 1 })))
+def test_option_map(): unit {
+    assert(option_get::[int](option_map::[int, int](Some::[int](3), fun <> (x: int): int { x + 1 })) == 4);
+    assert(is_none::[int](option_map::[int, int](None::[int], fun <> (x: int): int { x + 1 })))
 }
 
-def test_is_none() {
-    assert(is_none(None));
-    assert(!is_none(Some(2)))
+def test_is_none(): unit {
+    assert(is_none::[int](None::[int]));
+    assert(!is_none::[int](Some::[int](2)))
 }
 
-def test_is_some() {
-    assert(!is_some(None));
-    assert(is_some(Some(2)))
+def test_is_some(): unit {
+    assert(!is_some::[int](None::[int]));
+    assert(is_some::[int](Some::[int](2)))
 }
 
-def main() {
+def main(): int {
     test_option_get_success();
     test_option_bind();
     test_option_map();

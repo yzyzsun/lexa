@@ -1,95 +1,106 @@
 effect Process {
-    dcl yield
-    dcl fork
+    dcl yield: () -> unit
+    dcl fork: (<> [a; process_stub: Process] () -> unit) -> unit
 }
 
 effect Tick {
-    dcl tick
+    dcl tick: () -> unit
 }
 
 effect Exn {
-    dcl throw
+    dcl throw: () -> unit
 }
 
-def queueDeqExn(q, exn_stub) {
-    if ~queueIsEmpty(q) then
-        raise exn_stub.throw(0)
+def queueDeqExn [a; exn_stub: Exn] (q: queue_t::[cont <a; > unit -> unit]): (cont <a; > unit -> unit) {
+    if ~queueIsEmpty::[cont <a; > unit -> unit](q) then
+        raise exn_stub.throw();
+        ~error::[cont <a; > unit -> unit]("")
     else
-        ~queueDeq(q)
+        ~queueDeq::[cont <a; > unit -> unit](q)
 }
 
-def job(process_stub) {
-    raise process_stub.yield(0)
+def job [a; process_stub: Process] ():unit {
+    raise process_stub.yield()
 }
 
-def jobs(i, process_stub, tick_stub) {
+def jobs [; process_stub: Process, tick_stub: Tick] (i: int): unit {
     if i == 0 then
-        0
+        ()
     else
         (raise process_stub.fork(job);
-        raise tick_stub.tick(0);
-        jobs(i - 1, process_stub, tick_stub))
+        raise tick_stub.tick();
+        jobs:[; process_stub, tick_stub](i - 1))
 }
 
-def driver(job_queue) {
-    handle {
-        val k = queueDeqExn(job_queue, exn_stub);
-        resume_final k 0;
-        driver(job_queue)
+def driver [a; ] (job_queue: queue_t::[cont <a; > unit -> unit]): unit {
+    handle <a; > {
+        val k = queueDeqExn:[(a; ); exn_stub](job_queue);
+        resume_final k (());
+        driver:[(a;); ](job_queue)
     } with exn_stub: Exn {
-        exc throw(_) {
-            0
-        }
-    };
-    0
-}
-
-def spawn(f, job_queue) {
-    handle {
-        f(process_stub)
-    } with process_stub : Process {
-        hdl_1 yield(_, k) {
-            ~queueEnq(job_queue, k)
-        }
-
-        hdl_1 fork(g, k) {
-            ~queueEnq(job_queue, k);
-            spawn(g, job_queue)
+        exc throw() {
+            ()
         }
     }
 }
 
-def scheduler(f) {
-    val job_queue = ~queueMake ();
-    spawn(f, job_queue);
-    driver(job_queue)
+def spawn [a; ] (
+    f: <a; > [; process_stub: Process] () -> unit, 
+    job_queue: queue_t::[cont <a; > unit -> unit]
+    ): unit {
+    handle <a; > {
+        f:[; process_stub]()
+    } with process_stub : Process {
+        hdl_1 yield(k) {
+            ~queueEnq::[cont <a; > unit -> unit](job_queue, k);
+            ()
+        }
+
+        hdl_1 fork(g, k) {
+            ~queueEnq::[cont <a; > unit -> unit](job_queue, k);
+            spawn:[(a;); ](
+                fun <a; > [; process_stub: Process] (): unit {
+                    g:[(a; ); process_stub] ()
+                }
+                , job_queue)
+        }
+    }
 }
 
-def run(n_jobs, init) {
+def scheduler [a; ] (f: <a; > [; process_stub: Process] () -> unit): unit {
+    val job_queue = ~queueMake::[cont <a; > unit -> unit]();
+    spawn:[(a;); ](f, job_queue);
+    driver:[(a;); ](job_queue)
+}
+
+def run(n_jobs: int, init: int): int {
     val c = newref {init};
-    handle {
-        scheduler (fun (process_stub) { jobs(n_jobs, process_stub, tick_stub) })
+    handle <> {
+        scheduler:[(tick_stub); ](
+            fun <tick_stub> [; process_stub: Process] (): unit { 
+                jobs:[; process_stub, tick_stub](n_jobs) 
+            }
+        )
     } with tick_stub : Tick {
-        def tick(_) {
-            c[0] := c[0] + 1;
-            0
+        def tick() {
+            c[0] := c[0] + 1
         }
     };
     c[0]
 }
 
-def step(i, acc, n_jobs) {
+def step(i: int, acc: int, n_jobs: int): int {
     if i == 0 then
         acc
     else
         step(i - 1, run(n_jobs, acc), n_jobs)
 }
 
-def repeat(n_jobs) {
+def repeat(n_jobs: int): int {
     step(1000, 0, n_jobs)
 }
 
-def main() {
+def main(): int {
     val arg1 = ~readInt();
     val arg2 = repeat(arg1);
     ~printInt(arg2);

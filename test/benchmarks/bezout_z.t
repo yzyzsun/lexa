@@ -1,3 +1,3 @@
-  $ lexa ../../benchmarks/lexaz/bezout/main.lx -o main --lexaz &> /dev/null
+  $ lexa ../../benchmarks/lexaz/bezout/main.lx -o main &> /dev/null
   $ ./main 100
   228623860430756847

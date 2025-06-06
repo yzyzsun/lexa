@@ -1,53 +1,54 @@
 effect Search {
-    dcl pick
-    dcl fail
+    dcl pick: (int) -> int
+    dcl fail: () -> int
 }
 
-def safe(queen, diag, xs) {
-    val is_empty = ~listIsEmpty(xs);
+def safe(queen: int, diag: int, xs: node_t::[int]): bool {
+    val is_empty = ~listIsEmpty::[int](xs);
     if is_empty then
         true
     else
-        val q = ~listHead(xs);
-        val qs = ~listTail(xs);
+        val q = ~listHead::[int](xs);
+        val qs = ~listTail::[int](xs);
         if queen != q && queen != q + diag && queen != q - diag then
             safe(queen, diag + 1, qs)
         else
             false
 }
 
-def place(size, column, search_stub) {
+def place [; search_stub: Search] (size: int, column: int): node_t::[int] {
     if column == 0 then
-        ~listEnd()
+        ~listEnd::[int]()
     else
-        val rest = place(size, column - 1, search_stub);
+        val rest = place:[; search_stub](size, column - 1);
         val next = raise search_stub.pick(size);
         if safe(next, 1, rest) then
-            ~listNode(next, rest)
-        else
-            raise search_stub.fail(0)
+            ~listNode::[int](next, rest)
+        else 
+            (raise search_stub.fail();
+            ~listEnd::[int]())
 }
 
-def run(n) {
-    handle {
-        place(n, n, search_stub);
+def run(n: int): int {
+    handle <> {
+        place:[; search_stub](n, n);
         1
     } with search_stub: Search {
-        exc fail(_) { 0 }
+        exc fail() { 0 }
         hdl_s pick(size, k) {
             loop(1, 0, size, k)
         }
     }
 }
 
-def loop(i, a, size, k) {
+def loop(i: int, a: int, size: int, k: cont <> int -> int): int {
     if i == size then
         a + resume_final k i
     else
         loop(i + 1, a + resume k i, size, k)
 }
 
-def main() {
+def main(): int {
     val n = ~readInt();
     val run_res = run(n);
     ~printInt(run_res);

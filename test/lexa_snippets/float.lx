@@ -1,4 +1,4 @@
-def main() {
+def main(): int {
     val x = ~boxFloat(1.1);
     val y = ~boxFloat(2.2);
     val z = ~floatAdd(x, y);

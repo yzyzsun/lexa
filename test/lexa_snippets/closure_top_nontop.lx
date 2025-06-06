@@ -1,11 +1,11 @@
-def f(x) {
+def f(x: int): int {
     x + 1
 }
 
-def main() {
+def main(): int {
     val i = ~readInt();
     val y = 2;
-    val g = fun(x) {
+    val g = fun <> (x: int): int {
         x + y
     };
     val _ = ~printInt((if i == 0 then f else g)(i));

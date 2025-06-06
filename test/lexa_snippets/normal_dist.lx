@@ -1,8 +1,8 @@
-def normal(mu, sigma) {
+def normal(mu: int, sigma: int): int {
     val u1 = ~floatRand();
     val u2 = ~floatRand();
-    val r = ~floatSqrt(~floatMul(~boxFloat(-2), ~floatLog(u1)));
-    val theta = ~floatMul(~floatMul(~boxFloat(2), ~floatPi()), u2);
+    val r = ~floatSqrt(~floatMul(~boxFloat(-2.0), ~floatLog(u1)));
+    val theta = ~floatMul(~floatMul(~boxFloat(2.0), ~floatPi()), u2);
     val u3 = ~floatRand();
     ~printFloat(u1);
     ~printFloat(u2);
@@ -15,8 +15,8 @@ def normal(mu, sigma) {
         ~floatAdd(mu, ~floatMul(~floatMul(sigma, r), ~floatSin(theta)))
 }
 
-def main() {
-    val x = normal(~boxFloat(0), ~boxFloat(1));
+def main(): int {
+    val x = normal(~boxFloat(0.0), ~boxFloat(1.0));
     ~printFloat(x);
     0
 }

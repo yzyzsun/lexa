@@ -1,40 +1,47 @@
 open "../../../stdlib/assert.lx"
 open "../../../stdlib/pair.lx"
 
-def test_fst() {
-    assert(fst(Pair(3, 4)) == 3)
+def test_fst(): unit {
+    assert(fst::[int, int](Pair::[int, int](3, 4)) == 3)
 }
 
-def test_snd() {
-    assert(snd(Pair(3, 4)) == 4)
+def test_snd(): unit {
+    assert(snd::[int, int](Pair::[int, int](3, 4)) == 4)
 }
 
-def test_swap() {
-    val out = swap(Pair(3, 4));
-    assert(fst(out) == 4 && snd(out) == 3)
+def test_swap(): unit {
+    val out = swap::[int, int] (Pair::[int, int](3, 4));
+    assert(fst::[int, int] (out) == 4 && snd::[int, int] (out) == 3)
 }
 
-def test_pair_fold() {
-    assert(pair_fold(fun(x, y) { x + y }, Pair(3, 4)) == 7)
+def test_pair_fold(): unit {
+    assert(pair_fold::[int, int, int](
+        fun <> (x: int, y: int): int { x + y },
+        Pair::[int, int](3, 4)) == 7
+    )
 }
 
-def test_pair_map() {
-    val out = pair_map(fun(x) { x + 1 }, fun(x) { x + 2 }, Pair(1, 2));
-    assert(fst(out) == 2 && snd(out) == 4)
+def test_pair_map(): unit {
+    val out = pair_map::[int, int, int, int](
+        fun <> (x: int): int { x + 1 },
+        fun <> (x: int): int { x + 2 },
+        Pair::[int, int](1, 2)
+    );
+    assert(fst::[int, int](out) == 2 && snd::[int, int](out) == 4)
 }
 
-def test_pair_eq_prim() {
-    assert(pair_eq_prim(
-        Pair(1, 2),
-        Pair(1, 2)
+def test_pair_eq_prim(): unit {
+    assert(pair_eq_prim::[int, int](
+        Pair::[int, int](1, 2),
+        Pair::[int, int](1, 2)
     ));
-    assert(!pair_eq_prim(
-        Pair(1, 2),
-        Pair(2, 3)
+    assert(!pair_eq_prim::[int, int](
+        Pair::[int, int](1, 2),
+        Pair::[int, int](2, 3)
     ))
 }
 
-def main() {
+def main(): int {
     test_fst();
     test_snd();
     test_swap();

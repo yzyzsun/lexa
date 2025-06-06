@@ -39,7 +39,8 @@ and t = (* expressions AFTER closure conversion *)
   | Handle of { env : var list;
     body_name: var;
     obj_name : var;
-    sig_name : var
+    sig_name : var;
+    captured_set : capability
   }
   | HandleZ of {
     env : var list;

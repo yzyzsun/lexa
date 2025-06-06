@@ -8,8 +8,6 @@
   #include <stdlib.h>
   #include <string.h>
   
-  enum __effects__ { Operator };
-  
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_6__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
@@ -36,19 +34,17 @@
   static i64 __run_lifted_2__(i64 __env__, i64 n, i64 s) {
     return ((HANDLE(__handle_body_lifted_6__,
                     ({SINGLESHOT, __handler_operator_stub_lifted_7___operator}),
-                    ((i64)loop, (i64)n, (i64)s))));
+                    ((i64)loop, (i64)n, (i64)s),
+                    "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")));
   }
   
   static i64 __step_lifted_3__(i64 __env__, i64 l, i64 s, i64 n) {
-    return (((l == 0) ? s : (({
-      __attribute__((musttail)) return (
-          (i64(*)(i64, i64, i64, i64))__step_lifted_3__)(
-          (i64)0, (i64)(l - 1),
-          (i64)(((i64(*)(i64, i64, i64))__run_lifted_2__)((i64)0, (i64)n,
-                                                          (i64)s)),
-          (i64)n);
-      0;
-    }))));
+    return (((l == 0) ? s
+                      : (((i64(*)(i64, i64, i64, i64))__step_lifted_3__)(
+                            (i64)0, (i64)(l - 1),
+                            (i64)(((i64(*)(i64, i64, i64))__run_lifted_2__)(
+                                (i64)0, (i64)n, (i64)s)),
+                            (i64)n))));
   }
   
   static i64 __repeat_lifted_4__(i64 __env__, i64 n) {

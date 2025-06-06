@@ -1,46 +1,70 @@
-type cell =
+type cell::['a] =
     | QueueNil
-    | QueueCons of cell_ref
+    | QueueCons of ref 'a * ref cell::['a]
 
-def queue_make() {
+type queue::['a] =
+    | Queue of ref cell::['a] * ref cell::['a] * ref int
+
+def queue_make::['a] (): queue::['a] {
     // first, last, length
-    newref {QueueNil, QueueNil, 0}
+    Queue::['a] (newref{ QueueNil::['a] }, newref{ QueueNil::['a] }, newref {0})
 }
 
-def queue_clear(q) {
-    q[0] := QueueNil;
-    q[1] := QueueNil;
-    q[2] := 0
-}
-
-def queue_enqueue(q, x) {
-    val new_cell = QueueCons (newref {x, QueueNil});
-    match q[1] with
-    | QueueNil -> { q[2] := 1; q[0] := new_cell; q[1] := new_cell }
-    | QueueCons (last_cell) -> { q[2] := q[2] + 1; last_cell[1] := new_cell; q[1] := new_cell }
-}
-
-def queue_dequeue(q) {
-    match q[0] with
-    | QueueNil -> { ~error("Empty queue") }
-    | QueueCons (first_cell) -> {
-        val next = first_cell[1];
-        match next with
-        | QueueNil -> { queue_clear(q); first_cell[0] }
-        | QueueCons (next_cell) -> { q[0] := first_cell[1]; q[2] := q[2] - 1; first_cell[0] }
+def queue_clear::['a] (q: queue::['a]): unit {
+    match q with
+    | Queue (fs, ls, len) -> {
+        fs[0] := QueueNil::['a];
+        ls[0] := QueueNil::['a];
+        len[0] := 0
     }
 }
 
-def queue_peek(q) {
-    match q[0] with
-    | QueueNil -> { ~error("Empty queue") }
-    | QueueCons (cell_ref) -> { cell_ref[0] }
+def queue_enqueue::['a] (q: queue::['a], x: 'a): unit {
+    val new_cell = QueueCons::['a] (newref { x }, newref{ QueueNil::['a] });
+    match q with
+    | Queue (fs, ls, len) -> {
+        match ls[0] with
+        | QueueNil -> { len[0] := 1; fs[0] := new_cell; ls[0] := new_cell }
+        | QueueCons (_, last_next) -> {
+            len[0] := len[0] + 1;
+            last_next[0] := new_cell;
+            ls[0] := new_cell
+        }
+    }
 }
 
-def queue_size(q) {
-    q[2]
+def queue_dequeue::['a] (q: queue::['a]): 'a {
+    match q with
+    | Queue (fs, ls, len) -> { 
+        match fs[0] with
+        | QueueNil -> { ~error::['a]("Empty queue") }
+        | QueueCons (v, first_next) -> {
+            val next = first_next[0];
+            match next with
+            | QueueNil -> { queue_clear::['a] (q); v[0] }
+            | QueueCons (v_next, _) -> { 
+                len[0] := len[0] - 1;
+                fs[0] := next;
+                v[0] 
+            }
+        }
+    }
 }
 
-def queue_is_empty(q) {
-    q[2] == 0
+def queue_peek::['a] (q: queue::['a]): 'a {
+     match q with
+    | Queue (fs, ls, _) -> {
+        match fs[0] with
+        | QueueNil -> { ~error::['a]("Empty queue") }
+        | QueueCons (v, _) -> { v[0] }
+    }
+}
+
+def queue_size::['a] (q: queue::['a]): int {
+     match q with
+    | Queue (_fs, _ls, len) -> { len[0] }
+}
+
+def queue_is_empty::['a] (q: queue::['a]): bool {
+    queue_size::['a] (q) == 0
 }

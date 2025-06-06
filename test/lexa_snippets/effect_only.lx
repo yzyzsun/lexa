@@ -1,4 +1,4 @@
-def main() {
+def main(): int {
     ~printInt(42);
     ~printInt(43);
     ~printInt(44);

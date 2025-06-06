@@ -40,7 +40,7 @@ for benchmark in benchmarks:
         "build": LEXA_BUILD_COMMAND, "run": LEXA_RUN_COMMAND,
     }
 
-    LEXAZ_BUILD_COMMAND = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main --lexaz'"
+    LEXAZ_BUILD_COMMAND = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main --gen-offset'"
     LEXAZ_RUN_COMMAND = "./main {IN}"
     config[("lexaz", benchmark)] = {
         "build": LEXAZ_BUILD_COMMAND, "run": LEXAZ_RUN_COMMAND,
@@ -86,7 +86,7 @@ config[("effekt", "interruptible_iterator")]["adjust_warmup"] = True
 config[("effekt", "two_threads_ackermann")]["build"] = "effekt_latest.sh --backend chez-lift --compile main.effekt"
 config[("effekt", "two_threads_ackermann")]["run"] = "scheme --script out/main.ss {IN} 0"
 config[("lexa", "two_threads_ackermann")]["build"] = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main --stack-size 1024'"
-config[("lexaz", "two_threads_ackermann")]["build"] = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main --lexaz --stack-size 1024'"
+config[("lexaz", "two_threads_ackermann")]["build"] = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main --gen-offset --stack-size 1024'"
 
 # Known Failures
 config[("koka", "interruptible_iterator")]["fail_reason"] = "Koka type system limitation"

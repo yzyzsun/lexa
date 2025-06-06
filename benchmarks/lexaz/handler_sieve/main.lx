@@ -1,16 +1,16 @@
 effectz Prime {
-    dcl prime: (int) -> int
+    dcl prime: (int) -> bool
 }
 
 def primes [; prime_l: Prime] (i: int, n: int, a: int): int {
     if i < n then
-        if raise prime_l.prime(i) > 0 then
+        if raise prime_l.prime(i) then
             handle <prime_l> {
                 primes: [;prime_l_new](i + 1, n, a + i)
             } with prime_l_new: Prime {
                 def prime(e) {
                     if (e % i) == 0 then
-                        0
+                        false
                     else
                         raise prime_l.prime(e)
                 }                
@@ -26,7 +26,7 @@ def run(n: int): int {
         primes: [;prime_l](2, n, 0)
     } with prime_l: Prime {
         def prime(e) {
-            1
+            true
         }        
     }
 }

@@ -25,12 +25,18 @@ def parse_variable_locations(elf):
             if DIE.tag == 'DW_TAG_subprogram':
                 function_name = DIE.attributes.get('DW_AT_name', None)
                 if not function_name:
-                    continue
+                    abs_origin_attr = DIE.attributes.get('DW_AT_abstract_origin')
+                    if abs_origin_attr:
+                        abs_origin = dwarfinfo.get_DIE_from_refaddr(abs_origin_attr.value)
+                        function_name = abs_origin.attributes.get('DW_AT_name')
+                    if not function_name:
+                        continue
                 function_name = function_name.value.decode('utf-8')
 
                 for child in collect_variable_DIEs(DIE):
                     var_name_attr = child.attributes.get('DW_AT_name')
                     loc_attr = child.attributes.get('DW_AT_location')
+
                     if not loc_attr:
                         continue
                     elif not var_name_attr:

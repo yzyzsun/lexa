@@ -195,8 +195,8 @@ i64 ENTER(i64* env, void* new_sp, void* body) {
         // this address is also copied, helping the control to go back to the shared exchanger.
         "pushq %%rcx\n\t" // Push the exchanger to the new stack
         "pushq %%rcx\n\t" // Align the stack to 16 bytes
-        "callq *%%rdx\n\t"
         "__callsite_metadata_ENTER___1_0_0_0:\n\t"
+        "callq *%%rdx\n\t"
         "movq %%rax, %%r12\n\t" // Save the return value into a callee-saved register
         "movq %%rsp, %%rdi\n\t" // Move the current stack pointer to the first argument
         "callq free_stack\n\t" // Free the stack. NB HACK ATTENTTION!!!! This results in use-after-free in the next few instructions
@@ -236,7 +236,7 @@ i64 RESUME(i64 arg, void* exc, void* rsp_sp) {
 void mark_defs_invariant(void*, size_t); // marker to mark defs array as invariant
 void attach_metadata(const char *);
 
-#define HANDLE(body, m_defs, m_free_vars) \
+#define HANDLE(body, m_defs, m_free_vars, md) \
 ({ \
     i64 out; \
     handler_def_t defs[] = {EXPAND m_defs}; \
@@ -258,37 +258,41 @@ void attach_metadata(const char *);
         mode = ABORT; \
     } \
     _Pragma("clang diagnostic pop") \
-    out = _HANDLE(mode, body, m_defs, m_free_vars); \
+    out = _HANDLE(mode, body, m_defs, m_free_vars, md); \
     out; \
 })
 
 // TODO: GC_set_main_stack_sp does not work with nested general handlers
-#define _HANDLE(mode, body, m_defs, m_free_vars) \
+#define _HANDLE(mode, body, m_defs, m_free_vars, md) \
     ({ \
     i64 out; \
     if (mode == TAIL) { \
         header_t stub = { \
+            .mode = TAIL, \
             .defs = { EXPAND m_defs }, \
             .env = { EXPAND m_free_vars } \
         }; \
         mark_defs_invariant(&stub.defs, N_DEFS m_defs); \
         out = body((i64*)stub.env, (i64*)&stub); \
+        attach_metadata(md); \
     } else if (mode == ABORT) { \
         header_t stub = { \
+            .mode = ABORT, \
             .defs = { EXPAND m_defs }, \
             .env = { EXPAND m_free_vars }, \
             .exchanger_ptr = NULL \
         }; \
-        stub.exchanger_ptr = &stub.exchanger; \
         long dummyreg; /* dummyreg used to allow compiler to pick available register */ \
         __asm__ __volatile__ ( \
             "annotation_marker%=_nocapture_0: \n" \
             "lea -8(%%rsp), %[temp]\n\t" /* NB: we assume no registers are spilled */ \
             "movq %[temp], 0(%[exc])\n\t" \
+            "movq %[exc], 8(%[exc])\n\t" \
             : [temp]"=&r"(dummyreg)\
             : [exc]"r"(&stub.exchanger) \
         ); \
         [[clang::noinline]]out = ((i64(*FAST_SWITCH_DECORATOR)(__attribute__((noescape)) i64 *, __attribute__((noescape)) i64 *))body)((i64*)stub.env, (i64*)&stub); \
+        attach_metadata(md); \
     } else { \
         handler_def_t _defs[] = {EXPAND m_defs}; \
         i64 _env[] = {EXPAND m_free_vars}; \
@@ -299,8 +303,10 @@ void attach_metadata(const char *);
         memcpy(&stub->defs, &_defs, sizeof(_defs)); \
         memcpy(&stub->env, &_env, sizeof(_env)); \
         stub->exchanger_ptr = &stub->exchanger; \
+        stub->mode = mode; \
         GC_set_main_stack_sp(); \
         out = ENTER(stub->env, new_sp, body); \
+        attach_metadata(md); \
     } \
     out; \
     })
@@ -340,38 +346,34 @@ header_t* stackwalk(int clue_sig, int clue_type, int clue_dist);
     ({ \
     i64 out; \
     if (mode == TAIL) { \
-        header_t stub = { \
+        header_t stub_z = { \
             .mode = TAIL, \
             .defs = { EXPAND m_defs }, \
-            .env = { EXPAND m_free_vars }, \
-            .exchanger = NULL \
+            .env = { EXPAND m_free_vars } \
         }; \
-        long dummyreg; /* dummyreg used to allow compiler to pick available register */ \
+        [[clang::noinline]]out = body((i64*)stub_z.env); \
+        attach_metadata(md); \
+        /* Keep the stub on the stack */ \
         __asm__ __volatile__ ( \
             "annotation_marker%=_nocapture_0: \n" \
-            "lea -8(%%rsp), %[temp]\n\t" /* NB: we assume no registers are spilled */ \
-            "movq %[temp], 0(%[exc])\n\t" \
-            : [temp]"=&r"(dummyreg)\
-            : [exc]"r"(&stub.exchanger) \
+            :: "r"(&stub_z) \
         ); \
-        [[clang::noinline]]out = body((i64*)stub.env); \
-        attach_metadata(md); \
     } else if (mode == ABORT) { \
-        header_t stub = { \
+        header_t stub_z = { \
             .mode = ABORT, \
             .defs = { EXPAND m_defs }, \
             .env = { EXPAND m_free_vars } \
         }; \
-        stub.exchanger_ptr = &stub.exchanger; \
         long dummyreg; /* dummyreg used to allow compiler to pick available register */ \
         __asm__ __volatile__ ( \
             "annotation_marker%=_nocapture_0: \n" \
             "lea -8(%%rsp), %[temp]\n\t" /* NB: we assume no registers are spilled */ \
             "movq %[temp], 0(%[exc])\n\t" \
+            "movq %[exc], 8(%[exc])\n\t" \
             : [temp]"=&r"(dummyreg)\
-            : [exc]"r"(&stub.exchanger) \
+            : [exc]"r"(&stub_z.exchanger) \
         ); \
-        [[clang::noinline]]out = ((i64(*FAST_SWITCH_DECORATOR)(__attribute__((noescape)) i64 *))body)((i64*)stub.env); \
+        [[clang::noinline]]out = ((i64(*FAST_SWITCH_DECORATOR)(__attribute__((noescape)) i64 *))body)((i64*)stub_z.env); \
         attach_metadata(md); \
     } else { \
         handler_def_t _defs[] = {EXPAND m_defs}; \
@@ -379,13 +381,13 @@ header_t* stackwalk(int clue_sig, int clue_type, int clue_dist);
         char* new_sp = get_stack(); \
         new_sp -= sizeof(header_t); \
         new_sp = (char*)((i64)new_sp & ~0xF); \
-        header_t* stub = (header_t*)new_sp; \
-        memcpy(&stub->defs, &_defs, sizeof(_defs)); \
-        memcpy(&stub->env, &_env, sizeof(_env)); \
-        stub->exchanger_ptr = &stub->exchanger; \
-        stub->mode = MULTISHOT; \
+        header_t* stub_z = (header_t*)new_sp; \
+        memcpy(&stub_z->defs, &_defs, sizeof(_defs)); \
+        memcpy(&stub_z->env, &_env, sizeof(_env)); \
+        stub_z->exchanger_ptr = &stub_z->exchanger; \
+        stub_z->mode = MULTISHOT; \
         GC_set_main_stack_sp(); \
-        out = ENTER(stub->env, new_sp, body); \
+        out = ENTER(stub_z->env, new_sp, body); \
         attach_metadata(md); \
     } \
     out; \
@@ -427,12 +429,16 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
     if (stub->defs[index].mode == TAIL) { \
         if (nargs == 0) { \
             out = ((i64(*)(i64*))stub->defs[index].func)(stub->env); \
+            attach_metadata("1_0_0_0"); \
         } else if (nargs == 1) { \
             out = ((i64(*)(i64*, i64))stub->defs[index].func)(stub->env, args[0]); \
+            attach_metadata("1_0_0_0"); \
         } else if (nargs == 2) { \
             out = ((i64(*)(i64*, i64, i64))stub->defs[index].func)(stub->env, args[0], args[1]); \
+            attach_metadata("1_0_0_0"); \
         } else if (nargs == 3) { \
             out = ((i64(*)(i64*, i64, i64, i64))stub->defs[index].func)(stub->env, args[0], args[1], args[2]); \
+            attach_metadata("1_0_0_0"); \
         } else { \
             exit(EXIT_FAILURE); \
         } \
@@ -467,12 +473,12 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
             i64 env = (i64)stub->env; \
             i64 func = (i64)stub->defs[index].func; \
             __asm__ __volatile__ ( \
-                "pushq $0x442\n\t" \
+                "pushq $0x100\n\t" \
                 "pushq %[sig]\n\t" \
                 "pushq %[typ]\n\t" \
                 "pushq %[idx]\n\t" \
-                "callq *%[body_]\n\t" \
                 "__callsite_metadata_RAISE%=___1_0_0_0:\n\t" \
+                "callq *%[body_]\n\t" \
                 "addq $32, %%rsp\n\t" \
                 : "=a"(out), "+D"(env), [body_]"+r"(func) \
                 :  [sig]"i"((i64)clue_sig), [typ]"i"((i64)clue_type), [idx]"i"((i64)clue_index) \
@@ -487,12 +493,12 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
             i64 arg = args[0]; \
             i64 func = (i64)stub->defs[index].func; \
             __asm__ __volatile__ ( \
-                "pushq $0x442\n\t" \
+                "pushq $0x100\n\t" \
                 "pushq %[sig]\n\t" \
                 "pushq %[typ]\n\t" \
                 "pushq %[idx]\n\t" \
-                "callq *%[body_]\n\t" \
                 "__callsite_metadata_RAISE%=___1_0_0_0:\n\t" \
+                "callq *%[body_]\n\t" \
                 "addq $32, %%rsp\n\t" \
                 : "=a"(out), "+D"(env), "+S"(arg), [body_]"+r"(func) \
                 :  [sig]"i"((i64)clue_sig), [typ]"i"((i64)clue_type), [idx]"i"((i64)clue_index) \
@@ -508,12 +514,12 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
             i64 arg1 = args[1]; \
             i64 func = (i64)stub->defs[index].func; \
             __asm__ __volatile__ ( \
-                "pushq $0x442\n\t" \
+                "pushq $0x100\n\t" \
                 "pushq %[sig]\n\t" \
                 "pushq %[typ]\n\t" \
                 "pushq %[idx]\n\t" \
-                "callq *%[body_]\n\t" \
                 "__callsite_metadata_RAISE%=___1_0_0_0:\n\t" \
+                "callq *%[body_]\n\t" \
                 "addq $32, %%rsp\n\t" \
                 : "=a"(out), "+D"(env), "+S"(arg0), "+d"(arg1), [body_]"+r"(func) \
                 :  [sig]"i"((i64)clue_sig), [typ]"i"((i64)clue_type), [idx]"i"((i64)clue_index) \
@@ -530,12 +536,12 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
             i64 arg2 = args[1]; \
             i64 func = (i64)stub->defs[index].func; \
             __asm__ __volatile__ ( \
-                "pushq $0x442\n\t" \
+                "pushq $0x100\n\t" \
                 "pushq %[sig]\n\t" \
                 "pushq %[typ]\n\t" \
                 "pushq %[idx]\n\t" \
-                "callq *%[body_]\n\t" \
                 "__callsite_metadata_RAISE%=___1_0_0_0:\n\t" \
+                "callq *%[body_]\n\t" \
                 "addq $32, %%rsp\n\t" \
                 : "=a"(out), "+D"(env), "+S"(arg0), "+d"(arg1), "+c"(arg2), [body_]"+r"(func) \
                 :  [sig]"i"((i64)clue_sig), [typ]"i"((i64)clue_type), [idx]"i"((i64)clue_index) \
@@ -548,11 +554,6 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
         } else { \
             exit(EXIT_FAILURE); \
         } \
-        /* We need to keep te stub on the stack, in case the handler raises its own effect, which need to be "undered" through */ \
-        /* To find the stack offset of stub, we can't use stackmap as it kills optimization. */ \
-        /* We stead relies on try and error to find the offset of stub */ \
-        *(volatile header_t *)&stub; \
-        /* stackmap(&stub); */ \
     } else { \
         if (nargs == 1) { \
             out = raise_table[stub->defs[index].mode]((i64)stub->env, (i64)args[0], (i64)stub->exchanger_ptr, (i64)stub->defs[index].func); \
@@ -567,6 +568,8 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
         } \
     } \
     _Pragma("clang diagnostic pop") \
+    /* This keeps the pointer to stub on the stack so that it doesn't require an extra register. */ \
+    *(volatile intptr_t *)&stub; \
     out; \
     })
 

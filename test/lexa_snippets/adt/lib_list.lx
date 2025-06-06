@@ -1,33 +1,33 @@
-type list = 
+type list::['a] = 
     | Nil
-    | Cons of int * list
+    | Cons of 'a * list::['a]
 
-def make(x) {
-    if x == 0 then Nil
-    else Cons(x, make(x - 1))
+def make(x: int): list::[int] {
+    if x == 0 then Nil::[int]
+    else Cons::[int] (x, make(x - 1))
 }
 
-def print_list(l) {
+def print_list(l: list::[int]): unit {
     match l with
-    | Nil -> { 0 }
+    | Nil -> { () }
     | Cons (h, t) -> {
         ~printInt(h);
         print_list(t)
     }
 }
 
-def map(f, l) {
+def map::['a, 'b] (f: <> ('a) -> 'b, l: list::['a]): list::['b] {
     match l with
-    | Nil -> { Nil }
+    | Nil -> { Nil::['b] }
     | Cons (h, t) -> {
-        Cons (f(h), map(f, t))
+        Cons::['b] (f(h), map::['a, 'b] (f, t))
     }
 }
 
-def append(l1, l2) {
+def append::['a] (l1: list::['a], l2: list::['a]): list::['a] {
     match l1 with
     | Nil -> { l2 }
     | Cons (h, t) -> {
-        Cons (h, append(t, l2))
+        Cons::['a] (h, append::['a](t, l2))
     }
 }
