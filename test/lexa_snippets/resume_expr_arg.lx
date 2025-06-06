@@ -1,23 +1,33 @@
+open "../../stdlib/option.lx"
+
 effect E {
-    dcl e
+    dcl e: (int) -> int
 }
 
-def main() {
+def main(): int {
     val k1 = f(10);
     val k2 = f(20);
-    resume (if ~readInt() then k1 else k2) 0;
+    match k1 with
+    | None -> { 0 }
+    | Some (k1) -> {
+        match k2 with
+        | None -> { 0 }
+        | Some (k2) -> {
+            resume (if ~readInt() == 1 then k1 else k2) 0
+        }
+    };
     0
 }
 
-def f(x) {
-    val r = newref {0};
-    handle {
+def f(x: int): option::[cont <> (int) -> int] {
+    val r = newref {None::[cont <> (int) -> int]};
+    handle <> {
         raise e_stub.e(0);
         ~printInt(x);
         0
     } with e_stub: E {
         hdl_1 e(_, k) {
-            r[0] := k;
+            r[0] := Some::[cont <> (int) -> int] (k);
             0
         }
     };

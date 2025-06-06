@@ -1,4 +1,4 @@
-def main() {
+def main(): int {
     val __x__ = 0;
     0
 }

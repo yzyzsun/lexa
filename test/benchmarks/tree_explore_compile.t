@@ -8,13 +8,11 @@
   #include <stdlib.h>
   #include <string.h>
   
-  enum __effects__ { Choice };
-  
   static i64 __list_max_rec_lifted_10__(i64, i64, i64);
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_11__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
-  i64 __handler_choice_stub_lifted_12___choose(i64 *, i64, i64);
+  i64 __handler_choice_stub_lifted_12___choose(i64 *, i64);
   static i64 __run_lifted_8__(i64, i64);
   static i64 __loop_lifted_7__(i64, i64, i64, i64);
   static i64 __paths_lifted_6__(i64, i64, i64);
@@ -150,8 +148,7 @@
           i64 right = (i64)(((__tree_t__ *)__expr_res__)->Node[2]);
   
           ({
-            i64 next =
-                (i64)((RAISE(choice_stub, choose, ((i64)0))) ? left : right);
+            i64 next = (i64)((RAISE(choice_stub, choose, ())) ? left : right);
             ({
               (((i64 *)state)[0] =
                    (((i64(*)(i64, i64, i64))__operator_lifted_3__)(
@@ -171,7 +168,8 @@
   static i64 __paths_lifted_6__(i64 __env__, i64 state, i64 tre) {
     return ((HANDLE(__handle_body_lifted_11__,
                     ({MULTISHOT, __handler_choice_stub_lifted_12___choose}),
-                    ((i64)append, (i64)explore, (i64)state, (i64)tre))));
+                    ((i64)append, (i64)explore, (i64)state, (i64)tre),
+                    "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")));
   }
   
   static i64 __loop_lifted_7__(i64 __env__, i64 state, i64 tre, i64 i) {
@@ -179,12 +177,8 @@
       (((i64 *)state)[0] = (((i64(*)(i64, i64))__list_max_lifted_2__)(
            (i64)0, (i64)(((i64(*)(i64, i64, i64))__paths_lifted_6__)(
                        (i64)0, (i64)state, (i64)tre)))));
-      (({
-        __attribute__((musttail)) return (
-            (i64(*)(i64, i64, i64, i64))__loop_lifted_7__)(
-            (i64)0, (i64)state, (i64)tre, (i64)(i - 1));
-        0;
-      }));
+      (((i64(*)(i64, i64, i64, i64))__loop_lifted_7__)((i64)0, (i64)state,
+                                                       (i64)tre, (i64)(i - 1)));
     })));
   }
   
@@ -245,7 +239,7 @@
     return ((int)__res__);
   }
   FAST_SWITCH_DECORATOR
-  i64 __handler_choice_stub_lifted_12___choose(i64 *__env__, i64 _, i64 k) {
+  i64 __handler_choice_stub_lifted_12___choose(i64 *__env__, i64 k) {
     return (({
       i64 append = (i64)(((i64 *)__env__)[0]);
       ({

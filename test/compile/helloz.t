@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/helloz/helloz.lx -o main --lexaz &> /dev/null
+  $ lexa ../lexa_snippets/helloz/helloz.lx -o main &> /dev/null
   $ cat ../lexa_snippets/helloz/helloz.c
   #include <datastructure.h>
   #include <stacktrek.h>

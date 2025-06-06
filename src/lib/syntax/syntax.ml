@@ -51,7 +51,8 @@ and expr =
   | Handle of { handle_body : expr;
     stub : var;
     sig_name : var;
-    handler_defs : hdl list
+    handler_defs : hdl list;
+    captured_set : capability
   }
   | HandleZ of {
     handle_body : expr;

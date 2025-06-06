@@ -8,13 +8,11 @@
   #include <stdlib.h>
   #include <string.h>
   
-  enum __effects__ { Choice };
-  
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_6__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
-  i64 __handler_choice_stub_lifted_7___flip(i64 *, i64, i64);
-  i64 __handler_choice_stub_lifted_7___fail(i64 *, i64);
+  i64 __handler_choice_stub_lifted_7___flip(i64 *, i64);
+  i64 __handler_choice_stub_lifted_7___fail(i64 *);
   static i64 __hash_lifted_4__(i64, i64, i64, i64);
   static i64 __run_lifted_3__(i64, i64, i64);
   static i64 __triple_lifted_2__(i64, i64, i64, i64);
@@ -26,13 +24,11 @@
   enum Choice { flip, fail };
   
   static i64 __choice_lifted_1__(i64 __env__, i64 n, i64 choice_stub) {
-    return (((n < 1) ? (RAISE(choice_stub, fail, ((i64)0)))
-                     : ((RAISE(choice_stub, flip, ((i64)0))) ? n : (({
-                         __attribute__((musttail)) return (
-                             (i64(*)(i64, i64, i64))__choice_lifted_1__)(
-                             (i64)0, (i64)(n - 1), (i64)choice_stub);
-                         0;
-                       })))));
+    return (((n < 1) ? (RAISE(choice_stub, fail, ()))
+                     : (((RAISE(choice_stub, flip, ())) > 0)
+                            ? n
+                            : (((i64(*)(i64, i64, i64))__choice_lifted_1__)(
+                                  (i64)0, (i64)(n - 1), (i64)choice_stub)))));
   }
   
   static i64 __triple_lifted_2__(i64 __env__, i64 n, i64 s, i64 choice_stub) {
@@ -48,7 +44,7 @@
           ((((i + j) + k) == s)
                ? (((i64(*)(i64, i64, i64, i64))__hash_lifted_4__)((i64)0, (i64)i,
                                                                   (i64)j, (i64)k))
-               : (RAISE(choice_stub, fail, ((i64)0))));
+               : (RAISE(choice_stub, fail, ())));
         });
       });
     }));
@@ -58,7 +54,8 @@
     return ((HANDLE(__handle_body_lifted_6__,
                     ({MULTISHOT, __handler_choice_stub_lifted_7___flip},
                      {ABORT, __handler_choice_stub_lifted_7___fail}),
-                    ((i64)n, (i64)s, (i64)triple))));
+                    ((i64)n, (i64)s, (i64)triple),
+                    "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")));
   }
   
   static i64 __hash_lifted_4__(i64 __env__, i64 a, i64 b, i64 c) {
@@ -94,7 +91,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __handler_choice_stub_lifted_7___fail(i64 *__env__, i64 _) {
+  i64 __handler_choice_stub_lifted_7___fail(i64 *__env__) {
     return (({
       i64 n = (i64)(((i64 *)__env__)[0]);
       ({
@@ -108,7 +105,7 @@
   }
   
   FAST_SWITCH_DECORATOR
-  i64 __handler_choice_stub_lifted_7___flip(i64 *__env__, i64 _, i64 k) {
+  i64 __handler_choice_stub_lifted_7___flip(i64 *__env__, i64 k) {
     return (({
       i64 n = (i64)(((i64 *)__env__)[0]);
       ({

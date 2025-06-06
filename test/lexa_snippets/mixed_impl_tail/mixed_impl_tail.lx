@@ -1,0 +1,53 @@
+effect E {
+    dcl op: () -> int
+}
+
+effectz Ez {
+    dcl opz: () -> int
+}
+
+def main [;] (): int {
+    handle <> {
+        handle <e0> {
+            handle <e0, e1> {
+                ~printInt(raise e0.opz());
+                ~printInt(raise e1.op());
+                ~printInt(raise e2.opz());
+                0
+            } with e2: Ez {
+                def opz() {
+                    ~printInt(2);
+                    2
+                }
+            }
+        } with e1: E {
+            def op() {
+                ~printInt(1);
+                1
+            }
+        }
+    } with e0: Ez {
+        def opz() {
+            ~printInt(0);
+            0
+        }
+    };
+
+    handle <> {
+        handle <e1> {
+            ~printInt(raise e1.opz());
+            ~printInt(raise e2.op());
+            0
+        } with e2: E {
+            def op() {
+                ~printInt(2);
+                2
+            }
+        }
+    } with e1: Ez {
+        def opz() {
+            ~printInt(1);
+            1
+        }
+    }
+}

@@ -8,20 +8,19 @@
   #include <stdlib.h>
   #include <string.h>
   
-  enum __effects__ { Process, Tick, Exn };
-  
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_11__(i64 *, i64 *);
-  i64 __handler_exn_stub_lifted_12___throw(i64 *, i64);
+  i64 __handler_exn_stub_lifted_12___throw(i64 *);
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_13__(i64 *, i64 *);
+  static i64 __fun_lifted_15__(i64, i64);
   FAST_SWITCH_DECORATOR
   i64 __handler_process_stub_lifted_14___fork(i64 *, i64, i64);
   FAST_SWITCH_DECORATOR
-  i64 __handler_process_stub_lifted_14___yield(i64 *, i64, i64);
-  static i64 __fun_lifted_15__(i64, i64);
-  static i64 __handle_body_lifted_16__(i64 *, i64 *);
-  i64 __tail__handler_tick_stub_lifted_17___tick(i64 *, i64);
+  i64 __handler_process_stub_lifted_14___yield(i64 *, i64);
+  static i64 __fun_lifted_16__(i64, i64);
+  static i64 __handle_body_lifted_17__(i64 *, i64 *);
+  i64 __tail__handler_tick_stub_lifted_18___tick(i64 *);
   static i64 __repeat_lifted_9__(i64, i64);
   static i64 __step_lifted_8__(i64, i64, i64, i64);
   static i64 __run_lifted_7__(i64, i64, i64);
@@ -48,12 +47,19 @@
   
   static i64 __queueDeqExn_lifted_1__(i64 __env__, i64 q, i64 exn_stub) {
     return ((((i64)(queueIsEmpty((queue_t *)q)))
-                 ? (RAISE(exn_stub, throw, ((i64)0)))
+                 ? ({
+                     (RAISE(exn_stub, throw, ()));
+                     ((i64)(error((char *)(({
+                       i64 *__s__ = (i64 *)xmalloc(1 * sizeof(char));
+                       strcpy((char *)__s__, "");
+                       __s__;
+                     })))));
+                   })
                  : ((i64)(queueDeq((queue_t *)q)))));
   }
   
   static i64 __job_lifted_2__(i64 __env__, i64 process_stub) {
-    return ((RAISE(process_stub, yield, ((i64)0))));
+    return ((RAISE(process_stub, yield, ())));
   }
   
   static i64 __jobs_lifted_3__(i64 __env__, i64 i, i64 process_stub,
@@ -61,40 +67,48 @@
     return (((i == 0) ? 0 : ({
       (RAISE(process_stub, fork, ((i64)job)));
       ({
-        (RAISE(tick_stub, tick, ((i64)0)));
-        (({
-          __attribute__((musttail)) return (
-              (i64(*)(i64, i64, i64, i64))__jobs_lifted_3__)(
-              (i64)0, (i64)(i - 1), (i64)process_stub, (i64)tick_stub);
-          0;
-        }));
+        (RAISE(tick_stub, tick, ()));
+        (((i64(*)(i64, i64, i64, i64))__jobs_lifted_3__)(
+            (i64)0, (i64)(i - 1), (i64)process_stub, (i64)tick_stub));
       });
     })));
   }
   
   static i64 __driver_lifted_4__(i64 __env__, i64 job_queue) {
-    return (({
-      (HANDLE(__handle_body_lifted_11__,
-              ({ABORT, __handler_exn_stub_lifted_12___throw}),
-              ((i64)driver, (i64)job_queue, (i64)queueDeqExn)));
-      0;
-    }));
+    return ((HANDLE(__handle_body_lifted_11__,
+                    ({ABORT, __handler_exn_stub_lifted_12___throw}),
+                    ((i64)driver, (i64)job_queue, (i64)queueDeqExn),
+                    "0_0_0_10101010101010101010101010101010")));
   }
   
   static i64 __spawn_lifted_5__(i64 __env__, i64 f, i64 job_queue) {
     return ((HANDLE(__handle_body_lifted_13__,
                     ({SINGLESHOT, __handler_process_stub_lifted_14___yield},
                      {SINGLESHOT, __handler_process_stub_lifted_14___fork}),
-                    ((i64)f, (i64)job_queue, (i64)spawn))));
+                    ((i64)f, (i64)job_queue, (i64)spawn),
+                    "0_0_0_10101010101010101010101010101010")));
   }
   
   static i64 __scheduler_lifted_6__(i64 __env__, i64 f) {
     return (({
       i64 job_queue = (i64)((i64)(queueMake()));
       ({
-        (((i64(*)(i64, i64, i64))__spawn_lifted_5__)((i64)0, (i64)f,
-                                                     (i64)job_queue));
-        (((i64(*)(i64, i64))__driver_lifted_4__)((i64)0, (i64)job_queue));
+        (({
+          i64 out = ((i64(*)(i64, i64, i64))__spawn_lifted_5__)((i64)0, (i64)f,
+                                                                (i64)job_queue);
+          attach_metadata(
+              "1_1_0_"
+              "FF10FF10FF10FF10FF10FF10FF10FF10FF10FF10FF10FF10FF10FF10FF10FF10");
+          out;
+        }));
+        (({
+          i64 out =
+              ((i64(*)(i64, i64))__driver_lifted_4__)((i64)0, (i64)job_queue);
+          attach_metadata(
+              "1_1_0_"
+              "FF10FF10FF10FF10FF10FF10FF10FF10FF10FF10FF10FF10FF10FF10FF10FF10");
+          out;
+        }));
       });
     }));
   }
@@ -108,24 +122,22 @@
         (i64) __newref__;
       }));
       ({
-        (HANDLE(__handle_body_lifted_16__,
-                ({TAIL, __tail__handler_tick_stub_lifted_17___tick}),
-                ((i64)c, (i64)jobs, (i64)n_jobs, (i64)scheduler)));
+        (HANDLE(__handle_body_lifted_17__,
+                ({TAIL, __tail__handler_tick_stub_lifted_18___tick}),
+                ((i64)c, (i64)jobs, (i64)n_jobs, (i64)scheduler),
+                "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
         (((i64 *)c)[0]);
       });
     }));
   }
   
   static i64 __step_lifted_8__(i64 __env__, i64 i, i64 acc, i64 n_jobs) {
-    return (((i == 0) ? acc : (({
-      __attribute__((musttail)) return (
-          (i64(*)(i64, i64, i64, i64))__step_lifted_8__)(
-          (i64)0, (i64)(i - 1),
-          (i64)(((i64(*)(i64, i64, i64))__run_lifted_7__)((i64)0, (i64)n_jobs,
-                                                          (i64)acc)),
-          (i64)n_jobs);
-      0;
-    }))));
+    return (((i == 0) ? acc
+                      : (((i64(*)(i64, i64, i64, i64))__step_lifted_8__)(
+                            (i64)0, (i64)(i - 1),
+                            (i64)(((i64(*)(i64, i64, i64))__run_lifted_7__)(
+                                (i64)0, (i64)n_jobs, (i64)acc)),
+                            (i64)n_jobs))));
   }
   
   static i64 __repeat_lifted_9__(i64 __env__, i64 n_jobs) {
@@ -177,7 +189,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __tail__handler_tick_stub_lifted_17___tick(i64 *__env__, i64 _) {
+  i64 __tail__handler_tick_stub_lifted_18___tick(i64 *__env__) {
     return (({
       i64 c = (i64)(((i64 *)__env__)[0]);
       ({
@@ -186,17 +198,14 @@
           i64 n_jobs = (i64)(((i64 *)__env__)[2]);
           ({
             i64 scheduler = (i64)(((i64 *)__env__)[3]);
-            ({
-              (((i64 *)c)[0] = ((((i64 *)c)[0]) + 1));
-              0;
-            });
+            (((i64 *)c)[0] = ((((i64 *)c)[0]) + 1));
           });
         });
       });
     }));
   }
   
-  static i64 __handle_body_lifted_16__(i64 *__env__, i64 *tick_stub) {
+  static i64 __handle_body_lifted_17__(i64 *__env__, i64 *tick_stub) {
     return (({
       i64 c = (i64)(((i64 *)__env__)[0]);
       ({
@@ -208,7 +217,7 @@
             (((i64(*)(i64, i64))__scheduler_lifted_6__)(
                 (i64)0, (i64)(({
                   closure_t *__c__ = xmalloc(sizeof(closure_t));
-                  __c__->func_pointer = (i64)__fun_lifted_15__;
+                  __c__->func_pointer = (i64)__fun_lifted_16__;
                   __c__->env = (i64)xmalloc(3 * sizeof(i64));
                   ((i64 *)(__c__->env))[0] = (i64)jobs;
                   ((i64 *)(__c__->env))[1] = (i64)n_jobs;
@@ -221,7 +230,7 @@
     }));
   }
   
-  static i64 __fun_lifted_15__(i64 __env__, i64 process_stub) {
+  static i64 __fun_lifted_16__(i64 __env__, i64 process_stub) {
     return (({
       i64 jobs = (i64)(((i64 *)__env__)[0]);
       ({
@@ -236,14 +245,17 @@
   }
   
   FAST_SWITCH_DECORATOR
-  i64 __handler_process_stub_lifted_14___yield(i64 *__env__, i64 _, i64 k) {
+  i64 __handler_process_stub_lifted_14___yield(i64 *__env__, i64 k) {
     return (({
       i64 f = (i64)(((i64 *)__env__)[0]);
       ({
         i64 job_queue = (i64)(((i64 *)__env__)[1]);
         ({
           i64 spawn = (i64)(((i64 *)__env__)[2]);
-          ((i64)(queueEnq((queue_t *)job_queue, (int64_t)k)));
+          ({
+            ((i64)(queueEnq((queue_t *)job_queue, (int64_t)k)));
+            0;
+          });
         });
       });
     }));
@@ -259,11 +271,40 @@
           i64 spawn = (i64)(((i64 *)__env__)[2]);
           ({
             ((i64)(queueEnq((queue_t *)job_queue, (int64_t)k)));
-            (((i64(*)(i64, i64, i64))__spawn_lifted_5__)((i64)0, (i64)g,
-                                                         (i64)job_queue));
+            (({
+              i64 out = ((i64(*)(i64, i64, i64))__spawn_lifted_5__)(
+                  (i64)0, (i64)(({
+                    closure_t *__c__ = xmalloc(sizeof(closure_t));
+                    __c__->func_pointer = (i64)__fun_lifted_15__;
+                    __c__->env = (i64)xmalloc(1 * sizeof(i64));
+                    ((i64 *)(__c__->env))[0] = (i64)g;
+                    (i64) __c__;
+                  })),
+                  (i64)job_queue);
+              attach_metadata("0_1_0_"
+                              "FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20FF"
+                              "20FF20FF20FF20");
+              out;
+            }));
           });
         });
       });
+    }));
+  }
+  
+  static i64 __fun_lifted_15__(i64 __env__, i64 process_stub) {
+    return (({
+      i64 g = (i64)(((i64 *)__env__)[0]);
+      (({
+        closure_t *__clo__ = (closure_t *)g;
+        i64 __f__ = (i64)(__clo__->func_pointer);
+        i64 __env__ = (i64)(__clo__->env);
+        i64 out = ((i64(*)(i64, i64))__f__)((i64)__env__, (i64)process_stub);
+        attach_metadata(
+            "0_1_0_"
+            "FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20");
+        out;
+      }));
     }));
   }
   
@@ -280,7 +321,10 @@
               closure_t *__clo__ = (closure_t *)f;
               i64 __f__ = (i64)(__clo__->func_pointer);
               i64 __env__ = (i64)(__clo__->env);
-              ((i64(*)(i64, i64))__f__)((i64)__env__, (i64)process_stub);
+              i64 out =
+                  ((i64(*)(i64, i64))__f__)((i64)__env__, (i64)process_stub);
+              attach_metadata("1_0_0_20202020202020202020202020202020");
+              out;
             }));
           });
         });
@@ -290,7 +334,7 @@
     }));
   }
   
-  i64 __handler_exn_stub_lifted_12___throw(i64 *__env__, i64 _) {
+  i64 __handler_exn_stub_lifted_12___throw(i64 *__env__) {
     return (({
       i64 driver = (i64)(((i64 *)__env__)[0]);
       ({
@@ -313,11 +357,24 @@
           ({
             i64 queueDeqExn = (i64)(((i64 *)__env__)[2]);
             ({
-              i64 k = (i64)(((i64(*)(i64, i64, i64))__queueDeqExn_lifted_1__)(
-                  (i64)0, (i64)job_queue, (i64)exn_stub));
+              i64 k = (i64)(({
+                i64 out = ((i64(*)(i64, i64, i64))__queueDeqExn_lifted_1__)(
+                    (i64)0, (i64)job_queue, (i64)exn_stub);
+                attach_metadata("0_1_0_"
+                                "FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20"
+                                "FF20FF20FF20FF20");
+                out;
+              }));
               ({
-                (FINAL_THROW(k, 0, "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
-                (((i64(*)(i64, i64))__driver_lifted_4__)((i64)0, (i64)job_queue));
+                (FINAL_THROW(k, 0, "1_0_0_20202020202020202020202020202020"));
+                (({
+                  i64 out = ((i64(*)(i64, i64))__driver_lifted_4__)(
+                      (i64)0, (i64)job_queue);
+                  attach_metadata("0_1_0_"
+                                  "FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20FF20FF"
+                                  "20FF20FF20FF20FF20");
+                  out;
+                }));
               });
             });
           });

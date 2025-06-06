@@ -1,3 +1,3 @@
-  $ lexa ../../benchmarks/lexaz/catalan/main.lx -o main --lexaz &> /dev/null
+  $ lexa ../../benchmarks/lexaz/catalan/main.lx -o main &> /dev/null
   $ ./main 5
   42

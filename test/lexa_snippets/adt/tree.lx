@@ -1,29 +1,29 @@
-type tree = 
-    | Nil
-    | Node of int * tree * tree
+type tree::['a] = 
+    | Leaf
+    | Node of 'a * tree::['a] * tree::['a]
 
-def main() {
+def main(): int {
     val t = make(~readInt());
     traverse(t);
     0
 }
 
-def make(i) {
+def make(i: int): tree::[int] {
     if i == 0 then
-        Nil()
+        Leaf::[int]()
     else
-        Node(i, make(i - 1), make(i - 1))
+        Node::[int](i, make(i - 1), make(i - 1))
 }
 
-def traverse(t) {
+def traverse(t: tree::[int]): unit {
     match t with
-    | Nil -> {
-        0
+    | Leaf -> {
+        ()
     }
     | Node (i, l, r) -> {
         ~printInt(i);
         traverse(l);
         traverse(r);
-        0
+        ()
     }
 }

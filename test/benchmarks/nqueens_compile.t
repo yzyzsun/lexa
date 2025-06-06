@@ -8,13 +8,11 @@
   #include <stdlib.h>
   #include <string.h>
   
-  enum __effects__ { Search };
-  
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_6__(i64 *, i64 *);
   FAST_SWITCH_DECORATOR
   i64 __handler_search_stub_lifted_7___pick(i64 *, i64, i64);
-  i64 __handler_search_stub_lifted_7___fail(i64 *, i64);
+  i64 __handler_search_stub_lifted_7___fail(i64 *);
   static i64 __loop_lifted_4__(i64, i64, i64, i64, i64);
   static i64 __run_lifted_3__(i64, i64);
   static i64 __place_lifted_2__(i64, i64, i64, i64);
@@ -33,12 +31,8 @@
         ({
           i64 qs = (i64)((i64)(listTail((node_t *)xs)));
           ((((queen != q) && (queen != (q + diag))) && (queen != (q - diag)))
-               ? (({
-                   __attribute__((musttail)) return (
-                       (i64(*)(i64, i64, i64, i64))__safe_lifted_1__)(
-                       (i64)0, (i64)queen, (i64)(diag + 1), (i64)qs);
-                   0;
-                 }))
+               ? (((i64(*)(i64, i64, i64, i64))__safe_lifted_1__)(
+                     (i64)0, (i64)queen, (i64)(diag + 1), (i64)qs))
                : 0);
         });
       }));
@@ -55,7 +49,10 @@
         ((((i64(*)(i64, i64, i64, i64))__safe_lifted_1__)((i64)0, (i64)next,
                                                           (i64)1, (i64)rest))
              ? ((i64)(listNode((int64_t)next, (node_t *)rest)))
-             : (RAISE(search_stub, fail, ((i64)0))));
+             : ({
+                 (RAISE(search_stub, fail, ()));
+                 ((i64)(listEnd()));
+               }));
       });
     })));
   }
@@ -64,22 +61,19 @@
     return ((HANDLE(__handle_body_lifted_6__,
                     ({MULTISHOT, __handler_search_stub_lifted_7___pick},
                      {ABORT, __handler_search_stub_lifted_7___fail}),
-                    ((i64)loop, (i64)n, (i64)place))));
+                    ((i64)loop, (i64)n, (i64)place),
+                    "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")));
   }
   
   static i64 __loop_lifted_4__(i64 __env__, i64 i, i64 a, i64 size, i64 k) {
     return (
         ((i == size)
              ? (a + (FINAL_THROW(k, i, "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")))
-             : (({
-                 __attribute__((musttail)) return (
-                     (i64(*)(i64, i64, i64, i64, i64))__loop_lifted_4__)(
-                     (i64)0, (i64)(i + 1),
-                     (i64)(a + (THROW(k, i,
-                                      "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"))),
-                     (i64)size, (i64)k);
-                 0;
-               }))));
+             : (((i64(*)(i64, i64, i64, i64, i64))__loop_lifted_4__)(
+                   (i64)0, (i64)(i + 1),
+                   (i64)(a +
+                         (THROW(k, i, "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"))),
+                   (i64)size, (i64)k))));
   }
   
   int main(int argc, char *argv[]) {
@@ -110,7 +104,7 @@
     destroy_stack_pool();
     return ((int)__res__);
   }
-  i64 __handler_search_stub_lifted_7___fail(i64 *__env__, i64 _) {
+  i64 __handler_search_stub_lifted_7___fail(i64 *__env__) {
     return (({
       i64 loop = (i64)(((i64 *)__env__)[0]);
       ({

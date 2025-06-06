@@ -1,23 +1,24 @@
 effect State {
-    dcl get
-    dcl set
+    dcl get: () -> int
+    dcl set: (int) -> unit
 }
 
-def countdown(state_stub) {
-    val i = raise state_stub.get(0);
+def countdown [; state_stub: State] (): int {
+    val i = raise state_stub.get();
     if i == 0 then
         i
-    else
-        (raise state_stub.set(i-1);
-        countdown(state_stub))
+    else (
+        raise state_stub.set(i-1);
+        countdown:[; state_stub]()
+    )
 }
 
-def run(n) {
+def run(n: int): int {
     val s = newref {n};
-    handle {
-        countdown(state_stub)
+    handle <> {
+        countdown:[; state_stub]()
     } with state_stub: State {
-        def get(_) { 
+        def get() { 
             s[0]
         }
 
@@ -28,7 +29,7 @@ def run(n) {
     }
 }
 
-def main() {
+def main(): int {
     ~printInt(run(~readInt()));
     0
 }

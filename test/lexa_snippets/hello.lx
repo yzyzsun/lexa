@@ -1,13 +1,13 @@
 effect Hello {
-    dcl hello
+    dcl hello: () -> int
 }
 
-def run(n) {
+def run(): int {
     val s = newref {42};
-    handle {
+    handle <> {
         raise hello_stub.hello() 
     } with hello_stub: Hello {
-        def hello(_) { 
+        def hello() { 
             ~strPrint("hello\n");
             ~printInt(s[0]);
             0
@@ -15,6 +15,6 @@ def run(n) {
     }
 }
 
-def main() {
+def main(): int {
     run()
 }

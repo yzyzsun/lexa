@@ -1,18 +1,21 @@
 effect Choose {
-    dcl choose
+    dcl choose: (ref int) -> int
 }
 
-def main() {
+def main(): int {
     val x = ~readInt();
     ~printInt(f(x));
     0 
 }
 
-def f(x) {
-    handle {
-        handle {
+def f(x: int): int {
+    handle <> {
+        handle <left_stub> {
             val p = newref {10,20};
-            raise (if x then left_stub else right_stub).choose(p)
+            if x == 1 then
+                raise left_stub.choose(p)
+            else
+                raise right_stub.choose(p)
         } with right_stub: Choose {
             def choose(p) {
                 p[1]

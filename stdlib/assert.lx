@@ -1,6 +1,6 @@
-def assert(e) {
+def assert(e: bool): unit {
     if e then
-        0
+        ()
     else
-        ~error("assertion failed")
+        ~error::[unit]("assertion failed")
 }

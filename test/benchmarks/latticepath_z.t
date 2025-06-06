@@ -1,3 +1,3 @@
-  $ lexa ../../benchmarks/lexaz/latticepath/main.lx -o main --lexaz &> /dev/null
+  $ lexa ../../benchmarks/lexaz/latticepath/main.lx -o main &> /dev/null
   $ ./main 5
   132

@@ -27,13 +27,13 @@ platforms = ["lexa", "lexaz"]
 config = {}
 
 for benchmark in benchmarks:
-    LEXA_BUILD_COMMAND = "flock /tmp/dune_lockfile -c 'lexa main.lx -o main'"
+    LEXA_BUILD_COMMAND = "flock /tmp/dune_lockfile -c 'lexa main.lx -o main --stack-size 1024'"
     LEXA_RUN_COMMAND = "./main {IN}"
     config[("lexa", benchmark)] = {
         "build": LEXA_BUILD_COMMAND, "run": LEXA_RUN_COMMAND,
     }
 
-    LEXAZ_BUILD_COMMAND = "flock /tmp/dune_lockfile -c 'lexa main.lx -o main --lexaz'"
+    LEXAZ_BUILD_COMMAND = "flock /tmp/dune_lockfile -c 'lexa main.lx -o main --gen-offset --stack-size 1024'"
     LEXAZ_RUN_COMMAND = "./main {IN}"
     config[("lexaz", benchmark)] = {
         "build": LEXAZ_BUILD_COMMAND, "run": LEXAZ_RUN_COMMAND,

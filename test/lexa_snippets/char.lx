@@ -1,4 +1,4 @@
-def loop(s, i) {
+def loop(s: string, i: int): int {
     if i == ~strlen(s) then
         0
     else
@@ -6,7 +6,7 @@ def loop(s, i) {
         loop(s, i + 1))
 }
 
-def main() {
+def main(): int {
     ~printChar('\n'); ~printChar('\''); ~printChar('\t'); ~printChar('\\');
     val s = "abcdefg";
     loop(s, 0);

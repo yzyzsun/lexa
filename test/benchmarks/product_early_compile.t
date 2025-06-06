@@ -8,8 +8,6 @@
   #include <stdlib.h>
   #include <string.h>
   
-  enum __effects__ { Abort };
-  
   FAST_SWITCH_DECORATOR
   static i64 __handle_body_lifted_7__(i64 *, i64 *);
   i64 __handler_abort_stub_lifted_8___done(i64 *, i64);
@@ -46,20 +44,18 @@
   }
   
   static i64 __runProduct_lifted_3__(i64 __env__, i64 xs) {
-    return ((HANDLE(__handle_body_lifted_7__,
-                    ({ABORT, __handler_abort_stub_lifted_8___done}),
-                    ((i64)product, (i64)xs))));
+    return ((HANDLE(
+        __handle_body_lifted_7__, ({ABORT, __handler_abort_stub_lifted_8___done}),
+        ((i64)product, (i64)xs), "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")));
   }
   
   static i64 __loop_lifted_4__(i64 __env__, i64 xs, i64 i, i64 a) {
-    return (((i == 0) ? a : (({
-      __attribute__((musttail)) return (
-          (i64(*)(i64, i64, i64, i64))__loop_lifted_4__)(
-          (i64)0, (i64)xs, (i64)(i - 1),
-          (i64)(a +
-                (((i64(*)(i64, i64))__runProduct_lifted_3__)((i64)0, (i64)xs))));
-      0;
-    }))));
+    return (((i == 0)
+                 ? a
+                 : (((i64(*)(i64, i64, i64, i64))__loop_lifted_4__)(
+                       (i64)0, (i64)xs, (i64)(i - 1),
+                       (i64)(a + (((i64(*)(i64, i64))__runProduct_lifted_3__)(
+                                     (i64)0, (i64)xs)))))));
   }
   
   static i64 __run_lifted_5__(i64 __env__, i64 n) {

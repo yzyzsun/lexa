@@ -1,9 +1,9 @@
-def bar() {
+def bar(): int {
     0
 }
 
-def main() {
-    val foo = fun() {
+def main(): int {
+    val foo = fun <> (): int {
         bar()
     };
     foo()

@@ -482,3 +482,8 @@ DEBUG_ATTRIBUTE
 int64_t strCharAt(char* s, int64_t i) {
   return (int64_t)(s[i]);
 }
+
+DEBUG_ATTRIBUTE
+int64_t safe_malloc(int64_t size) {
+  return (int64_t)xmalloc(size);
+}

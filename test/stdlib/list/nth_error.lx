@@ -1,11 +1,11 @@
 open "../../../stdlib/assert.lx"
 open "../../../stdlib/list.lx"
 
-def test_nth_error() {
-    nth(Cons(1, Cons(2, Cons(3, Nil))), 3)
+def test_nth_error(): int {
+    nth::[int](Cons::[int](1, Cons::[int](2, Cons::[int](3, Nil::[int]))), 3)
 }
 
-def main() {
+def main(): int {
     test_nth_error();
     0
 }

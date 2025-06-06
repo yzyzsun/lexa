@@ -61,6 +61,7 @@ node_modules/
 misc/
 
 clue_table.txt
+offset_functions.h
 
 CMakeFiles/
 CMakeCache.txt

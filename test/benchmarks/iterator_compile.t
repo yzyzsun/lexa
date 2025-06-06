@@ -8,8 +8,6 @@
   #include <stdlib.h>
   #include <string.h>
   
-  enum __effects__ { Emit };
-  
   static i64 __handle_body_lifted_4__(i64 *, i64 *);
   i64 __tail__handler_emit_stub_lifted_5___emit(i64 *, i64);
   static i64 __run_lifted_2__(i64, i64);
@@ -21,12 +19,8 @@
   static i64 __range_lifted_1__(i64 __env__, i64 l, i64 u, i64 emit_stub) {
     return (((l > u) ? 0 : ({
       (RAISE(emit_stub, emit, ((i64)l)));
-      (({
-        __attribute__((musttail)) return (
-            (i64(*)(i64, i64, i64, i64))__range_lifted_1__)(
-            (i64)0, (i64)(l + 1), (i64)u, (i64)emit_stub);
-        0;
-      }));
+      (((i64(*)(i64, i64, i64, i64))__range_lifted_1__)((i64)0, (i64)(l + 1),
+                                                        (i64)u, (i64)emit_stub));
     })));
   }
   
@@ -41,7 +35,8 @@
       ({
         (HANDLE(__handle_body_lifted_4__,
                 ({TAIL, __tail__handler_emit_stub_lifted_5___emit}),
-                ((i64)n, (i64)range, (i64)s)));
+                ((i64)n, (i64)range, (i64)s),
+                "1_0_0_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"));
         (((i64 *)s)[0]);
       });
     }));

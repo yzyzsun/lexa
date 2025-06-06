@@ -1,94 +1,99 @@
 effect Yield {
-    dcl yield
+    dcl yield: () -> (<> [; behead_stub: Behead, replace_stub: Replace] (int) -> unit)
 }
 effect Replace {
-    dcl replace
+    dcl replace: (int) -> unit
 }
 effect Behead {
-    dcl behead
+    dcl behead: () -> unit
 }
 
-def loop(it, yield_stub, behead_stub) {
-    handle { 
-        val v = ~listHead(it);
-        raise yield_stub.yield(v, behead_stub, replace_stub)                
+def loop [; yield_stub: Yield, behead_stub: Behead] (it: node_t::[int]): node_t::[int] {
+    handle <yield_stub, behead_stub> { 
+        val v = ~listHead::[int](it);
+        (raise yield_stub.yield()):[; behead_stub, replace_stub] (v)         
     } with replace_stub: Replace {
         def replace(x) {
-            ~listSetHead(it, x)
+            ~listSetHead::[int](it, x);
+            ()
         }
     };
-    val it_tail = ~listTail(it);
-    val beheaded = newref {0};
+    val it_tail = ~listTail::[int](it);
+    val beheaded = newref {false};
     val newtl = 
-        if ~listIsEmpty(it_tail) then
-            ~listEnd()
+        if ~listIsEmpty::[int](it_tail) then
+            ~listEnd::[int]()
         else
-            handle {
-                loop(it_tail, yield_stub, behead_stub)
+            handle <yield_stub> {
+                loop:[; yield_stub, behead_stub](it_tail)
             } with behead_stub: Behead {
-                def behead(_) {
-                    beheaded[0] := 1
+                def behead() {
+                    beheaded[0] := true
                 }                
             };
     val tobehead = beheaded[0];
     val _ =
         if tobehead then
-            val tailtail = ~listTail(newtl);
-            ~listSetTail(it, tailtail)
+            val tailtail = ~listTail::[int](newtl);
+            ~listSetTail::[int](it, tailtail)
         else
             0;
     it
             
 }
 
-def listSum(l, acc) {
-    if ~listIsEmpty(l) then
+def listSum(l: node_t::[int], acc: int): int {
+    if ~listIsEmpty::[int](l) then
         acc
     else
-        listSum(~listTail(l), acc + ~listHead(l))
+        listSum(~listTail::[int](l), acc + ~listHead::[int](l))
 }
 
-def run(n) {
+def yield_fun [; behead_stub: Behead, replace_stub: Replace] (x: int): unit {
+    if x < 0 then
+        raise behead_stub.behead()
+    else
+        raise replace_stub.replace(x * 2)
+}
+
+def run(n: int): int {
     val l = ~listRange(0 - n, n);
-    val beheaded = newref {0};
+    val beheaded = newref {false};
     val newtl = 
-        handle {
-            handle {
-                loop(l, yield_stub, behead_main_stub)
+        handle <> {
+            handle <behead_main_stub> {
+                loop:[; yield_stub, behead_main_stub](l)
             } with yield_stub: Yield {
-                def yield(x, behead_stub, replace_stub) {
-                    if x < 0 then
-                        raise behead_stub.behead(0)
-                    else
-                        raise replace_stub.replace(x * 2)
+                def yield() {
+                    yield_fun
                 }
             }            
         } with behead_main_stub: Behead {
-            def behead(_) {
-                beheaded[0] := 1
+            def behead() {
+                beheaded[0] := true
             }            
         };
     val tobehead = beheaded[0];
     val res =
         if tobehead then
-            ~listTail(newtl)
+            ~listTail::[int](newtl)
         else
             newtl;
-    listSum(res)
+    listSum(res, 0)
 }
 
-def step(i, acc, n_jobs) {
+def step(i: int, acc: int, n_jobs: int): int {
     if i == 0 then
         acc
     else
         step(i - 1, acc + run(n_jobs), n_jobs)
 }
 
-def repeat(n_jobs) {
+def repeat(n_jobs: int): int {
     step(1000, 0, n_jobs)
 }
 
-def main() {
+def main(): int {
     val arg1 = ~readInt();
     val arg2 = repeat(arg1);
     ~printInt(arg2);

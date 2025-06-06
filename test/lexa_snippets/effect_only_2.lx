@@ -1,16 +1,16 @@
 effect E {
-    dcl plus_42
+    dcl plus_42: (int) -> int
 }
 
-def f() {
+def f(): int {
     val x = newref {0};
     x[0] := x[0] + 42;
     x[0]
 }
 
-def g() {
+def g(): int {
     val x = newref {0};
-    handle {
+    handle <> {
         x[0] := raise e_stub.plus_42(x[0])
     } with e_stub : E {
         def plus_42(y) {
@@ -20,7 +20,7 @@ def g() {
     x[0]
 }
 
-def main() {
+def main(): int {
     ~printInt(f());
     ~printInt(g());
     0

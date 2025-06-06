@@ -1,6 +1,6 @@
-def make_adder(a) {
+def make_adder(a: int): <> (int) -> int {
     // some comments
-    val res = fun(b) {
+    val res = fun <> (b: int): int {
         a + b
     };
     res
@@ -14,7 +14,7 @@ line
 comments
 */
 
-def main() {
+def main(): int {
     val adder5 = make_adder(5); // more comments
     val adder10 = make_adder(10); /* more comments */
     val _ = ~printInt(adder5(7));

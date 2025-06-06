@@ -49,11 +49,8 @@
   }
   
   static i64 __fact_tail_lifted_3__(i64 __env__, i64 x, i64 acc) {
-    return (((x < 2) ? acc : (({
-      __attribute__((musttail)) return (
-          (i64(*)(i64, i64, i64))__fact_tail_lifted_3__)((i64)0, (i64)(x - 1),
-                                                         (i64)(x * acc));
-      0;
-    }))));
+    return (((x < 2) ? acc
+                     : (((i64(*)(i64, i64, i64))__fact_tail_lifted_3__)(
+                           (i64)0, (i64)(x - 1), (i64)(x * acc)))));
   }
   

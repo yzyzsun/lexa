@@ -144,7 +144,7 @@ header_t* stackwalk(int clue_sig, int clue_type, int clue_index) {
                 clue_index = clue_stack->index;
                 #if DEBUG_STACKWALKER
                 printf("jumping over tail-resumptive install site\n");
-                printf("old clue: %x, sig %d, type %d, index %d\n", clue_stack->clue, clue_sig, clue_type, clue_index);
+                printf("old clue: sig %d, type %d, index %d\n", clue_sig, clue_type, clue_index);
                 #endif
 
                 clue_stack = clue_stack->next;

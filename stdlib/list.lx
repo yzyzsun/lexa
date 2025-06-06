@@ -1,12 +1,12 @@
 open "option.lx"
 open "pair.lx"
 
-type list = 
+type list::['a] = 
     | Nil
-    | Cons of int * list
+    | Cons of 'a * list::['a]
 
 // l1, l2 must be lists of primitive types
-def list_eq_prim(l1, l2) {
+def list_eq_prim::['a] (l1: list::['a], l2: list::['a]): bool {
     match l1 with
     | Nil -> {
         match l2 with
@@ -16,11 +16,11 @@ def list_eq_prim(l1, l2) {
     | Cons (h1, t1) -> {
         match l2 with
         | Nil -> { false }
-        | Cons (h2, t2) -> { h1 == h2 && list_eq_prim(t1, t2) }
+        | Cons (h2, t2) -> { h1 == h2 && list_eq_prim::['a](t1, t2) }
     }
 }
 
-def list_eq(f, l1, l2) {
+def list_eq::['a] (f: <> ('a, 'a) -> bool, l1: list::['a], l2: list::['a]): bool {
     match l1 with
     | Nil -> {
         match l2 with
@@ -30,233 +30,233 @@ def list_eq(f, l1, l2) {
     | Cons (h1, t1) -> {
         match l2 with
         | Nil -> { false }
-        | Cons (h2, t2) -> { f(h1, h2) && list_eq(f, t1, t2) }
+        | Cons (h2, t2) -> { f(h1, h2) && list_eq::['a] (f, t1, t2) }
     }
 }
 
-def list_length(l) {
+def list_length::['a] (l: list::['a]): int {
     match l with
     | Nil -> { 0 }
-    | Cons (h, t) -> { 1 + list_length(t) }
+    | Cons (h, t) -> { 1 + list_length::['a](t) }
 }
 
-def hd(l) {
+def hd::['a] (l: list::['a]): 'a {
     match l with
-    | Nil -> { ~error("hd") }
+    | Nil -> { ~error::['a]("hd") }
     | Cons (h, t) -> { h }
 }
 
-def tl(l) {
+def tl::['a] (l: list::['a]): list::['a] {
     match l with
-    | Nil -> { ~error("tl") }
+    | Nil -> { ~error::[list::['a]]("tl") }
     | Cons (h, t) -> { t }
 }
 
-def nth(l, n) {
+def nth::['a] (l: list::['a], n: int): 'a {
     match l with
-    | Nil -> { ~error("nth") }
+    | Nil -> { ~error::['a]("nth") }
     | Cons (h, t) -> {
         if n == 0 then
             h
         else
-            nth(t, n - 1)
+            nth::['a] (t, n - 1)
     }
 }
 
-def nth_opt(l, n) {
+def nth_opt::['a] (l: list::['a], n: int): option::['a] {
     match l with
-    | Nil -> { None }
+    | Nil -> { None::['a] }
     | Cons (h, t) -> {
         if n == 0 then
-            Some(h)
+            Some::['a](h)
         else
-            nth_opt(t, n - 1)
+            nth_opt::['a](t, n - 1)
     }
 }
 
-def hd_opt(l) {
+def hd_opt::['a] (l: list::['a]): option::['a] {
     match l with
-    | Nil -> { None }
-    | Cons (h, t) -> { Some(h) }
+    | Nil -> { None::['a] }
+    | Cons (h, t) -> { Some::['a](h) }
 }
 
-def tl_opt(l) {
+def tl_opt::['a] (l: list::['a]): option::[list::['a]] {
     match l with
-    | Nil -> { None }
-    | Cons (h, t) -> { Some(t) }
+    | Nil -> { None::[list::['a]] }
+    | Cons (h, t) -> { Some::[list::['a]](t) }
 }
 
-def zip(l1, l2) {
+def zip::['a, 'b] (l1: list::['a], l2: list::['b]): list::[pair::['a, 'b]] {
     match l1 with
-    | Nil -> { Nil }
+    | Nil -> { Nil::[pair::['a, 'b]] }
     | Cons (h1, t1) -> {
         match l2 with
-        | Nil -> { Nil }
+        | Nil -> { Nil::[pair::['a, 'b]] }
         | Cons (h2, t2) -> {
-            Cons (Pair (h1, h2), zip(t1, t2))
+            Cons::[pair::['a, 'b]] (Pair::['a, 'b] (h1, h2), zip::['a, 'b](t1, t2))
         }
     }
 }
 
-def list_map(f, l) {
+def list_map::['a, 'b] (f: <> ('a) -> 'b, l: list::['a]): list::['b] {
     match l with
-    | Nil -> { Nil }
+    | Nil -> { Nil::['b] }
     | Cons (h, t) -> {
-        Cons (f(h), list_map(f, t))
+        Cons::['b] (f(h), list_map::['a, 'b](f, t))
     }
 }
 
-def list_mapi(f, l) {
-    rec def mapi_aux(f, i, l) {
+def list_mapi::['a, 'b] (f: <> (int, 'a) -> 'b, l: list::['a]): list::['b] {
+    rec def mapi_aux <> (f: <> (int, 'a) -> 'b, i: int, l: list::['a]): list::['b] {
         match l with
-        | Nil -> { Nil }
-        | Cons (h, t) -> { Cons (f(i, h), mapi_aux(f, i + 1, t)) }
+        | Nil -> { Nil::['b] }
+        | Cons (h, t) -> { Cons::['b] (f(i, h), mapi_aux(f, i + 1, t)) }
     };
     mapi_aux(f, 0, l)
 }
 
-def list_iter(f, l) {
+def list_iter::['a] (f: <> ('a) -> unit, l: list::['a]): unit {
     match l with
-    | Nil -> { 0 }
+    | Nil -> { () }
     | Cons (h, t) -> {
        f(h);
-       list_iter(f, t)
+       list_iter::['a] (f, t)
     }
 }
 
-def list_iteri(f, l) {
-    rec def iteri_aux(f, i, l) {
+def list_iteri::['a] (f: <> (int, 'a) -> unit, l: list::['a]): unit {
+    rec def iteri_aux <> (f: <> (int, 'a) -> unit, i: int, l: list::['a]): unit {
         match l with
-        | Nil -> { 0 }
+        | Nil -> { () }
         | Cons (h, t) -> { f(i, h); iteri_aux(f, i + 1, t) }
     };
     iteri_aux(f, 0, l)
 }
 
-def list_foldl(f, acc, l) {
+def list_foldl::['a, 'acc] (f: <> ('a, 'acc) -> 'acc, acc: 'acc, l: list::['a]): 'acc {
     match l with
     | Nil -> { acc }
-    | Cons (h, t) -> { list_foldl(f, f(h, acc), t) }
+    | Cons (h, t) -> { list_foldl::['a, 'acc] (f, f(h, acc), t) }
 }
 
-def list_foldr(f, acc, l) {
+def list_foldr::['a, 'acc] (f: <> ('a, 'acc) -> 'acc, acc: 'acc, l: list::['a]): 'acc {
     match l with
     | Nil -> { acc }
-    | Cons (h, t) -> { f(h, list_foldr(f, acc, t)) }
+    | Cons (h, t) -> { f(h, list_foldr::['a, 'acc] (f, acc, t)) }
 }
 
-def list_range(l, r) {
+def list_range (l: int, r: int): list::[int] {
     if l > r then
-        Nil
+        Nil::[int]
     else
-        Cons (l, list_range(l + 1, r))
+        Cons::[int] (l, list_range(l + 1, r))
 }
 
-def list_append(l1, l2) {
+def list_append::['a] [;] (l1: list::['a], l2: list::['a]): list::['a] {
     match l1 with
     | Nil -> { l2 }
     | Cons (h, t) -> {
-        Cons (h, list_append(t, l2))
+        Cons::['a] (h, list_append::['a](t, l2))
     }
 }
 
-def list_for_all(f, l) {
+def list_for_all::['a] (f: <> ('a) -> bool, l: list::['a]): bool {
     match l with
     | Nil -> { true }
-    | Cons (h, t) -> { f(h) && list_for_all(f, t) }
+    | Cons (h, t) -> { f(h) && list_for_all::['a] (f, t) }
 }
 
-def list_exists(f, l) {
+def list_exists::['a] (f: <> ('a) -> bool, l: list::['a]): bool {
     match l with
     | Nil -> { true }
-    | Cons (h, t) -> { f(h) || list_exists(f, t) }
+    | Cons (h, t) -> { f(h) || list_exists::['a] (f, t) }
 }
 
-def list_mem(l, x) {
+def list_mem::['a] (l: list::['a], x: 'a): bool {
     match l with
     | Nil -> { false }
     | Cons (h, t) -> {
         if h == x then
             true
         else
-            list_mem(t, x)
+            list_mem::['a](t, x)
     }
 }
 
-def list_intersection(l1, l2) {
+def list_intersection::['a] (l1: list::['a], l2: list::['a]): list::['a] {
     match l1 with
-    | Nil -> { Nil }
+    | Nil -> { Nil::['a] }
     | Cons (h, t) -> {
-        if list_mem(l2, h) then
-            Cons (h, list_intersection(t, l2))
+        if list_mem::['a](l2, h) then
+            Cons::['a] (h, list_intersection::['a](t, l2))
         else
-            list_intersection(t, l2)
+            list_intersection::['a](t, l2)
     }
 }
 
-def list_subtract(l1, l2) {
+def list_subtract::['a] (l1: list::['a], l2: list::['a]): list::['a] {
     match l1 with
-    | Nil -> { Nil }
+    | Nil -> { Nil::['a] }
     | Cons (h, t) -> {
-        if list_mem(l2, h) then
-            list_subtract(t, l2)
+        if list_mem::['a](l2, h) then
+            list_subtract::['a](t, l2)
         else
-            Cons (h, list_subtract(t, l2))
+            Cons::['a] (h, list_subtract::['a](t, l2))
     }
 }
 
-def assoc_list_mem(ass, k) {
+def assoc_list_mem::['a, 'b] (ass: list::[pair::['a, 'b]], k: 'a): bool {
     match ass with
     | Nil -> { false }
     | Cons (p, t) -> {
-        if fst(p) == k then
+        if fst::['a, 'b](p) == k then
             true
         else
-            assoc_list_mem(t, k)
+            assoc_list_mem::['a, 'b](t, k)
     }
 }
 
-def assoc_list_get_opt(ass, k) {
+def assoc_list_get_opt::['a, 'b] (ass: list::[pair::['a, 'b]], k: 'a): option::['b] {
     match ass with
-    | Nil -> { None }
+    | Nil -> { None::['b] }
     | Cons (p, t) -> {
-        if fst(p) == k then
-            Some (snd(p))
+        if fst::['a, 'b](p) == k then
+            Some::['b] (snd::['a, 'b](p))
         else
-            assoc_list_get_opt(t, k)
+            assoc_list_get_opt::['a, 'b] (t, k)
     }
 }
 
-def assoc_list_get_or_default(ass, k, d) {
-    val res = assoc_list_get_opt(ass, k);
+def assoc_list_get_or_default::['a, 'b] (ass: list::[pair::['a, 'b]], k: 'a, d: 'b): 'b {
+    val res = assoc_list_get_opt::['a, 'b] (ass, k);
     match res with
     | None -> { d }
     | Some(x) -> { x }
 }
 
-def assoc_list_set(ass, k, v) {
+def assoc_list_set::['a, 'b] (ass: list::[pair::['a, 'b]], k: 'a, v: 'b): list::[pair::['a, 'b]] {
     match ass with
-    | Nil -> { Cons(Pair(k, v), Nil) }
+    | Nil -> { Cons::[pair::['a, 'b]] (Pair::['a, 'b] (k, v), Nil::[pair::['a, 'b]]) }
     | Cons(p, t) -> {
-        if k == fst(p) then
-            Cons(Pair(k, v), t)
+        if k == fst::['a, 'b](p) then
+            Cons::[pair::['a, 'b]] (Pair::['a, 'b] (k, v), t)
         else
-            Cons(p, assoc_list_set(t, k, v))
+            Cons::[pair::['a, 'b]] (p, assoc_list_set::['a, 'b] (t, k, v))
     }
 }
 
-def assoc_list_dom(ass) {
+def assoc_list_dom::['a, 'b] (ass: list::[pair::['a, 'b]]): list::['a] {
     match ass with
-    | Nil -> { Nil() }
+    | Nil -> { Nil::['a]() }
     | Cons (p, t) -> {
-        Cons(fst(p), assoc_list_dom(t))
+        Cons::['a] (fst::['a, 'b](p), assoc_list_dom::['a, 'b](t))
     }
 }
 
-def assoc_list_vals(ass) {
+def assoc_list_vals::['a, 'b] (ass: list::[pair::['a, 'b]]): list::['b] {
     match ass with
-    | Nil -> { Nil() }
+    | Nil -> { Nil::['b] () }
     | Cons(p, t) -> {
-        Cons(snd(p), assoc_list_vals(t))
+        Cons::['b] (snd::['a, 'b] (p), assoc_list_vals::['a, 'b] (t))
     }
 }

@@ -1,4 +1,4 @@
-def main() {
+def main(): int {
     val x = newref {1 + 2, 2 + 3};
     ~printInt(x[0]);
     ~printInt(x[1]);

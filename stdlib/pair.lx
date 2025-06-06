@@ -1,32 +1,32 @@
-type pair = 
-    | Pair of int * int
+type pair::['a, 'b] = 
+    | Pair of 'a * 'b
 
-def fst(p) {
+def fst::['a, 'b] (p: pair::['a, 'b]): 'a {
     match p with
     | Pair(x, y) -> { x }
 }
 
-def snd(p) {
+def snd::['a, 'b] (p: pair::['a, 'b]): 'b {
     match p with
     | Pair (x, y) -> { y }
 }
 
-def swap(p) {
+def swap::['a, 'b] (p: pair::['a, 'b]): pair::['b, 'a] {
     match p with
-    | Pair (x, y) -> { Pair(y, x) }
+    | Pair (x, y) -> { Pair::['b, 'a](y, x) }
 }
 
-def pair_fold(f, p) {
+def pair_fold::['a, 'b, 'c] (f: <> ('a, 'b) -> 'c, p: pair::['a, 'b]): 'c {
     match p with
     | Pair (x, y) -> { f(x, y) }
 }
 
-def pair_map(f, g, p) {
+def pair_map::['a, 'b, 'c, 'd] (f: <> ('a) -> 'c, g: <> ('b) -> 'd, p: pair::['a, 'b]): pair::['c, 'd] {
     match p with
-    | Pair (x, y) -> { Pair (f(x), g(y)) }
+    | Pair (x, y) -> { Pair::['c, 'd] (f(x), g(y)) }
 }
 
-def pair_eq_prim(p1, p2) {
+def pair_eq_prim::['a, 'b] (p1: pair::['a, 'b], p2: pair::['a, 'b]): bool {
     match p1 with
     | Pair (x1, y1) -> { 
         match p2 with

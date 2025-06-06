@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/helloz/helloz.lx -o main --lexaz &> /dev/null
+  $ lexa ../lexa_snippets/helloz/helloz.lx -o main --gen-offset &> /dev/null
   $ ./main
   hello
   42

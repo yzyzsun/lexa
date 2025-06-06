@@ -1,32 +1,32 @@
-type option = 
+type option::['a] = 
     | None
-    | Some of int
+    | Some of 'a
 
-def option_get(o) {
+def option_get::['a] (o: option::['a]): 'a {
     match o with
-    | None -> { ~error("option is None") }
+    | None -> { ~error::['a]("option is None") }
     | Some(x) -> { x }
 }
 
-def option_bind(o, f) {
+def option_bind::['a, 'b] (o: option::['a], f: <> ('a) -> option::['b]): option::['b] {
     match o with
-    | None -> { None }
+    | None -> { None::['b] }
     | Some(v) -> { f(v) }
 }
 
-def option_map(o, f) {
+def option_map::['a, 'b] (o: option::['a], f: <> ('a) -> 'b): option::['b] {
     match o with
-    | None -> { None }
-    | Some(v) -> { Some(f(v)) }
+    | None -> { None::['b] }
+    | Some(v) -> { Some::['b](f(v)) }
 }
 
-def is_none(o) {
+def is_none::['a] (o: option::['a]): bool {
     match o with
     | None -> { true }
     | Some(_) -> { false }
 }
 
-def is_some(o) {
+def is_some::['a] (o: option::['a]): bool {
     match o with
     | None -> { false }
     | Some(_) -> { true }

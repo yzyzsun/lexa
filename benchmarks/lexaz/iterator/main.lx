@@ -1,5 +1,5 @@
 effectz Emit {
-    dcl emit: (int) -> int
+    dcl emit: (int) -> unit
 }
 
 def range [; emit_l: Emit] (l: int, u: int): int {

@@ -1,30 +1,30 @@
 effect Abort {
-  dcl invalid_arg
+  dcl invalid_arg: (int, int) -> int
 }
 
-def ackermann(m, n, abort_stub) {
+def ackermann [; abort_l: Abort] (m: int, n: int): int {
     if m < 0 || n < 0 then
-        raise abort_stub.invalid_arg(0)
+        raise abort_l.invalid_arg(m, n)
     else
         if m == 0 then
             n + 1
         else
             if n == 0 then
-                ackermann(m - 1, 1, abort_stub)
+                ackermann: [; abort_l] (m - 1, 1)
             else
-                ackermann(m - 1, ackermann(m, n - 1, abort_stub), abort_stub)
+                ackermann: [; abort_l] (m - 1, ackermann: [; abort_l] (m, n - 1))
 }
 
-def main() {
+def main(): int {
     val m = ~readInt();
     val n = 1;
 
-    handle {
-        ~printInt(ackermann(m, n, abort_stub));
+    handle <> {
+        ~printInt(ackermann: [; abort_l] (m, n));
         0
-    } with abort_stub: Abort {
-        exc invalid_arg(_) {
-            ~printf("Error: invalid argument\n");
+    } with abort_l: Abort {
+        exc invalid_arg(m, n) {
+            ~printf("abort_l: invalid argument (%d, %d)\n", m, n);
             1
         }
     }

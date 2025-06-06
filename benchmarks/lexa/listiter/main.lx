@@ -1,5 +1,5 @@
 effect Emit {
-    dcl emit
+    dcl emit: (int) -> unit
 }
 
 type list = 
@@ -7,29 +7,29 @@ type list =
     | Cons of int * list
 
 
-def iter(l, f) {
+def iter [a; ] (l: list, f: <a; > (int) -> unit): unit {
     match l with
-    | Nil -> { 0 }
+    | Nil -> { () }
     | Cons (h, t) -> {
         f(h);
-        iter(t, f)
+        iter:[(a;);](t, f)
     }
 }
 
-def enumerate(i) {
+def enumerate(i: int): list {
     if i < 0 then
         Nil()
     else
         Cons(i, enumerate(i - 1))
 }
 
-def runIter(l) {
+def runIter(l: list): int {
     val res = newref{0};
-    handle {
-        val f = fun(x) {
+    handle <> {
+        val f = fun <emit_l> (x: int): unit {
             raise emit_l.emit(x)
         };
-        iter(l, f)
+        iter:[(emit_l); ](l, f)
     } with emit_l: Emit {
         def emit(x) {
             res[0] := res[0] + x
@@ -38,7 +38,7 @@ def runIter(l) {
     res[0]
 }
 
-def loop(i, l, acc) {
+def loop(i: int, l: list, acc: int): int {
     if i == 0 then
         acc
     else
@@ -46,7 +46,7 @@ def loop(i, l, acc) {
 }
 
 
-def main() {
+def main(): int {
     val n = ~readInt();
     ~printf("%ld\n", loop(n, enumerate(1000), 0));
     0

@@ -1,34 +1,47 @@
 open "list.lx"
 
-def stack_make() {
-    newref{Nil, 0}
+type stack::['a] =
+    | Stack of ref list::['a] * ref int
+
+def stack_make::['a] (): stack::['a] {
+    Stack::['a] (newref{ Nil::['a] }, newref {0} )
 }
 
-def stack_push(s, v) {
-    val c = s[0];
-    val len = s[1];
-    s[0] := Cons(v, c);
-    s[1] := s[1] + 1
+def stack_push::['a] (s: stack::['a], v: 'a): unit {
+    match s with
+    | Stack (c, len) -> {
+        c[0] := Cons::['a](v, c[0]);
+        len[0] := len[0] + 1
+    }
 }
 
-def stack_pop(s) {
-    val c = s[0];
-    match c with
-    | Cons (hd, tl) -> { s[0] := tl; s[1] := s[1] - 1; hd }
-    | Nil -> { ~error("Empty stack") }
+def stack_pop::['a] (s: stack::['a]): 'a {
+    match s with
+    | Stack (c, len) -> {
+        match c[0] with
+        | Cons (hd, tl) -> { 
+            c[0] := tl;
+            len[0] := len[0] - 1;
+            hd 
+        }
+        | Nil -> { ~error::['a]("Empty stack") }
+    }
 }
 
-def stack_size(s) {
-    s[1]
+def stack_size::['a] (s: stack::['a]): int {
+    match s with
+    | Stack (_, len) -> { len[0] }
 }
 
-def stack_is_empty(s) {
-    s[1] == 0
+def stack_is_empty::['a] (s: stack::['a]): bool {
+    stack_size::['a] (s) == 0
 }
 
-def stack_peek(s) {
-    val c = s[0];
-    match c with
-    | Cons (hd, tl) -> { hd }
-    | Nil -> { ~error("Empty stack") }
+def stack_peek::['a] (s: stack::['a]): 'a {
+    match s with
+    | Stack (c, _) -> {
+        match c[0] with
+        | Cons (hd, tl) -> { hd }
+        | Nil -> { ~error::['a]("Empty stack") }
+    }
 }

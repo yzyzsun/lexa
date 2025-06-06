@@ -130,6 +130,7 @@ and read_char buf =
   | '\\' 'r' '\'' { CHAR '\r' }
   | '\\' 't' '\'' { CHAR '\t' }
   | '\\' '\'' '\'' { CHAR '\'' }
+  | '\\' '0' '\'' { CHAR '\x00' }
   | [^ '"' '\\'] '\''
     { Buffer.add_char buf (Lexing.lexeme_char lexbuf 0);
       CHAR (Buffer.nth buf 0)

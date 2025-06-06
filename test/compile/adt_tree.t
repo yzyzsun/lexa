@@ -13,14 +13,14 @@
   static closure_t *traverse;
   static closure_t *make;
   enum __tree_tag__ {
-    Nil,
+    Leaf,
     Node,
   };
   
   typedef struct __tree_t__ {
     enum __tree_tag__ tag;
     union {
-      i64 Nil[0];
+      i64 Leaf[0];
       i64 Node[3];
     };
   } __tree_t__;
@@ -48,7 +48,7 @@
   static i64 __make_lifted_2__(i64 __env__, i64 i) {
     return (((i == 0) ? (({
       __tree_t__ *__t__ = (__tree_t__ *)xmalloc(sizeof(__tree_t__));
-      __t__->tag = Nil;
+      __t__->tag = Leaf;
   
       (i64) __t__;
     }))
@@ -76,7 +76,7 @@
     return ((({
       i64 __match_res__;
       i64 __expr_res__ = (i64)t;
-      if (((__tree_t__ *)__expr_res__)->tag == Nil) {
+      if (((__tree_t__ *)__expr_res__)->tag == Leaf) {
         __match_res__ = ({ 0; });
       } else if (((__tree_t__ *)__expr_res__)->tag == Node) {
         __match_res__ = ({

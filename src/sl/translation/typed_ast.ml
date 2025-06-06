@@ -8,7 +8,6 @@ type typed_expr =
   captured_vars: capture_set;
   cap_vars: var list;
   label_vars: (var * var) list;
-  term_vars: (var * ty) list;
 }
 
 and fundef = { name : var;
