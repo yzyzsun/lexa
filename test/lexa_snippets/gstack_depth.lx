@@ -1,0 +1,22 @@
+effect E {
+    dcl eff: (int) -> int
+}
+
+def loop [; e: E] (i: int): int {
+    if i == 0 then
+        0
+    else
+        loop:[;e](i - 1) + raise e.eff(i)
+}
+
+def main(): int {
+    val n = ~readInt();
+    handle <> { // dummy handle to enter a new stack
+        ~printInt(loop:[;e](n));
+        0
+    } with e: E {
+        hdl_1 eff(i, k) {
+            resume_final k i
+        }
+    }
+}

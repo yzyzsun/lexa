@@ -6,14 +6,31 @@
 #include <common.h>
 #include <datastructure.h>
 
-#ifndef STACK_SIZE
-    #define STACK_SIZE (1024LL * 8)
+#ifdef USE_GSTACK
+#include "gstack.h"
 #endif
-#define PREALLOCATED_STACKS 64
 
-static char* buffer = 0;
-static uint64_t bitmap;
 static void *system_stack_lower, *system_stack_upper;
+
+void init_system_stack_bounds() {
+    struct rlimit limit;
+    getrlimit(RLIMIT_STACK, &limit);
+    long system_stack_size_limit = limit.rlim_cur;
+
+    FILE *fp = fopen("/proc/self/maps", "r");
+    if (fp == NULL) {
+        perror("Failed to open /proc/self/maps");
+        exit(1);
+    }
+    char line[256];
+    while (fgets(line, sizeof(line), fp)) {
+        if (strstr(line, "[stack]")) { 
+            sscanf(line, "%lx-%lx", (unsigned long *)&system_stack_lower, (unsigned long *)&system_stack_upper); 
+            system_stack_lower = (void*)((intptr_t)system_stack_upper - system_stack_size_limit);
+            break;
+        }
+    }
+}
 
 bool is_main_stack(char* stack) {
     return system_stack_lower <= (void*)stack && (void*)stack < system_stack_upper;
@@ -39,24 +56,70 @@ char* GC_get_main_stack_sp() {
     }
 }
 
-void init_stack_pool() {
 
-    struct rlimit limit;
-    getrlimit(RLIMIT_STACK, &limit);
-    long system_stack_size_limit = limit.rlim_cur;
-    FILE *fp = fopen("/proc/self/maps", "r");
-    if (fp == NULL) {
-        perror("Failed to open /proc/self/maps");
-        exit(1);
+#ifdef USE_GSTACK
+
+void init_stack_pool() {
+    init_system_stack_bounds();
+
+    mp_gstack_init(NULL);
+
+    GC_register_get_sp_func_callback(GC_get_main_stack_sp);
+    GC_init();
+}
+
+void destroy_stack_pool() {
+}
+
+char* get_stack() {
+    mp_gstack_t* g = mp_gstack_alloc(1, NULL);  // extra_size needs to be at least 1
+    if (!g) return NULL;
+
+    return (char*) (g->stack + g->stack_size);
+}
+
+void free_stack(char* stack) {
+    // Locate gstack
+    mp_gstack_t* g = mp_gstack_get(stack);
+    if (g == NULL) return;
+    mp_gstack_free(g, true);  // delay?
+}
+
+void free_stack_on_abort(char* curr_stack, char* target_stack) {
+    if (is_main_stack(curr_stack)) {
+        // We are currently on the main stack, no need to free
+        return;
     }
-    char line[256];
-    while (fgets(line, sizeof(line), fp)) {
-        if (strstr(line, "[stack]")) { 
-            sscanf(line, "%lx-%lx", (unsigned long *)&system_stack_lower, (unsigned long *)&system_stack_upper); 
-            system_stack_lower = (void*)((intptr_t)system_stack_upper - system_stack_size_limit);
-            break;
-        }
+    mp_gstack_t* g = mp_gstack_get(curr_stack);
+    char* stack_bottom = (char*) (g->stack + g->stack_size);
+    if (target_stack > stack_bottom && target_stack - stack_bottom <= 8 * MP_MIB) {
+        // Going to the same stack, no need to free
+        return;
     }
+    mp_gstack_free(g, true);
+}
+
+// Does not work for an empty stack. But such situation should not happen.
+char* dup_stack(char* sp) {
+    mp_gstack_t* g = mp_gstack_get(sp);
+    char* new_stack = get_stack();
+    size_t num_bytes = (char*) g->stack + g->stack_size - sp;
+    char* new_sp = new_stack - num_bytes;
+    memcpy(new_sp, sp, num_bytes);
+    return new_sp;
+}
+#else
+
+#ifndef STACK_SIZE
+    #define STACK_SIZE (1024LL * 8)
+#endif
+#define PREALLOCATED_STACKS 64
+
+static char* buffer = 0;
+static uint64_t bitmap;
+
+void init_stack_pool() {
+    init_system_stack_bounds();
 
     GC_register_get_sp_func_callback(GC_get_main_stack_sp);
     GC_init();
@@ -120,3 +183,4 @@ char* dup_stack(char* sp) {
     memcpy(new_sp, sp, num_bytes);
     return new_sp;
 }
+#endif

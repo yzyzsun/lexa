@@ -1,0 +1,40 @@
+effect Emit {
+    dcl emit: (int) -> unit
+}
+
+type list = 
+    | Nil
+    | Cons of int * list
+
+def enumerate(i: int): list {
+    if i < 1 then
+        Nil()
+    else
+        Cons(i, enumerate(i - 1))
+}
+
+
+def loop [; emit_l: Emit] (l: list): unit {
+    match l with
+    | Nil -> { () }
+    | Cons (hd, tl) -> {
+        raise emit_l.emit(hd);
+        loop:[; emit_l](tl)
+    }   
+}
+
+
+def main(): int {
+    val n = ~readInt();
+    val res = newref{0};
+    handle <> {
+        loop:[; emit_l](enumerate(n))
+    } with emit_l: Emit {
+        hdl_s emit (v, k) {
+            res[0] := res[0] + v;
+            resume k (())
+        }
+    };
+    ~printf("%ld\n", res[0]);
+    0
+}

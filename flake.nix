@@ -37,6 +37,7 @@
         packages.clang_18_preserve_none = pkgs.callPackage ./nix/clang18.nix { };
         packages.effect_latest = pkgs.callPackage ./nix/effekt_latest.nix { mkSbtDerivation = sbt.mkSbtDerivation;};
         packages.bdwgc = pkgs.callPackage ./nix/bdwgc.nix { };
+        packages.libmprompt = pkgs.callPackage ./nix/libmprompt.nix { bdwgc = self.packages.${system}.bdwgc; };
         packages.jetbrains-mono = pkgs.callPackage ./nix/jetbrains-mono.nix { };
         packages.science = pkgs.callPackage ./nix/SciencePlots.nix { };
         devShell = with pkgs; mkShell {
@@ -92,6 +93,7 @@
             jemalloc
             gperftools
             self.packages.${system}.bdwgc
+            self.packages.${system}.libmprompt
 
             ghostscript
             graphviz
