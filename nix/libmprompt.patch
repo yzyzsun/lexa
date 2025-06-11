@@ -1,0 +1,5468 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 87e714a..6508358 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -17,47 +17,6 @@ set(mp_version "0.6")
+ set(mprompt_sources  src/mprompt/main.c)
+     # util.c gstack_pool.c gstack_win.c gstack_mmap.c gstack_mmap_mach.c gstack.c mprompt.c
+ 
+-set(mpeff_sources    src/mpeff/main.c)
+-    # src/mpeff/mpeff.c
+-
+-set(test_mpe_main_sources
+-    test/common_util.c
+-    test/common_effects.c
+-    test/src/reader.c
+-    test/src/counter.c
+-    test/src/countern.c
+-    test/src/mstate.c
+-    test/src/amb.c
+-    test/src/amb_state.c
+-    test/src/nqueens.c
+-    test/src/rehandle.c
+-    test/src/triples.c
+-    test/test_mpe_main.c)    
+-
+-if (NOT MP_USE_C)
+-list(APPEND test_mpe_main_sources
+-    test/src/exn.cpp
+-    test/src/multi_unwind.cpp
+-    test/src/throw.cpp)
+-endif()
+-
+-set(test_mp_async_sources 
+-    test/test_mp_async.c
+-    test/common_util.c)
+-
+-set(test_mp_example_generator_sources 
+-    test/test_mp_example_generator.c)
+-
+-set(test_mp_example_async_sources 
+-    test/test_mp_example_async.c)
+-
+-
+-list(APPEND test_sources 
+-      ${test_mpe_main_sources}  
+-      ${test_mp_async_sources} 
+-      ${test_mp_example_generator_sources}
+-      ${test_mp_example_async_sources})
+-
+ set(mp_cflags)
+ set(mp_install_dir)
+ set(mp_libs)
+@@ -69,7 +28,6 @@ if (MP_USE_C)
+   # C
+   message(STATUS "Use the C compiler to compile (MP_USE_C=ON)")  
+   set(mp_mprompt_name "mprompt")
+-  set(mp_mpeff_name   "mpeff") 
+ 
+   if(CMAKE_C_COMPILER_ID MATCHES "MSVC|Intel")
+     message(WARNING "It is not recommended to use plain C with this compiler (due to SEH) (${CMAKE_C_COMPILER_ID})")
+@@ -78,39 +36,10 @@ else()
+   # C++
+   message(STATUS "Use the C++ compiler to compile (${CMAKE_CXX_COMPILER_ID}) (MP_USE_C=OFF)")  
+   set(mp_mprompt_name "mpromptx")
+-  set(mp_mpeff_name   "mpeffx")
+   
+   SET_SOURCE_FILES_PROPERTIES(${mprompt_sources} PROPERTIES LANGUAGE CXX )
+-  SET_SOURCE_FILES_PROPERTIES(${mpeff_sources} PROPERTIES LANGUAGE CXX )
+-  SET_SOURCE_FILES_PROPERTIES(${test_sources} PROPERTIES LANGUAGE CXX )
+ endif()
+ 
+-
+-# -----------------------------------------------------------------------------
+-# Check architecture: currently only amd64 and arm64 (experimental)
+-# -----------------------------------------------------------------------------
+-set(mprompt_asm_source)
+-
+-string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" mp_proc)
+-if (mp_proc MATCHES "(x86_64)|(amd64)")
+-  if (CMAKE_C_COMPILER_ID MATCHES "MSVC")
+-    set(mprompt_asm_source src/mprompt/asm/longjmp_amd64_win.asm)
+-    enable_language(ASM_MASM)
+-  else()
+-    set(mprompt_asm_source src/mprompt/asm/longjmp_amd64.S)
+-  endif()
+-else()
+-  if (mp_proc MATCHES "(aarch64)|(arm64)")
+-    if (APPLE)
+-      message(WARNING "arm64 support on Apple is untested")
+-    endif()
+-    set(mprompt_asm_source src/mprompt/asm/longjmp_arm64.S)
+-  else()
+-    message(WARNING "unsupported architecture: ${mp_proc}")    
+-  endif()
+-endif()
+-
+-
+ # -----------------------------------------------------------------------------
+ # Convenience: set default build type depending on the build directory
+ # -----------------------------------------------------------------------------
+@@ -151,10 +80,6 @@ endif()
+ # -----------------------------------------------------------------------------
+ # Flags
+ # -----------------------------------------------------------------------------
+-if((CMAKE_BUILD_TYPE MATCHES "Release") OR ((CMAKE_BUILD_TYPE MATCHES "RelWithDebInfo") AND NOT APPLE))
+-  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+-endif()
+-
+ if (C_COMPILER_ID MATCHES "AppleClang|Clang|GNU|Intel")
+   list(APPEND mp_cflags -Wall -Wextra -Wno-unknown-pragmas -fvisibility=hidden)
+ endif()
+@@ -183,12 +108,15 @@ if (NOT WIN32)
+ endif()
+ 
+ 
++list(APPEND mp_cflags -O3)
++list(APPEND mp_libs gc)
++
+ # -----------------------------------------------------------------------------
+ # Overview
+ # -----------------------------------------------------------------------------
+ 
+ message(STATUS "")
+-message(STATUS   "Libraries : lib${mp_mprompt_name}, lib${mp_mpeff_name}")
++message(STATUS   "Libraries : lib${mp_mprompt_name}")
+ message(STATUS   "Build type: ${CMAKE_BUILD_TYPE}")
+ if(MP_USE_C)
+   message(STATUS "Compiler  : ${CMAKE_C_COMPILER}")
+@@ -205,7 +133,7 @@ message(STATUS "")
+ # Each library is standalone; mphnd includes mprompt, while mpeff includes mphnd (and mprompt)
+ # -----------------------------------------------------------------------------
+ 
+-add_library(mprompt STATIC ${mprompt_sources} ${mprompt_asm_source})
++add_library(mprompt STATIC ${mprompt_sources})
+ # set_property(TARGET mprompt PROPERTY POSITION_INDEPENDENT_CODE ON)
+ set_target_properties(mprompt PROPERTIES VERSION ${mp_version} OUTPUT_NAME ${mp_mprompt_name} )
+ target_compile_definitions(mprompt PRIVATE MP_STATIC_LIB)
+@@ -221,39 +149,3 @@ if (APPLE)
+   # target_link_options(mprompt PUBLIC -Wl,-no_compact_unwind -Wl,-keep_dwarf_unwind)
+   # target_link_options(mprompt PUBLIC -Wl,-no_keep_dwarf_unwind)
+ endif()
+-
+-
+-# mpeff library
+-add_library(mpeff STATIC ${mpeff_sources} ${mprompt_asm_source})
+-set_target_properties(mpeff PROPERTIES VERSION ${mp_version} OUTPUT_NAME ${mp_mpeff_name} )
+-target_compile_definitions(mpeff PRIVATE MPE_STATIC_LIB)
+-target_compile_options(mpeff PRIVATE ${mp_cflags})
+-target_include_directories(mpeff PUBLIC
+-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+-    $<INSTALL_INTERFACE:${mp_install_dir}/include>
+-)
+-if (NOT WIN32)
+-  target_link_libraries(mpeff PUBLIC ${mp_libs})
+-endif()
+-
+-
+-
+-#---------------------------------------------------------------
+-# tests
+-#---------------------------------------------------------------
+-add_executable(test_mpe_main              ${test_mpe_main_sources})
+-add_executable(test_mp_async              ${test_mp_async_sources})
+-add_executable(test_mp_example_generator  ${test_mp_example_generator_sources})
+-add_executable(test_mp_example_async      ${test_mp_example_async_sources})
+-
+-set(test_targets test_mpe_main test_mp_async test_mp_example_generator test_mp_example_async)
+-
+-
+-# finalize tests
+-enable_testing()
+-foreach(test_target ${test_targets} )
+-  target_compile_options(${test_target} PRIVATE ${mp_cflags})
+-  target_include_directories(${test_target} PRIVATE include test)
+-  target_link_libraries(${test_target} PRIVATE mpeff)
+-  add_test( ${test_target} ${test_target})
+-endforeach()
+diff --git a/include/internal/gstack.h b/include/gstack.h
+similarity index 56%
+rename from include/internal/gstack.h
+rename to include/gstack.h
+index 58a040d..49dae37 100644
+--- a/include/internal/gstack.h
++++ b/include/gstack.h
+@@ -8,25 +8,44 @@
+ #ifndef MP_GSTACK_H
+ #define MP_GSTACK_H
+ 
++/*------------------------------------------------------------------------------
++   NB: Try to fix dependency issues
++------------------------------------------------------------------------------*/
++#include "mprompt.h"
++#include "internal/util.h"
++
+ /*------------------------------------------------------------------------------
+    Internal API for in-place growable gstacks
+ ------------------------------------------------------------------------------*/
+ typedef struct mp_gstack_s mp_gstack_t;
+-typedef struct mp_gsave_s  mp_gsave_t;
+ 
+ bool         mp_gstack_init(const mp_config_t* config); // normally called automatically
+ void         mp_gstack_clear_cache(void);               // clear thread-local cache of gstacks (called automatically on thread termination)
+ 
+ mp_gstack_t* mp_gstack_alloc(ssize_t extra_size, void** extra); 
+ void         mp_gstack_free(mp_gstack_t* gstack, bool delay);
+-void         mp_gstack_enter(mp_gstack_t* g, mp_jmpbuf_t** return_jmp, mp_stack_start_fun_t* fun, void* arg);
+-
+-mp_gsave_t*  mp_gstack_save(mp_gstack_t* gstack, uint8_t* sp);    // save up to the given stack pointer (that should be in `gstack`)
+-void         mp_gsave_restore(mp_gsave_t* gsave);
+-void         mp_gsave_free(mp_gsave_t* gsave);
+ 
+ mp_gstack_t* mp_gstack_current(void);             // implemented in <mprompt.c>
+ 
++// Stack info.
++// For security we allocate this separately from the actual stack.
++// To save an allocation, we reserve `extra_size` space where the
++// `mp_prompt_t` information will be.
++// All sizes (except for `extra_size`) are `os_page_size` aligned.
++struct mp_gstack_s {
++  mp_gstack_t*  next;               // used for the cache and delay list
++  uint8_t*      full;               // stack reserved memory (including noaccess gaps)
++  ssize_t       full_size;          // (for now always fixed to be `os_gstack_size`)
++  uint8_t*      stack;              // stack inside the full area (without gaps)
++  ssize_t       stack_size;         // actual available total stack size (includes reserved space) (depends on platform, but usually `os_gstack_size - 2*mp_gstack_gap`)
++  ssize_t       initial_commit;     // initial committed memory (usually `os_page_size`)
++  ssize_t       committed;          // current committed estimate
++  ssize_t       extra_size;         // size of extra allocated bytes.
++  uint8_t       extra[1];           // extra allocated (holds the mp_prompt_t structure)
++};
++
++// get gstack header from raw stack
++mp_gstack_t* mp_gstack_get(char* stack);
+ 
+ 
+ /*------------------------------------------------------------------------------
+@@ -52,4 +71,4 @@ static inline void mp_debug_asan_end_switch(bool from_system)       { MP_UNUSED(
+ #endif
+ 
+ 
+-#endif
+\ No newline at end of file
++#endif
+diff --git a/include/internal/longjmp.h b/include/internal/longjmp.h
+deleted file mode 100644
+index 764e471..0000000
+--- a/include/internal/longjmp.h
++++ /dev/null
+@@ -1,197 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-#pragma once
+-#ifndef MP_LONGJMP_H
+-#define MP_LONGJMP_H
+-
+-#include <stdint.h>
+-
+-#if defined(__cplusplus)
+-#define mp_decl_externc     extern "C"
+-#else
+-#define mp_decl_externc
+-#endif
+-
+-
+-/*------------------------------------------------------------------------------
+-   mp_setjmp, mp_longjmp, mp_stack_enter
+-
+-   We need a _fast_ and _plain_ version where `setjmp` just saves the register
+-   context, and `longjmp` just restores the register context and jumps to the saved
+-   location. Some platforms or libraries try to do more though, like trying
+-   to unwind the stack on a longjmp to invoke finalizers or saving and restoring signal
+-   masks. In those cases we try to substitute our own definitions.
+-------------------------------------------------------------------------------*/
+-
+-// A register context. Always has `reg_ip` and `reg_sp` members.
+-typedef struct mp_jmpbuf_s mp_jmpbuf_t;
+-
+-// On some platforms (like windows) we need an unwind frame on the stack that 
+-// is updated inplace when the return_point changes so backtraces go to the right return address.
+-typedef struct mp_unwind_frame_s mp_unwind_frame_t;
+-static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jmp);
+-
+-// Start function on a stack
+-typedef void (mp_stack_start_fun_t)(void* arg, mp_unwind_frame_t* unwind_frame);
+-
+-
+-// Primitive functions in assembler 
+-// note: do not mark `mp_stack_enter` as _noreturn_ or otherwise the backtrace will be wrong with gcc+gdb
+-// (as gcc will cut any the instructions after the call to `mp_stack_enter` which will have the return address
+-//  in `mp_stack_enter` point just beyond that into any instructions/fuction that follows the original call).
+-mp_decl_externc mp_decl_returns_twice  void* mp_setjmp(mp_jmpbuf_t* save_jmp);
+-mp_decl_externc mp_decl_noreturn       void  mp_longjmp(mp_jmpbuf_t* jmp);
+-mp_decl_externc void* mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, 
+-                                     mp_jmpbuf_t** return_jmp, mp_stack_start_fun_t* fun, void* arg);
+-
+-
+-
+-// Register context definitions are platform specific
+-
+-// Windows AMD64
+-#if defined(_WIN32) && defined(_M_X64)  
+-
+-typedef struct mp_xmm_s {
+-  uint64_t lo;
+-  uint64_t hi;
+-} mp_xmm_t;
+-
+-struct mp_jmpbuf_s {
+-  void*     reg_ip;            
+-  void*     reg_sp;
+-  int64_t   reg_rbx;
+-  int64_t   reg_rbp;
+-  int64_t   reg_rsi;
+-  int64_t   reg_rdi;
+-  int64_t   reg_r12;
+-  int64_t   reg_r13;  
+-  int64_t   reg_r14;
+-  int64_t   reg_r15;
+-  mp_xmm_t  reg_xmm6;
+-  mp_xmm_t  reg_xmm7;
+-  mp_xmm_t  reg_xmm8;
+-  mp_xmm_t  reg_xmm9;
+-  mp_xmm_t  reg_xmm10;
+-  mp_xmm_t  reg_xmm11;
+-  mp_xmm_t  reg_xmm12;
+-  mp_xmm_t  reg_xmm13;
+-  mp_xmm_t  reg_xmm14;
+-  mp_xmm_t  reg_xmm15;
+-  void*     tib_stack_base;        /* TIB+8    */
+-  void*     tib_stack_limit;       /* TIB+16   */
+-  void*     tib_stack_real_limit;  /* TIB+5240 */
+-  void*     tib_fiber_data;        /* TIB+32   */
+-  uint32_t  reg_mxcrs;
+-  uint16_t  reg_fpcr;
+-  uint16_t  context_padding;
+-};
+-
+-// On windows we do not have dwarf expressions and update the return address
+-// and stack pointer on the stack via the unwind frame. (note: this is just for
+-// the debugger; we never actually return this way but always longjmp out of it)
+-#define MP_UNWIND_FRAME_DEFINED  (1)
+-#define MP_WIN_USE_TRAP_FRAME    (1)
+-#if MP_WIN_USE_TRAP_FRAME
+-// use a machine trap frame: <https://www.amd.com/system/files/TechDocs/24593.pdf>, page 263.
+-typedef struct mp_unwind_frame_s {
+-  uint64_t  err;
+-  void*     ip;
+-  uint32_t  cs;
+-  uint32_t  padding1;
+-  uint64_t  eflags;
+-  void*     sp;
+-  uint32_t  ss;
+-  uint32_t  padding2;
+-} mp_unwind_frame_t;
+-
+-static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jmp) {
+-  if (tf != NULL) {
+-    tf->sp = jmp->reg_sp;
+-    tf->ip = jmp->reg_ip;
+-  }
+-}
+-#else
+-// use our own "mini" frame; just a saved rsp with rip. 
+-typedef struct mp_unwind_frame_s {
+-  void* sp;
+-  void* ip;
+-} mp_unwind_frame_t;
+-
+-static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jmp) {
+-  if (tf != NULL) {
+-    tf->sp = (uint8_t*)jmp->reg_sp - 8;  // adjust as the unwinder adds 8 (to pop the return address)
+-    tf->ip = jmp->reg_ip;
+-  }
+-}
+-#endif
+-
+-// AMD64 (Linux, macOS, BSD, etc)
+-#elif defined(__amd64__) || defined(__amd64) || defined(__x86_64__) || defined(__x86_64)
+-
+-struct mp_jmpbuf_s {
+-  void*     reg_ip;
+-  int64_t   reg_rbx;
+-  void*     reg_sp;
+-  void*     reg_rbp;
+-  int64_t   reg_r12;
+-  int64_t   reg_r13;
+-  int64_t   reg_r14;
+-  int64_t   reg_r15;
+-  uint32_t  reg_mxcrs;
+-  uint16_t  reg_fpcr;
+-  uint16_t  context_padding;
+-};
+-
+-
+-// ARM64, Aarch64
+-#elif defined(_M_ARM64) || defined(__aarch64__)
+-
+-struct mp_jmpbuf_s {
+-  int64_t   reg_x18;
+-  int64_t   reg_x19;
+-  int64_t   reg_x20;
+-  int64_t   reg_x21;
+-  int64_t   reg_x22;
+-  int64_t   reg_x23;
+-  int64_t   reg_x24;
+-  int64_t   reg_x25;
+-  int64_t   reg_x26;
+-  int64_t   reg_x27;
+-  int64_t   reg_x28;
+-  void*     reg_fp;
+-  void*     reg_ip;            
+-  void*     reg_sp;
+-  int64_t   reg_fpcr;
+-  int64_t   reg_fpsr;
+-  int64_t   reg_d8;  
+-  int64_t   reg_d9;
+-  int64_t   reg_d10; 
+-  int64_t   reg_d11;
+-  int64_t   reg_d12;
+-  int64_t   reg_d13;
+-  int64_t   reg_d14; 
+-  int64_t   reg_d15;
+-};
+-
+-
+-#else
+-#error "unsupported platform"
+-#endif
+-
+-// default definition of if no unwind frame is used
+-#if !MP_UNWIND_FRAME_DEFINED
+-typedef struct mp_unwind_frame_s {
+-  void* ip;
+-} mp_unwind_frame_t;
+-
+-static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jmp) {
+-  MP_UNUSED(tf); MP_UNUSED(jmp);
+-  // nothing
+-}
+-#endif
+-
+-#endif
+\ No newline at end of file
+diff --git a/include/internal/util.h b/include/internal/util.h
+index ab2aa27..eafca27 100644
+--- a/include/internal/util.h
++++ b/include/internal/util.h
+@@ -18,6 +18,7 @@
+ #include <assert.h>
+ #include <stdlib.h>     // malloc
+ #include <sys/types.h>  // ssize_t  
++#include <errno.h>
+ 
+ #if (defined(_MSC_VER) || defined(__MINGW32__)) && !defined(__ssize_t_defined)
+ #define __ssize_t_defined
+diff --git a/include/mpeff.h b/include/mpeff.h
+deleted file mode 100644
+index eba56f0..0000000
+--- a/include/mpeff.h
++++ /dev/null
+@@ -1,319 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-#pragma once
+-#ifndef MPE_EFFECTH_H
+-#define MPE_EFFECTH_H
+-
+-#include <stdbool.h>
+-#include <stdint.h>
+-#include <stddef.h>
+-
+-//------------------------------------------------------
+-// Compiler specific attributes
+-//------------------------------------------------------
+-
+-#if defined(_MSC_VER) || defined(__MINGW32__)
+-#if !defined(MP_SHARED_LIB)
+-#define mpe_decl_export     
+-#elif defined(MP_SHARED_LIB_EXPORT)
+-#define mpe_decl_export      __declspec(dllexport)
+-#else
+-#define mpe_decl_export      __declspec(dllimport)
+-#endif
+-#elif defined(__GNUC__) // includes clang and icc      
+-#define mpe_decl_export      __attribute__((visibility("default")))
+-#else
+-#define mpe_decl_export      
+-#endif
+-
+-
+-//------------------------------------------------------
+-// Interface
+-//------------------------------------------------------
+-
+-/// \defgroup effect_handlers Handlers
+-/// These are the primitives to define effect handlers and yield operations
+-/// \{
+-
+-/// A generic action 
+-typedef void* (mpe_actionfun_t)(void* arg);
+-
+-/// A `lh_resultfun` is called when a handled action is done.
+-typedef void* (mpe_resultfun_t)(void* local, void* arg);
+-
+-
+-typedef void (mpe_releasefun_t)(void* local);
+-
+-
+-/// A "resume" continuation.
+-/// This is first-class, and can be stored in data structures etc, and can survive
+-/// the scope of an operation function. It can be resumed through mpe_resume() or mpe_release_resume().
+-typedef struct mpe_resume_s mpe_resume_t;
+-
+-/// Effect values.
+-/// Operations are identified by a constant string pointer.
+-/// They are compared by address though so they must be declared as static constants (using #MPE_NEWOPTAG)
+-typedef const char* const* mpe_effect_t;
+-
+-/// Operation values.
+-/// An operation is identified by an effect and index in that effect. 
+-/// There are defined automatically using `MPE_DEFINE_OPn` macros and can be referred to 
+-/// using `MPE_OPTAG(effect,opname)`.
+-typedef const struct mpe_optag_s {
+-  mpe_effect_t effect;
+-  long         opidx;
+-} *mpe_optag_t;
+-
+-
+-/// Operation functions are called when that operation is `yield`ed to. 
+-typedef void* (mpe_opfun_t)(mpe_resume_t* r, void* local, void* arg);
+-
+-
+-/// Operation kinds. 
+-/// When defining the operations that a handler can handle, 
+-/// these are specified to make the handling of operations more efficient. 
+-typedef enum mpe_opkind_e {
+-  MPE_OP_NULL,        ///< Invalid operation (used in static declarations to signal end of the operation array)
+-  MPE_OP_FORWARD,     ///< forwarding the operation, the `opfun` should be `NULL` in this case. 
+-  MPE_OP_ABORT,       ///< never resume -- and do not even run finalizers or destructors
+-  MPE_OP_NEVER,       ///< never resume -- and run finalizers and destructors before running the operation function
+-  MPE_OP_TAIL_NOOP,   ///< resume at most once without performing operations; and if resumed, it is the last action performed by the operation function.
+-  MPE_OP_TAIL,        ///< resume at most once; and if resumed, it is the last action performed by the operation function.
+-  MPE_OP_SCOPED_ONCE, ///< resume at most once within the scope of an operation function.
+-  MPE_OP_SCOPED,      ///< resume never or multiple times within the scope of an operation function.
+-  MPE_OP_ONCE,        ///< resume at most once.
+-  MPE_OP_MULTI        ///< resume never or multiple times.
+-} mpe_opkind_t;
+-
+-/// Operation defintion.
+-/// An `operation` has a kind, an identifying tag, and an associated operation function.
+-typedef struct mpe_operation_s {
+-  mpe_opkind_t opkind;  ///< Kind of the operation
+-  mpe_optag_t  optag;   ///< The identifying tag
+-  mpe_opfun_t* opfun;   ///< The operation function; use `NULL` (with #MPE_OP_FORWARD) to have the operation forwarded to the next enclosing effect (i.e. a direct tail-resume with the same arguments).
+-} mpe_operation_t; 
+-
+-/// Handler definition.
+-typedef struct mpe_handlerdef_s {
+-  mpe_effect_t      effect;         ///< The Effect being handled.
+-  mpe_resultfun_t*  resultfun;      ///< Invoked when the handled action is done; can be NULL in which case the action result is passed unchanged.
+-  mpe_operation_t   operations[8];  ///< Definitions of all handled operations ending with an operation with `lh_opkind` `LH_OP_NULL`. Can be NULL to handle no operations;
+-                                    ///< Note: all operations must be in the same order here as in the effect definition! (since each operation has a fixed index).
+-} mpe_handlerdef_t;
+-
+-
+-
+-/*-----------------------------------------------------------------
+-  Handlers
+------------------------------------------------------------------*/
+-
+-mpe_decl_export void* mpe_handle(const mpe_handlerdef_t* hdef, void* local, mpe_actionfun_t* body, void* arg);
+-mpe_decl_export void* mpe_perform(mpe_optag_t optag, void* arg);
+-
+-mpe_decl_export void* mpe_resume(mpe_resume_t* resume, void* local, void* arg);
+-mpe_decl_export void* mpe_resume_final(mpe_resume_t* resume, void* local, void* arg);  // final resumption
+-mpe_decl_export void* mpe_resume_tail(mpe_resume_t* resume, void* local, void* arg);   // final resumption in tail position
+-mpe_decl_export void  mpe_resume_release(mpe_resume_t* resume);                        // final resumption causing unwinding (raise unwind exception on resume)
+-
+-
+-mpe_decl_export void* mpe_mask(mpe_effect_t eff, size_t from, mpe_actionfun_t* fun, void* arg);
+-mpe_decl_export void* mpe_finally(void* local, mpe_releasefun_t* finally_fun, mpe_actionfun_t* fun, void* arg);
+-
+-
+-/*-----------------------------------------------------------------
+-  Operation tags
+------------------------------------------------------------------*/
+-
+-/// Null effect.
+-#define mpe_effect_null ((mpe_effect_t)NULL)
+-
+-/// The _null_ operation tag is used for the final operation struct in a list of operations.
+-#define mpe_op_null  ((mpe_optag_t)NULL)
+-
+-/// Get the name of an operation tag. 
+-mpe_decl_export const char* mpe_optag_name(mpe_optag_t optag);
+-
+-/// Get the name of an effect tag. 
+-mpe_decl_export const char* mpe_effect_name(mpe_effect_t effect);
+-
+-/// \}
+-
+-/*-----------------------------------------------------------------
+-  Operation definition helpers
+------------------------------------------------------------------*/
+-
+-/// \defgroup effect_def Effect Definition helpers
+-/// Macros to define effect handlers.
+-/// \{
+-
+-#define MPE_EFFECT(effect)         mpe_names_effect_##effect
+-#define MPE_OPTAG_DEF(effect,op)   mpe_op_##effect##_##op
+-#define MPE_OPTAG(effect,op)       &MPE_OPTAG_DEF(effect,op)
+-
+-#define MPE_DECLARE_EFFECT0(effect)  \
+-extern const char* MPE_EFFECT(effect)[2];
+-
+-#define MPE_DECLARE_EFFECT1(effect,op1)  \
+-extern const char* MPE_EFFECT(effect)[3];
+-
+-#define MPE_DECLARE_EFFECT2(effect,op1,op2)  \
+-extern const char* MPE_EFFECT(effect)[4];
+-
+-#define MPE_DECLARE_OP(effect,op) \
+-extern const struct mpe_optag_s MPE_OPTAG_DEF(effect,op);
+-
+-#define MPE_DECLARE_OP0(effect,op,restype) \
+-MPE_DECLARE_OP(effect,op) \
+-restype effect##_##op();
+-
+-#define MPE_DECLARE_OP1(effect,op,restype,argtype) \
+-MPE_DECLARE_OP(effect,op) \
+-restype effect##_##op(argtype arg);
+-
+-#define MPE_DECLARE_VOIDOP0(effect,op) \
+-MPE_DECLARE_OP(effect,op) \
+-void effect##_##op();
+-
+-#define MPE_DECLARE_VOIDOP1(effect,op,argtype) \
+-MPE_DECLARE_OP(effect,op) \
+-void effect##_##op(argtype arg);
+-
+-
+-#define MPE_DEFINE_EFFECT0(effect) \
+-const char* MPE_EFFECT(effect)[2] = { #effect, NULL }; 
+-
+-#define MPE_DEFINE_EFFECT1(effect,op1) \
+-const char* MPE_EFFECT(effect)[3] = { #effect, #effect "/" #op1, NULL }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op1) = { MPE_EFFECT(effect), 0 }; 
+-
+-#define MPE_DEFINE_EFFECT2(effect,op1,op2) \
+-const char* MPE_EFFECT(effect)[4] = {  #effect, #effect "/" #op1, #effect "/" #op2, NULL }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op1) = { MPE_EFFECT(effect), 0 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op2) = { MPE_EFFECT(effect), 1 }; 
+-
+-#define MPE_DEFINE_EFFECT3(effect,op1,op2,op3) \
+-const char* MPE_EFFECT(effect)[5] = {  #effect, #effect "/" #op1, #effect "/" #op2, #effect "/" #op3, NULL }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op1) = { MPE_EFFECT(effect), 0 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op2) = { MPE_EFFECT(effect), 1 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op3) = { MPE_EFFECT(effect), 2 }; 
+-
+-#define MPE_DEFINE_EFFECT4(effect,op1,op2,op3,op4) \
+-const char* MPE_EFFECT(effect)[6] = {  #effect, #effect "/" #op1, #effect "/" #op2, #effect "/" #op3, #effect "/" #op4, NULL }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op1) = { MPE_EFFECT(effect), 0 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op2) = { MPE_EFFECT(effect), 1 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op3) = { MPE_EFFECT(effect), 2 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op4) = { MPE_EFFECT(effect), 3 }; 
+-
+-#define MPE_DEFINE_EFFECT5(effect,op1,op2,op3,op4,op5) \
+-const char* MPE_EFFECT(effect)[7] = {  #effect, #effect "/" #op1, #effect "/" #op2, #effect "/" #op3, #effect "/" #op4, #effect "/" #op5, NULL }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op1) = { MPE_EFFECT(effect), 0 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op2) = { MPE_EFFECT(effect), 1 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op3) = { MPE_EFFECT(effect), 2 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op4) = { MPE_EFFECT(effect), 3 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op5) = { MPE_EFFECT(effect), 4 }; 
+-
+-#define MPE_DEFINE_EFFECT6(effect,op1,op2,op3,op4,op5,op6) \
+-const char* MPE_EFFECT(effect)[8] = {  #effect, #effect "/" #op1, #effect "/" #op2, #effect "/" #op3, #effect "/" #op4, #effect "/" #op5, #effect "/" #op6, NULL }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op1) = { MPE_EFFECT(effect), 0 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op2) = { MPE_EFFECT(effect), 1 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op3) = { MPE_EFFECT(effect), 2 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op4) = { MPE_EFFECT(effect), 3 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op5) = { MPE_EFFECT(effect), 4 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op6) = { MPE_EFFECT(effect), 5 }; 
+-
+-#define MPE_DEFINE_EFFECT7(effect,op1,op2,op3,op4,op5,op6,op7) \
+-const char* MPE_EFFECT(effect)[9] = {  #effect, #effect "/" #op1, #effect "/" #op2, #effect "/" #op3, #effect "/" #op4, #effect "/" #op5, #effect "/" #op6, #effect "/" #op7, NULL }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op1) = { MPE_EFFECT(effect), 0 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op2) = { MPE_EFFECT(effect), 1 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op3) = { MPE_EFFECT(effect), 2 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op4) = { MPE_EFFECT(effect), 3 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op5) = { MPE_EFFECT(effect), 4 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op6) = { MPE_EFFECT(effect), 5 }; \
+-const struct mpe_optag_s MPE_OPTAG_DEF(effect,op7) = { MPE_EFFECT(effect), 6 }; 
+-
+-
+-#define MPE_DEFINE_OP0(effect,op,restype) \
+-  restype effect##_##op() { void* res = mpe_perform(MPE_OPTAG(effect,op), NULL); return mpe_##restype##_voidp(res); }
+-
+-#define MPE_DEFINE_OP1(effect,op,restype,argtype) \
+-  restype effect##_##op(argtype arg) { void* res = mpe_perform(MPE_OPTAG(effect,op), mpe_voidp_##argtype(arg)); return mpe_##restype##_voidp(res); }
+-
+-#define MPE_DEFINE_VOIDOP0(effect,op) \
+-  void effect##_##op() { mpe_perform(MPE_OPTAG(effect,op), NULL); }
+-
+-#define MPE_DEFINE_VOIDOP1(effect,op,argtype) \
+-  void effect##_##op(argtype arg) { mpe_perform(MPE_OPTAG(effect,op), mpe_voidp_##argtype(arg)); }
+-
+-#define MPE_WRAP_FUN0(fun,restype) \
+-  void* wrap_##fun(void* arg) { (void)(arg); return mpe_voidp_##restype(fun()); }
+-
+-#define MPE_WRAP_FUN1(fun,argtype,restype) \
+-  void* wrap_##fun(void* arg) { return mpe_voidp_##restype(fun(mpe_##argtype##_voidp(arg))); }
+-
+-#define MPE_WRAP_VOIDFUN0(fun) \
+-  void* wrap_##fun(void* arg) { (void)(arg); fun(); return NULL; }
+-
+-#define MPE_WRAP_VOIDFUN1(fun,argtype) \
+-  void* wrap_##fun(void* arg) { fun(mpe_##argtype##_voidp(arg)); return NULL; }
+-
+-
+-/*-----------------------------------------------------------------
+-	 Generic values
+------------------------------------------------------------------*/
+-typedef void* mpe_voidp_t;
+-
+-/// Null value
+-#define mpe_voidp_null         (NULL)
+-
+-/// Convert an #mpe_voidp_t back to a pointer.
+-#define mpe_ptr_voidp(v)       ((void*)(v))
+-
+-/// Convert any pointer into a #mpe_voidp_t.
+-#define mpe_voidp_ptr(p)       ((void*)(p))
+-
+-
+-/// Identity; used to aid macros.
+-#define mpe_voidp_mpe_voidp_t(v)     (v)
+-
+-/// Convert an #mpe_voidp_t back to an `int`.
+-#define mpe_int_voidp(v)       ((int)((intptr_t)(v)))
+-
+-/// Convert an `int` to an #mpe_voidp_t.
+-#define mpe_voidp_int(i)       ((mpe_voidp_t)((intptr_t)(i)))
+-
+-/// Convert an #mpe_voidp_t back to a `long`.
+-#define mpe_long_voidp(v)      ((long)((intptr_t)(v)))
+-
+-/// Convert a `long` to an #mpe_voidp_t.
+-#define mpe_voidp_long(i)      ((mpe_voidp_t)((intptr_t)(i)))
+-
+-/// Convert an #mpe_voidp_t back to a `uint64_t`.
+-#define mpe_uint64_t_voidp(v)      ((uint64_t)((intptr_t)(v)))
+-
+-/// Convert a `uint64_t` to an #mpe_voidp_t.
+-#define mpe_voidp_uint64_t(i)      ((mpe_voidp_t)((intptr_t)(i)))
+-
+-/// Convert an #mpe_voidp_t back to a `bool`.
+-#define mpe_bool_voidp(v)      (mpe_int_voidp(v) != 0 ? (1==1) : (1==0))
+-
+-/// Convert a `bool` to an #mpe_voidp_t.
+-#define mpe_voidp_bool(b)      (mpe_voidp_int(b ? 1 : 0))
+-
+-/// Type definition for strings to aid with macros.
+-typedef const char* mpe_string_t;
+-
+-/// Convert an #mpe_voidp_t back to a `const char*`.
+-#define mpe_mpe_string_t_voidp(v) ((const char*)mpe_ptr_voidp(v))
+-
+-/// Convert a `const char*` to an #mpe_voidp_t.
+-#define mpe_voidp_mpe_string_t(v) (mpe_voidp_ptr(v))
+-
+-#define mpe_optag_voidp(v)     ((mpe_optag)mpe_ptr_voidp(v))
+-#define mpe_voidp_optag(o)     mpe_voidp_ptr(o)
+-
+-
+-#endif
+\ No newline at end of file
+diff --git a/src/mpeff/main.c b/src/mpeff/main.c
+deleted file mode 100644
+index ec97547..0000000
+--- a/src/mpeff/main.c
++++ /dev/null
+@@ -1,11 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+-
+-  Include all sources in one file for compilation for better optimization
+------------------------------------------------------------------------------*/
+-
+-#include "mpeff.c"
+-#include "../mprompt/main.c"
+diff --git a/src/mpeff/mpeff.c b/src/mpeff/mpeff.c
+deleted file mode 100644
+index 9cdae2e..0000000
+--- a/src/mpeff/mpeff.c
++++ /dev/null
+@@ -1,590 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-
+-#include <stdlib.h>
+-#include <stddef.h>
+-#include <stdbool.h>
+-#include <stdint.h>
+-#include <stdio.h>
+-#include <string.h>
+-#include <errno.h>
+-#include <assert.h>
+-
+-#include <mprompt.h>
+-#include "mpeff.h"
+-
+-
+-/*-----------------------------------------------------------------
+-  Defines
+------------------------------------------------------------------*/
+-
+-#ifdef __cplusplus
+-#define MPE_HAS_TRY  (1)
+-#include <exception>
+-#else
+-#define MPE_HAS_TRY  (0)
+-#endif
+-
+-#if defined(_MSC_VER)
+-#define mpe_decl_noinline        __declspec(noinline)
+-#define mpe_decl_thread          __declspec(thread)
+-#elif (defined(__GNUC__) && (__GNUC__>=3))  // includes clang and icc
+-#define mpe_decl_noinline        __attribute__((noinline))
+-#define mpe_decl_thread          __thread
+-#else
+-#define mpe_decl_noinline
+-#define mpe_decl_thread          __thread  
+-#endif
+-
+-#if defined(__GNUC__) || defined(__clang__)
+-#define mpe_unlikely(x)          __builtin_expect((x),0)
+-#define mpe_likely(x)            __builtin_expect((x),1)
+-#else
+-#define mpe_unlikely(x)          (x)
+-#define mpe_likely(x)            (x)
+-#endif
+-
+-#define mpe_assert(x)            assert(x)
+-#define mpe_assert_internal(x)   mpe_assert(x)
+-#define mpe_malloc_tp(tp)        (tp*)mpe_malloc_safe(sizeof(tp))
+-
+-
+-static inline void* mpe_malloc_safe(size_t size) {
+-  void* p = malloc(size);
+-  if (p != NULL) return p;
+-  fprintf(stderr,"out of memory\n");
+-  abort();
+-}
+-
+-static inline void mpe_free(void* p) {
+-  free(p);
+-}
+-
+-
+-/*-----------------------------------------------------------------
+-  Types
+------------------------------------------------------------------*/
+-
+-
+-// A general frame
+-typedef struct mpe_frame_s {
+-  mpe_effect_t        effect;     // every frame has an effect (to speed up tests)
+-  struct mpe_frame_s* parent;
+-} mpe_frame_t;
+-
+-
+-// A handler frame
+-typedef struct mpe_frame_handle_s {
+-  mpe_frame_t             frame;
+-  mp_prompt_t*            prompt;
+-  const mpe_handlerdef_t* hdef;
+-  void*                   local;
+-  mpe_frame_t*            resume_top;
+-} mpe_frame_handle_t;
+-
+-
+-// An under frame (used for tail-resumptive optimization)
+-typedef struct mpe_frame_under_s {
+-  mpe_frame_t   frame;    
+-  mpe_effect_t  under;    // ignore frames until the innermost `under` effect
+-} mpe_frame_under_t;
+-
+-
+-// An mask frame 
+-typedef struct mpe_frame_mask_s {
+-  mpe_frame_t   frame;
+-  mpe_effect_t  mask;    
+-  size_t        from;
+-} mpe_frame_mask_t;
+-
+-
+-// Finally frame
+-typedef struct mpe_frame_finally_s {
+-  mpe_frame_t       frame;
+-  mpe_releasefun_t* fun;
+-  void*             local;
+-} mpe_frame_finally_t;
+-
+-
+-// For search efficiency, non-handler frames are identified by a unique effect tag
+-MPE_DEFINE_EFFECT0(mpe_frame_under)
+-MPE_DEFINE_EFFECT0(mpe_frame_mask)
+-MPE_DEFINE_EFFECT0(mpe_frame_finally)
+-
+-
+-// Resumption kinds: used to avoid allocation etc.
+-typedef enum mpe_resumption_kind_e {
+-  MPE_RESUMPTION_INPLACE,           
+-  MPE_RESUMPTION_SCOPED_ONCE,       
+-  MPE_RESUMPTION_ONCE,              
+-  MPE_RESUMPTION_MULTI
+-} mpe_resumption_kind_t;
+-
+-
+-// A resumption
+-struct mpe_resume_s {
+-  mpe_resumption_kind_t kind;       // todo: encode kind in lower bits so we can avoid allocating resumes?
+-  union {
+-    void**        plocal;           // kind == MPE_RESUMPTION_INPLACE
+-    mp_resume_t*  resume;           // kind == MPE_RESUMPTION_SCOPED_ONCE || MPE_RESUMPTION_ONCE || MPE_RESUME_MULTI
+-  } mp;
+-};
+-
+-
+-/*-----------------------------------------------------------------
+-  Handler shadow stack
+------------------------------------------------------------------*/
+-
+-// Top of the frames in the current execution stack
+-mpe_decl_thread mpe_frame_t* mpe_frame_top;
+-
+-
+-// use as: `{mpe_with_frame(f){ <body> }}`
+-#if MPE_HAS_TRY
+-#define mpe_with_frame(f)   mpe_raii_with_frame_t _with_frame(f); 
+-// This class ensures a handler-stack will be properly unwound even when exceptions are raised.
+-class mpe_raii_with_frame_t {
+-private:
+-  mpe_frame_t* f;
+-public:
+-  mpe_raii_with_frame_t(mpe_frame_t* f) {
+-    this->f = f;
+-    f->parent = mpe_frame_top;
+-    mpe_assert_internal(f->parent != f);
+-    mpe_frame_top = f;
+-  }
+-  ~mpe_raii_with_frame_t() {
+-    mpe_assert_internal(mpe_frame_top == f);
+-    mpe_frame_top = f->parent;
+-  }
+-};
+-#else
+-// C version
+-#define mpe_with_frame(f) \
+-  for( bool _once = ((f)->parent = mpe_frame_top, mpe_frame_top = (f), true); \
+-       _once; \
+-       _once = (mpe_frame_top = (f)->parent, false) ) 
+-#endif
+-
+-
+-#if MPE_HAS_TRY
+-// in some cases (like MPE_OP_NORESUME) we need to unwind to the effect handler operation
+-// while calling destructors. We do this using a special unwind exception.
+-class mpe_unwind_exception : public std::exception {
+-public:
+-  mpe_frame_handle_t* target;
+-  const mpe_operation_t* op;
+-  void* arg;
+-  mpe_unwind_exception(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) : target(h), op(op), arg(arg) {  }
+-  mpe_unwind_exception(const mpe_unwind_exception& e) : target(e.target), op(e.op), arg(e.arg) {  
+-    fprintf(stderr, "copy exception\n");
+-  }
+-  mpe_unwind_exception& operator=(const mpe_unwind_exception& e) { 
+-    target = e.target; op = e.op; arg = e.arg; 
+-    return *this; 
+-  }
+-
+-  virtual const char* what() const throw() {
+-    return "libmpeff: unwinding the stack -- do not catch this exception!";
+-  }
+-};
+-
+-static void mpe_unwind_to(mpe_frame_handle_t* target, const mpe_operation_t* op, void* arg) {
+-  //fprintf(stderr, "throw unwind..\n");
+-  throw mpe_unwind_exception(target, op, arg);
+-}
+-#else
+-static void* mpe_perform_yield_to_abort(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg);
+-static void mpe_unwind_to(mpe_frame_handle_t* target, const mpe_operation_t* op, void* arg) {
+-  // TODO: walk the handlers and invoke finally frames
+-  mpe_perform_yield_to_abort(target, op, arg);
+-}
+-#endif
+-
+-
+-// Simulate operation definition for resume_unwind
+-MPE_DEFINE_EFFECT1(mpe_unwind, mpe_unwind);
+-
+-static void* mpe_handle_op_unwind(mpe_resume_t* r, void* local, void* arg) {
+-  (void)(r); (void)(local);
+-  mpe_assert_internal(r == NULL);
+-  return arg;
+-}
+-
+-static mpe_operation_t mpe_op_unwind = {
+-  MPE_OP_ABORT,
+-  MPE_OPTAG(mpe_unwind,mpe_unwind),
+-  &mpe_handle_op_unwind
+-};
+-
+-
+-/*-----------------------------------------------------------------
+-  Effect and optag names
+------------------------------------------------------------------*/
+-
+-const char* mpe_effect_name(mpe_effect_t effect) {
+-  return (effect == NULL ? "<null>" : effect[0]);
+-}
+-
+-const char* mpe_optag_name(mpe_optag_t optag) {
+-  return (optag == NULL ? "<null>" : optag->effect[optag->opidx + 1]);
+-}
+-
+-
+-
+-
+-/*-----------------------------------------------------------------
+-  Perform
+------------------------------------------------------------------*/
+-
+-typedef struct mpe_perform_env_s {
+-  mpe_resumption_kind_t rkind;
+-  mpe_opfun_t* opfun;
+-  void* local;
+-  void* oparg;
+-} mpe_perform_env_t;
+-
+-typedef struct mpe_resume_env_s {
+-  void* local;
+-  void* result;
+-  bool  unwind;
+-} mpe_resume_env_t;
+-
+-
+-// Regular once resumption
+-static void* mpe_perform_op_clause(mp_resume_t* mpr, void* earg) {
+-  mpe_perform_env_t* env = (mpe_perform_env_t*)earg;
+-  mpe_resume_t resume_stack;
+-  mpe_resume_t* resume;
+-  if (mpe_likely(env->rkind == MPE_RESUMPTION_SCOPED_ONCE)) {
+-    resume = &resume_stack;
+-  }
+-  else {
+-    resume = mpe_malloc_tp(mpe_resume_t);
+-  }    
+-  resume->kind = env->rkind;
+-  resume->mp.resume = (env->rkind == MPE_RESUMPTION_MULTI ? mp_resume_multi(mpr) : mpr);
+-  return (env->opfun)(resume, env->local, env->oparg);
+-}
+-
+-// Yield 
+-static void* mpe_perform_yield_to(mpe_resumption_kind_t rkind, mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) {
+-  mpe_frame_t* resume_top = mpe_frame_top; // save current top
+-  mpe_frame_top = h->frame.parent;           // and unlink handlers
+-  mpe_perform_env_t penv = { rkind, op->opfun, h->local, arg };
+-  // yield up
+-  mpe_resume_env_t* renv = (mpe_resume_env_t*)mp_yield(h->prompt, &mpe_perform_op_clause, &penv);
+-  // resumed!                     
+-  h->local = renv->local;           // set new state
+-  mpe_assert_internal(mpe_frame_top != &h->frame);
+-  h->frame.parent = mpe_frame_top;  // relink handlers
+-  mpe_frame_top = resume_top;
+-  if (renv->unwind) {
+-    mpe_unwind_to(h, &mpe_op_unwind, renv->result);
+-  }
+-  return renv->result;
+-}
+-
+-// Never resumption
+-static void* mpe_perform_op_clause_abort(mp_resume_t* mpr, void* earg) {
+-  mpe_perform_env_t env = *((mpe_perform_env_t*)earg);  // copy out all args before dropping the prompt
+-  mp_resume_drop(mpr);
+-  return (env.opfun)(NULL, env.local, env.oparg);
+-}
+-
+-static void* mpe_perform_yield_to_abort(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) {
+-  mpe_frame_top = h->frame.parent;           // unlink handlers
+-  mpe_perform_env_t env = { MPE_RESUMPTION_SCOPED_ONCE /* unused */, op->opfun, h->local, arg };
+-  return mp_yield(h->prompt, &mpe_perform_op_clause_abort, &env);
+-}
+-
+-
+-// Tail resumptive under an "under" frame
+-static void* mpe_perform_under(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) {
+-  mpe_frame_under_t f;
+-  f.frame.effect = MPE_EFFECT(mpe_frame_under);
+-  f.under = h->frame.effect;
+-  void* result = NULL;
+-  {mpe_with_frame(&f.frame) {
+-    mpe_resume_t resume = { MPE_RESUMPTION_INPLACE, { &h->local } };
+-    result = (op->opfun)(&resume, h->local, arg);
+-  }}
+-  return result;
+-}
+-
+-// ------------------------------------------------------------------------------
+-// Perform
+-// ------------------------------------------------------------------------------
+-
+-static void* mpe_perform_at(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) {
+-  mpe_opkind_t opkind = op->opkind;
+-  mpe_assert_internal(opkind == op->opkind);
+-  if (mpe_likely(opkind == MPE_OP_TAIL_NOOP)) {
+-    // tail resumptive, calls no operations, execute in place
+-    mpe_resume_t resume = { MPE_RESUMPTION_INPLACE, { &h->local } };
+-    return (op->opfun)(&resume, h->local, arg);
+-  }
+-  else if (mpe_likely(opkind == MPE_OP_TAIL)) {
+-    // tail resumptive; execute in place under an "under" frame
+-    return mpe_perform_under(h, op, arg);
+-  }
+-  else if (opkind == MPE_OP_SCOPED_ONCE) {
+-    return mpe_perform_yield_to(MPE_RESUMPTION_SCOPED_ONCE, h, op, arg);
+-  }
+-  else if (opkind == MPE_OP_ONCE) {
+-    return mpe_perform_yield_to(MPE_RESUMPTION_ONCE, h, op, arg);
+-  }
+-  else if (opkind == MPE_OP_NEVER) {
+-    mpe_unwind_to(h, op, arg);
+-    return NULL; // never reached
+-  }
+-  else if (opkind == MPE_OP_ABORT) {
+-    return mpe_perform_yield_to_abort(h, op, arg);
+-  }
+-  else {
+-    return mpe_perform_yield_to(MPE_RESUMPTION_MULTI, h, op, arg);    
+-  }
+-}
+-
+-static mpe_decl_noinline void* mpe_unhandled_operation(mpe_optag_t optag) {
+-  fprintf(stderr, "unhandled operation: %s\n", mpe_optag_name(optag));
+-  return NULL;
+-}
+-
+-
+-// Perform finds the innermost handler and performs the operation
+-// note: this is performance sensitive code
+-static mpe_frame_handle_t* mpe_find(mpe_optag_t optag) {
+-  mpe_frame_t* f = mpe_frame_top;
+-  mpe_effect_t opeff = optag->effect;
+-  size_t mask_level = 0;
+-  while (mpe_likely(f != NULL)) {
+-    mpe_effect_t eff = f->effect;
+-    // handle
+-    if (mpe_likely(eff == opeff)) {
+-      if (mpe_likely(mask_level == 0)) {
+-        return (mpe_frame_handle_t*)f;    // found our handler
+-      }
+-      else {
+-        mask_level--;
+-      }
+-    }
+-    // under
+-    else if (mpe_unlikely(eff == MPE_EFFECT(mpe_frame_under))) {
+-      mpe_effect_t ueff = ((mpe_frame_under_t*)f)->under;
+-      do {
+-        f = f->parent;
+-      } while (f != NULL && f->effect != ueff);
+-      if (f == NULL) break;
+-    }
+-    // mask
+-    else if (mpe_unlikely(eff == MPE_EFFECT(mpe_frame_mask))) {
+-      mpe_frame_mask_t* mf = (mpe_frame_mask_t*)f;
+-      if (mpe_unlikely(mf->mask == opeff && mf->from <= mask_level)) {
+-        mask_level++;
+-      }
+-    }
+-    f = f->parent;
+-  }
+-  return NULL;
+-}
+-
+-void* mpe_perform(mpe_optag_t optag, void* arg) {
+-  mpe_frame_handle_t* h = mpe_find(optag);
+-  if (mpe_unlikely(h == NULL)) return mpe_unhandled_operation(optag);
+-  const mpe_operation_t* op = &h->hdef->operations[optag->opidx];
+-  return mpe_perform_at(h, op, arg);
+-}
+-
+-
+-
+-/*-----------------------------------------------------------------
+-  Handle
+------------------------------------------------------------------*/
+-
+-// Pass arguments down in a closure environment
+-struct mpe_handle_start_env {
+-  const mpe_handlerdef_t* hdef;
+-  void*            local;
+-  mpe_actionfun_t* body;
+-  void*            arg;
+-};
+-
+-// Start a handler
+-static mpe_decl_noinline void* mpe_handle_start(mp_prompt_t* prompt, void* earg) {
+-  // init
+-  struct mpe_handle_start_env* env = (struct mpe_handle_start_env*)earg;
+-  mpe_frame_handle_t h;
+-  h.prompt = prompt;
+-  h.hdef = env->hdef;
+-  h.local = env->local;  
+-  h.frame.effect = env->hdef->effect;
+-  void* result = NULL;
+-  #if MPE_HAS_TRY 
+-  try {  // catch unwind exceptions
+-  #endif
+-    // push frame on top
+-    {mpe_with_frame(&h.frame) {
+-      // and call the action
+-      result = (env->body)(env->arg);
+-    }}
+-    // potentially run return function
+-    if (h.hdef->resultfun != NULL) {
+-      result = h.hdef->resultfun(h.local, result);
+-    }
+-  #if MPE_HAS_TRY
+-  }   // handle unwind exceptions
+-  catch (const mpe_unwind_exception& e) {
+-    if (e.target != &h) {
+-      //fprintf(stderr, "rethrow unwind\n");
+-      throw;  // rethrow 
+-    }
+-    //fprintf(stderr, "catch unwind\n");
+-    result = (e.op->opfun)(NULL, h.local, e.arg); // or yield to ourselves; (but must be done outside the catch or otherwise the exception leaks memory)
+-  }
+-  #endif
+-  return result;
+-}
+-
+-/// Handle a particular effect.
+-/// Handles operations yielded in `body(arg)` with the given handler definition `def`.
+-void* mpe_handle(const mpe_handlerdef_t* hdef, void* local, mpe_actionfun_t* body, void* arg) {
+-  struct mpe_handle_start_env env = { hdef, local, body, arg };
+-  return mp_prompt(&mpe_handle_start, &env);
+-}
+-
+-
+-/*-----------------------------------------------------------------
+-  Resume
+------------------------------------------------------------------*/
+-
+-static void* mpe_resume_internal(bool final, mpe_resume_t* resume, void* local, void* arg, bool unwind) {
+-  mpe_assert(resume->kind >= MPE_RESUMPTION_SCOPED_ONCE);
+-  mpe_resume_env_t renv = { local, arg, unwind };
+-  // and resume
+-  if (resume->kind == MPE_RESUMPTION_SCOPED_ONCE) {
+-    mp_resume_t* mpr = resume->mp.resume;
+-    return mp_resume(mpr, &renv);
+-  }
+-  else if (resume->kind == MPE_RESUMPTION_ONCE) {
+-    mp_resume_t* mpr = resume->mp.resume;
+-    mpe_assert_internal(final);
+-    //mpe_trace_message("free resume: %p\n", resume);
+-    mpe_free(resume);
+-    return mp_resume(mpr, &renv);
+-  }
+-  else {
+-    mp_resume_t* mpr = resume->mp.resume;
+-    if (final) {
+-      //mpe_trace_message("free resume: %p\n", resume);
+-      mpe_free(resume);
+-    }
+-    else {
+-      mp_resume_dup(mpr); 
+-    }
+-    return mp_resume(mpr, &renv);
+-  }
+-}
+-
+-// Resume to unwind (e.g. run destructors and finally clauses)
+-static void mpe_resume_unwind(mpe_resume_t* r) {
+-  mpe_resume_internal(true, r, NULL, NULL, true);
+-}
+-
+-// Last use of a resumption
+-void* mpe_resume_final(mpe_resume_t* resume, void* local, void* arg) {
+-  return mpe_resume_internal(true, resume, local, arg, false);
+-}
+-
+-// Regular resume
+-void* mpe_resume(mpe_resume_t* resume, void* local, void* arg) {
+-  return mpe_resume_internal(false, resume, local, arg, false);
+-}
+-
+-// Last resume in tail-position
+-void* mpe_resume_tail(mpe_resume_t* resume, void* local, void* arg) {  
+-  if (mpe_likely(resume->kind == MPE_RESUMPTION_INPLACE)) {
+-    *resume->mp.plocal = local;
+-    return arg;
+-  }
+-  mpe_resume_env_t renv = { local, arg, false };
+-  // and tail resume
+-  if (resume->kind == MPE_RESUMPTION_SCOPED_ONCE) {
+-    mp_resume_t* mpr = resume->mp.resume;
+-    return mp_resume_tail(mpr, &renv);
+-  }
+-  else {
+-    mp_resume_t* mpr = resume->mp.resume;    
+-    mpe_free(resume); // always assume final?
+-    return mp_resume_tail(mpr, &renv);
+-  }
+-}
+-
+-
+-// Release without resuming 
+-void mpe_resume_release(mpe_resume_t* resume) {
+-  if (resume == NULL) return; // in case someone tries to release a NULL (OP_NEVER or OP_ABORT) resumption
+-  if (resume->kind == MPE_RESUMPTION_ONCE) {
+-    mpe_resume_unwind(resume);    
+-  }
+-  else {
+-    mpe_assert_internal(resume->kind == MPE_RESUMPTION_MULTI);
+-    mp_resume_t* mpr = resume->mp.resume;
+-    if (mp_resume_should_unwind(mpr)) {
+-      mpe_resume_unwind(resume);
+-    }
+-    else {
+-      mpe_free(resume);
+-      mp_resume_drop(mpr);
+-    }
+-  }
+-}
+-
+-/*-----------------------------------------------------------------
+-  Mask
+------------------------------------------------------------------*/
+-
+-void* mpe_mask(mpe_effect_t eff, size_t from, mpe_actionfun_t* fun, void* arg) {
+-  mpe_frame_mask_t f;
+-  f.frame.effect = MPE_EFFECT(mpe_frame_mask);
+-  f.mask = eff;
+-  f.from = from;
+-  void* result = NULL;
+-  {mpe_with_frame(&f.frame) {
+-    result = fun(arg);
+-  }}
+-  return result;
+-}
+-
+-
+-
+-/*-----------------------------------------------------------------
+-  Finally
+------------------------------------------------------------------*/
+-
+-void* mpe_finally(void* local, mpe_releasefun_t* finally_fun, mpe_actionfun_t* fun, void* arg) {
+-  mpe_frame_finally_t f;
+-  f.frame.effect = MPE_EFFECT(mpe_frame_finally);
+-  f.fun = finally_fun;
+-  f.local = local;
+-  void* result = NULL;
+-  #if MPE_HAS_TRY
+-  try {
+-  #endif
+-    {mpe_with_frame(&f.frame) {
+-      result = fun(arg);
+-    }}
+-    (f.fun)(f.local);
+-  #if MPE_HAS_TRY       // not needed in C as there we unwind the frames explicitly
+-  }
+-  catch (...) {
+-    (f.fun)(f.local);   // cannot use raii as fun can throw itself
+-    throw;              // re-throw
+-  }
+-  #endif
+-  return result;
+-}
+diff --git a/src/mprompt/asm/longjmp_amd64.S b/src/mprompt/asm/longjmp_amd64.S
+deleted file mode 100644
+index 08543b3..0000000
+--- a/src/mprompt/asm/longjmp_amd64.S
++++ /dev/null
+@@ -1,173 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it 
+-  under the terms of the MIT License. A copy of the License can be 
+-  found in the LICENSE file at the root of this distribution.
+-
+-  AMD64 (x86_64) System V calling convention as used on Solaris, Linux, FreeBSD, macOS, etc.
+-  - <https://en.wikipedia.org/wiki/X86_calling_conventions>
+-  - <http://chamilo2.grenet.fr/inp/courses/ENSIMAG3MM1LDB/document/doc_abi_ia64.pdf>, page 21
+-  - <http://www.agner.org/optimize/calling_conventions.pdf>, page 10
+-
+-  Primitives to switch stacks:
+- 
+-    typedef uint8_t mp_jmp_buf_t[MP_JMPBUF_SIZE];  // machine word aligned
+-  
+-    bool     mp_setjmp ( mp_jmp_buf_t jmpbuf );
+-    void     mp_longjmp( mp_jmp_buf_t jmpbuf );
+-    void* mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, mp_jmpbuf_t** return_jmp, 
+-                         void (*fun)(void* arg, void* trapframe), void* arg);
+-
+-  `mp_stack_enter` enters a fresh stack and runs `fun(arg)`; it also receives 
+-  a (pointer to a pointer to a) return jmpbuf to which it longjmp's on return.
+------------------------------------------------------------------------------*/
+-
+-/*
+-jmpbuf layout 
+-   0: rip
+-   8: rbx
+-  16: rsp
+-  24: rbp
+-  32: r12
+-  40: r13
+-  48: r14
+-  56: r15
+-  64: mxcsr, sse status register (32 bits)
+-  68: fpcr, fpu control word (16 bits)  
+-  70: unused  
+-  72: sizeof jmpbuf
+-*/
+-
+-#ifdef __MACH__  
+-/* on macOS the compiler adds underscores to cdecl functions */
+-.global _mp_setjmp
+-.global _mp_longjmp
+-.global _mp_stack_enter
+-#else
+-.global mp_setjmp
+-.global mp_longjmp
+-.global mp_stack_enter
+-.type mp_setjmp,%function
+-.type mp_longjmp,%function
+-.type mp_stack_enter,%function
+-#endif
+-
+-_mp_setjmp:
+-mp_setjmp:                   /* rdi: jmpbuf */
+-  movq    (%rsp), %rax       /* rip: return address is on the stack */
+-  leaq    8 (%rsp), %rcx     /* rsp - return address */
+-
+-  movq    %rax,  0 (%rdi)    /* save registers */
+-  movq    %rbx,  8 (%rdi)    
+-  movq    %rcx, 16 (%rdi)
+-  movq    %rbp, 24 (%rdi)
+-  movq    %r12, 32 (%rdi)
+-  movq    %r13, 40 (%rdi)
+-  movq    %r14, 48 (%rdi)
+-  movq    %r15, 56 (%rdi)
+-
+-  stmxcsr 64 (%rdi)          /* save sse control word */
+-  fnstcw  68 (%rdi)          /* save fpu control word */
+-  
+-  xor     %rax, %rax         /* return 0 */
+-  ret
+-
+-
+-_mp_longjmp:
+-mp_longjmp:                  /* rdi: jmp_buf */ 
+-
+-  movq   8 (%rdi), %rbx       /* restore registers */
+-  movq  16 (%rdi), %rsp       /* switch stack */
+-  movq  24 (%rdi), %rbp
+-  movq  32 (%rdi), %r12
+-  movq  40 (%rdi), %r13
+-  movq  48 (%rdi), %r14
+-  movq  56 (%rdi), %r15
+-
+-  /*fnclex*/                  /* clear fpu exception flags */
+-  ldmxcsr 64 (%rdi)           /* restore sse control word */
+-  fldcw   68 (%rdi)           /* restore fpu control word */
+-    
+-  movq  $1, %rax            
+-  jmpq  *(%rdi)               /* and jump to rip */
+-
+-
+-
+-/* enter stack 
+-   rdi: gstack pointer, 
+-   rsi: stack commit limit    (ignored on unix)
+-   rdx: stack limit           (ignored on unix)
+-   rcx: jmpbuf_t**            return jmpbuf indirect pointer (used for backtraces only)
+-   r8:  function to run
+-   r9:  argument to pass to the function 
+-*/
+-
+-/* DWARF unwind info instructions: <http://dwarfstd.org/doc/DWARF5.pdf> 
+-   Register mapping: <https://raw.githubusercontent.com/wiki/hjl-tools/x86-psABI/x86-64-psABI-1.0.pdf> (page 61)
+-*/
+-#define DW_def_cfa_expression     0x0F  
+-#define DW_expression             0x10      
+-#define DW_val_expression         0x16        
+-#define DW_OP_deref               0x06        /* dereference the top of the expression stack */
+-#define DW_OP_breg(r)             (0x70+r)    /* push `register + ofs` on the expression stack */
+-#define DW_OP_plus_uconst         0x23
+-#define DW_OP_lit(n)              (0x30+n)
+-#define DW_OP_minus               0x1C
+-#define DW_REG_rip                16
+-#define DW_REG_rax                0
+-#define DW_REG_rdx                1
+-#define DW_REG_rcx                2
+-#define DW_REG_rbx                3
+-#define DW_REG_rbp                6
+-#define DW_REG_rsp                7
+-
+-/* .cfi_sections .debug_frame */
+-
+-_mp_stack_enter:
+-mp_stack_enter:  
+-  .cfi_startproc 
+-  .cfi_signal_frame           /* needed or else gdb does not allow switching frames to a lower address in the backtrace */
+-
+-  /* save rcx on the stack so it is always available during unwinding */
+-  pushq    %rcx
+-  .cfi_adjust_cfa_offset 8
+-  .cfi_remember_state
+-  
+-  /* set the cfa to point to our return jmpbuf_t (instead of into the stack); 
+-     the previous registers can now be restored (during unwind) using .cfi_offset directives */
+-  .cfi_escape DW_def_cfa_expression, 4, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref /* jmpbuf_t* cfa = (0(%rsp)) */  
+-  .cfi_offset rip, 0
+-  .cfi_offset rbx, 8  
+-  .cfi_offset rsp, 16
+-  .cfi_offset rbp, 24
+-  .cfi_offset r12, 32
+-  .cfi_offset r13, 40
+-  .cfi_offset r14, 48
+-  .cfi_offset r15, 56
+-
+-  /* switch stack; push rip + rcx to mimic the old stack for the dwarf expression above */
+-  movq    8(%rsp), %rax       /* old rip */  
+-  andq    $~0x0F, %rdi        /* align down to 16 bytes */
+-  subq    $16, %rdi
+-  movq    %rax, 8(%rdi)       /* old rip */
+-  movq    %rcx, 0(%rdi)       /* saved rcx (jmpbuf_t**) */
+-  movq    %rdi, %rsp          /* and switch stack */
+-  
+-  /* and call the entry function */
+-  movq    %r9, %rdi           /* pass the function argument */
+-  movq    %rsp, %rsi          
+-  callq   *%r8                /* and call the function */
+-  
+-  /* we should never get here (but the called function should longjmp, see `mprompt.c:mp_mprompt_stack_entry`) */
+-  #ifdef __MACH__
+-  callq   _abort
+-  #else
+-  callq   abort
+-  #endif
+-
+-  .cfi_restore_state
+-  popq    %rdi              /* load indirect jmpbuf_t* and longjmp */
+-  movq    (%rdi), %rdi
+-  jmp     mp_longjmp        
+-
+-  .cfi_endproc
+diff --git a/src/mprompt/asm/longjmp_amd64_win.asm b/src/mprompt/asm/longjmp_amd64_win.asm
+deleted file mode 100644
+index 6fafaef..0000000
+--- a/src/mprompt/asm/longjmp_amd64_win.asm
++++ /dev/null
+@@ -1,267 +0,0 @@
+-; -----------------------------------------------------------------------------------------------
+-; Copyright (c) 2021, Microsoft Research, Daan Leijen
+-; This is free software; you can redistribute it and/or modify it 
+-; under the terms of the MIT License. A copy of the License can be 
+-; found in the LICENSE at the root of this distribution.
+-;
+-; AMD64 (x86_64) calling convention as used on Windows 
+-; see: 
+-; - https://en.wikipedia.org/wiki/X86_calling_conventions
+-; - https://msdn.microsoft.com/en-us/library/ms235286.aspx
+-; - http://www.agner.org/optimize/calling_conventions.pdf
+-;
+-; Primitives to switch stacks:
+-;
+-; typedef uint8_t mp_jmp_buf_t[MP_JMPBUF_SIZE];  // machine word aligned
+-;
+-; bool  mp_setjmp(mp_jmpbuf_t* jmp);
+-; void  mp_longjmp(mp_jmpbuf_t* jmp);
+-; void* mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, mp_jmpbuf_t** return_jmp, 
+-;                      void (*fun)(void* arg,void* trapframe), void* arg);
+-;
+-; `mp_stack_enter` enters a fresh stack and runs `fun(arg)`
+-; ----------------------------------------------------------------------------------------------
+-
+-; -------------------------------------------------------
+-; note: we use 'movdqu' instead of 'movdqa' since we cannot
+-;       guarantee proper alignment.
+-;
+-; jmpbuf layout
+-;   0: rip
+-;   8; rsp
+-;  16: rbx
+-;  24: rbp
+-;  32: rsi
+-;  40: rdi
+-;  48: r12
+-;  56: r13
+-;  64: r14
+-;  72: r15
+-;  80: xmm6
+-;      ... (128-bit sse registers)
+-; 224: xmm15
+-; 240: gs:0x08,   stack base  (highest address)
+-; 248: gs:0x10,   stack limit (lowest address)
+-; 256: gs:0x1478, stack guarantee (deallocation stack)  
+-; 264: gs:0x20,   fiber data                            
+-; 272: mxcrs, sse control word (32 bit)
+-; 276: fpcr, fpu control word (16 bit)
+-; 278: unused (16 bit)
+-; 280: sizeof jmpbuf
+-
+-MP_JMPBUF_SIZE equ 280
+-
+-
+-; note: we may skip saving the stack guarantee and fiber data?
+-; -------------------------------------------------------
+-
+-.CODE 
+-
+-EXTRN abort : PROC
+-
+-; bool mp_setjmp(mp_jmpbuf_t* savebuf);
+-; rcx: savebuf
+-mp_setjmp PROC
+-  mov     r8, [rsp]        ; rip (save the return address)
+-  lea     r9, [rsp+8]      ; rsp (minus return address)
+-  
+-  mov     [rcx+0],  r8     ; save registers 
+-  mov     [rcx+8],  r9
+-  mov     [rcx+16], rbx    
+-  mov     [rcx+24], rbp
+-  mov     [rcx+32], rsi
+-  mov     [rcx+40], rdi
+-  mov     [rcx+48], r12
+-  mov     [rcx+56], r13
+-  mov     [rcx+64], r14
+-  mov     [rcx+72], r15
+-    
+-  mov     r8,  gs:[8]      ; (pre)load stack limits from the TIB
+-  mov     r9,  gs:[16]
+-  mov     r10, gs:[32]
+-  mov     r11, gs:[5240]
+-  
+-  movdqu  [rcx+80],  xmm6  ; save sse registers
+-  movdqu  [rcx+96],  xmm7
+-  movdqu  [rcx+112], xmm8
+-  movdqu  [rcx+128], xmm9
+-  movdqu  [rcx+144], xmm10 
+-  movdqu  [rcx+160], xmm11
+-  movdqu  [rcx+176], xmm12
+-  movdqu  [rcx+192], xmm13
+-  movdqu  [rcx+208], xmm14
+-  movdqu  [rcx+224], xmm15
+-
+-  mov     [rcx+240], r8    ; save stack limits and fiber data
+-  mov     [rcx+248], r9
+-  mov     [rcx+256], r11 
+-  mov     [rcx+264], r10
+-  
+-  stmxcsr [rcx+272]        ; save sse control word
+-  fnstcw  [rcx+276]        ; save fpu control word
+-  
+-
+-  xor     rax, rax         ; return 0 at first
+-  ret
+-
+-mp_setjmp ENDP
+-
+-
+-; void  mp_longjmp(mp_jmpbuf_t* jmpbuf);
+-; rcx: jmpbuf 
+-mp_longjmp PROC
+-
+-  mov     r11,   [rcx]         ; load rip in r11
+-  mov     rsp,   [rcx+8]       ; restore rsp
+-    
+-  mov     rbx,   [rcx+16]      ; restore registers 
+-  mov     rbp,   [rcx+24]
+-  mov     rsi,   [rcx+32]  
+-  mov     rdi,   [rcx+40]
+-  mov     r12,   [rcx+48]
+-  mov     r13,   [rcx+56]
+-  mov     r14,   [rcx+64]
+-  mov     r15,   [rcx+72]
+-  
+-  movdqu  xmm6,  [rcx+80]      ; restore sse registers
+-  movdqu  xmm7,  [rcx+96]
+-  movdqu  xmm8,  [rcx+112]
+-  movdqu  xmm9,  [rcx+128]
+-  movdqu  xmm10, [rcx+144]
+-  movdqu  xmm11, [rcx+160]
+-  movdqu  xmm12, [rcx+176]
+-  movdqu  xmm13, [rcx+192]
+-  movdqu  xmm14, [rcx+208]
+-  movdqu  xmm15, [rcx+224]
+-  
+-  mov     rax, [rcx+240]       ; load stack limits and fiber data
+-  mov     r8,  [rcx+248]
+-  mov     r9,  [rcx+256]
+-  mov     r10, [rcx+264]
+-  
+-  ldmxcsr [rcx+272]            ; restore sse control word
+-  ; fnclex                     ; clear fpu exception flags
+-  fldcw   [rcx+276]            ; restore fpu control word
+-    
+-  mov     gs:[8],    rax       ; restore stack limits and fiber data  
+-  mov     gs:[16],   r8
+-  mov     gs:[32],   r10
+-  mov     gs:[5240], r9  
+-
+-  mov     rax, 1               ; return 1 to setjmp
+-  jmp     r11                  ; and jump to the rip
+-
+-mp_longjmp ENDP
+-
+-
+-
+-; void* mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, mp_jmpbuf_t** return_jmp, 
+-;                       (*fun)(void* arg,void* trapframe), void* arg);
+-;
+-; rcx: stack_base
+-; rdx: stack_commit_limit   (only used on windows for stack probes)
+-; r8 : stack_limit          (only used on windows for stack probes)
+-; r9 : jmpbuf_t**           pointer to return jmpbuf pointer; for now unused but may be used for unwinding
+-; [rsp+40] : fun            (just above shadow space + return address)
+-; [rsp+48] : arg              
+-;
+-; On windows, gs points to the TIB: 
+-; - gs:8 contains the stack base (highest address), 
+-; - gs:16 the limit (lowest address)
+-; - gs:5240 the stack guarantee; set to limit on entry
+-; Before a call, we need to reserve 32 bytes of shadow space for the callee to spill registers in.
+-
+-; Push a machine trap frame so it can be unwound for a backtrace in the debugger. 
+-; (This is not quite enough for full exception unwinding since the stack limits in the thread local 
+-;  TIB are not updated. For exceptions we will need to catch and propagate manually through prompt points anyways). 
+-mp_stack_enter PROC FRAME
+-  mov     r10, rsp          ; save rsp in r10 (used to access arguments later on)
+-  mov     rax, [rsp]        ; rip     
+-  
+-  ; switch stack
+-  and     rcx, NOT 15       ; align
+-  mov     rsp, rcx
+-  
+-  push    rax               ; simulate call for unwinding
+-
+-  ; for the trap frame, we only need to set rsp and rip:
+-  ; <https://docs.microsoft.com/en-us/cpp/build/exception-handling-x64>
+-  ; RSP+40  SS              ; we use stack base
+-  ; RSP+32  Old RSP 
+-  ; RSP+24  EFLAGS          ; we use stack commit limit
+-  ; RSP+16  CS              ; we use stack reserved size (deallocation limit)
+-  ; RSP+8   RIP  
+-  ; RSP+0   error code      ; we use the return jmpbuf_t**
+-  push    rcx               ; stack base (field:SS)
+-  mov     r11, [r9]         ; load current jmpbut_t* 
+-  mov     rax, [r11+8]      ; return rsp
+-  push    rax               
+-  push    rdx               ; stack commit limit (field:EFLAGS)
+-  push    r8                ; stack reserved     (field:CS)
+-  mov     rax, [r11]        ; return rip
+-  push    rax
+-  push    r9                ; return point (field:error code)
+-
+-.PUSHFRAME code            ; unwind rsp - 48
+-  sub     rsp, 40          ; reserve home area for calls + align
+-.ALLOCSTACK 40    
+-.ENDPROLOG
+-
+-  mov     gs:[8], rcx      ; set new stack base
+-  mov     gs:[16], rdx     ; commit limit for stack probes (i.e. __chkstk)
+-  mov     gs:[5240], r8    ; (virtual) stack limit   
+-
+-  mov     rax, [r10+40]    ; set fun from old stack
+-  mov     rcx, [r10+48]    ; set arg from old stack
+-  lea     rdx, [rsp+40]    ; set rdx to the trap frame address (so we can update it for unwinding/backtraces)
+-  call    rax              ; and call the function (which should never return but use longjmp)
+-  
+-  ; we should never reach this...
+-  call    abort           
+-
+-  mov     rcx, [rsp+40]    ; load jmpbuf_t* 
+-  mov     rcx, [rcx]
+-  jmp     mp_longjmp       ; and longjmp back to the current return point
+-
+-mp_stack_enter ENDP
+-
+-; version without machine frame using our own "mini trap frame" of just rsp+rip
+-; works in vs2019 but not in windbg
+-mp_stack_enter_mini PROC FRAME 
+-  mov     r10, rsp         ; old rsp
+-  mov     r11, [rsp]       ; rip
+-.PUSHREG rsp  
+-  sub     rsp, 32          ; home area + align
+-.ALLOCSTACK 32
+-.ENDPROLOG
+-
+-  mov     gs:[8], rcx      ; set new stack base
+-  mov     gs:[16], rdx     ; commit limit for stack probes (i.e. __chkstk)
+-  mov     gs:[5240], r8    ; (virtual) stack limit   
+-
+-  and     rcx, NOT 15      ; align new stack base
+-  mov     rsp, rcx         ; switch the stack
+-  mov     r8,  [r9]
+-  mov     rax, [r8]
+-  push    rax  
+-  mov     rax, [r8+8]
+-  sub     rax, 8           ; adjust for rip
+-  push    rax
+-  sub     rsp, 32          ; home space 
+-
+-  mov     rax, [r10+40]    ; fun
+-  mov     rcx, [r10+48]    ; set arg from old stack
+-  lea     rdx, [rsp+32]    ; mini trap frame: rsp + rip
+-  call    rax              ; and call the function (it should never return but use longjmp)
+-  
+-  ; we should never reach this...
+-  call    abort        
+-
+-  mov     rcx, [rsp+40]    ; load return jmpbuf_t* in rcx
+-  mov     rcx, [rcx]       
+-  jmp     mp_longjmp
+-
+-mp_stack_enter_mini ENDP
+-
+-
+-END
+diff --git a/src/mprompt/asm/longjmp_arm64.S b/src/mprompt/asm/longjmp_arm64.S
+deleted file mode 100644
+index 2430792..0000000
+--- a/src/mprompt/asm/longjmp_arm64.S
++++ /dev/null
+@@ -1,203 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it 
+-  under the terms of the MIT License. A copy of the License can be 
+-  found in the LICENSE file at the root of this distribution.
+-
+-  ARM64 (aarch64) calling convention. See:
+-  - <https://en.wikipedia.org/wiki/Calling_convention#ARM_.28A64.29>
+-  - <http://infocenter.arm.com/help/topic/com.arm.doc.ihi0055c/IHI0055C_beta_aapcs64.pdf>
+-
+-  Primitives to switch stacks:
+- 
+-    typedef uint8_t mp_jmp_buf_t[MP_JMPBUF_SIZE];  // machine word aligned
+-  
+-    bool     mp_setjmp ( mp_jmp_buf_t jmp );
+-    void     mp_longjmp( mp_jmp_buf_t jmp );
+-    void*    mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, mp_jmpbuf_t** return_jmp, 
+-                            void (*fun)(void* arg, void* trapframe), void* arg);
+-    
+-  `mp_stack_enter` enters a fresh stack and runs `fun(arg)`; it also receives 
+-  a (pointer to a pointer to a) return jmpbuf to which it longjmp's on return.
+------------------------------------------------------------------------------*/
+-
+-
+-/*
+-notes: 
+-- According to the ARM ABI specification, only the bottom 64 bits of the floating 
+-  point registers need to be preserved (sec. 5.1.2 of aapcs64).
+-  Todo: do we need to save the full 128 bits on Windows?
+-- The x18 register is the "platform register" and may be temporary or not. For safety
+-  we always save it.
+-
+-jmpbuf layout:
+-   0: x18  
+-   8: x19
+-  16: x20
+-  24: x21
+-  32: x22
+-  40: x23
+-  48: x24
+-  56: x25
+-  64: x26
+-  72: x27
+-  80: x28
+-  88: fp   = x29
+-  96: lr   = x30
+- 104: sp   = x31
+- 112: fpcr
+- 120: fpsr
+- 128: d8  (64 bits)
+- 136: d9
+- ...
+- 184: d15
+- 192: sizeof jmpbuf
+-*/
+-
+-.align 2
+-.global mp_setjmp
+-.global mp_longjmp
+-.global mp_stack_enter
+-
+-#if defined(__MACH__)
+-.global _mp_setjmp
+-.global _mp_longjmp
+-.global _mp_stack_enter
+-#endif
+-
+-#if !defined(__clang__)
+-.type mp_setjmp,%function
+-.type mp_longjmp,%function
+-.type mp_stack_enter,%function
+-.type abort,%function
+-#endif 
+-
+-/* called with x0: &jmp_buf */
+-_mp_setjmp:
+-mp_setjmp:                 
+-  stp   x18, x19, [x0], #16
+-  stp   x20, x21, [x0], #16
+-  stp   x22, x23, [x0], #16
+-  stp   x24, x25, [x0], #16
+-  stp   x26, x27, [x0], #16
+-  stp   x28, x29, [x0], #16   /* x28 and fp */
+-  mov   x10, sp               /* sp to x10 */
+-  stp   x30, x10, [x0], #16   /* lr and sp */
+-  /* store fp control and status */
+-  mrs   x10, fpcr
+-  mrs   x11, fpsr
+-  stp   x10, x11, [x0], #16    
+-  /* store float registers */
+-  stp   d8,  d9,  [x0], #16
+-  stp   d10, d11, [x0], #16
+-  stp   d12, d13, [x0], #16
+-  stp   d14, d15, [x0], #16
+-  /* always return zero */
+-  mov   x0, #0
+-  ret                         /* jump to lr */
+-
+-
+-/* called with x0: &jmp_buf */
+-_mp_longjmp:
+-mp_longjmp:                  
+-  ldp   x18, x19, [x0], #16
+-  ldp   x20, x21, [x0], #16
+-  ldp   x22, x23, [x0], #16
+-  ldp   x24, x25, [x0], #16
+-  ldp   x26, x27, [x0], #16
+-  ldp   x28, x29, [x0], #16   /* x28 and fp */
+-  ldp   x30, x10, [x0], #16   /* lr and sp */
+-  mov   sp,  x10
+-  /* load fp control and status */
+-  ldp   x10, x11, [x0], #16
+-  msr   fpcr, x10
+-  msr   fpsr, x11
+-  /* load float registers */
+-  ldp   d8,  d9,  [x0], #16
+-  ldp   d10, d11, [x0], #16
+-  ldp   d12, d13, [x0], #16
+-  ldp   d14, d15, [x0], #16
+-  /* always return 1 */
+-  mov   x0, #1
+-  ret                         /* jump to lr */
+-
+-
+-/* switch stack 
+-   x0: stack pointer, 
+-   x1: stack commit limit    (ignored on unix)
+-   x2: stack limit           (ignored on unix)
+-   x3: jmpbuf_t** return point
+-   x4: function to run
+-   x5: argument to pass to the function 
+-*/
+-/* DWARF unwind info instructions: <http://dwarfstd.org/doc/DWARF5.pdf> 
+-   Register mapping: <file:///C:/Users/daan/AppData/Local/Temp/IHI0057B_aadwarf64.pdf>
+-*/
+-#define DW_def_cfa_expression     0x0F  
+-#define DW_expression             0x10      
+-#define DW_val_expression         0x16        
+-#define DW_OP_deref               0x06        /* dereference the top of the expression stack */
+-#define DW_OP_breg(r)             (0x70+r)    /* push `register + ofs` on the expression stack */
+-#define DW_REG_fp                 29
+-#define DW_REG_lr                 30
+-#define DW_REG_sp                 31
+-#define DW_REG_ELR_mode           33
+-#define DW_REG_v0                 64
+-
+-_mp_stack_enter:
+-mp_stack_enter:
+-  .cfi_startproc 
+-  .cfi_signal_frame             /* needed or else gdb does not allow switching frames to a lower address in the backtrace */
+-  
+-  stp     fp, lr, [sp, #16]!    /* link frame (seems needed for libunwind) */
+-  .cfi_adjust_cfa_offset 32
+-  .cfi_rel_offset lr, 24
+-  .cfi_rel_offset fp, 16
+-
+-  mov     fp, sp
+-  sub     sp, sp, #16
+-  str     x3, [sp, #8]          /* save x3 to [sp+8] for unwinding */
+-  .cfi_remember_state 
+-  
+-  
+-  /* set the cfa to point to our return jmpbuf_t (instead of into the stack); 
+-     the previous registers can now be restored (during unwind) using .cfi_offset directives */
+-  .cfi_escape DW_def_cfa_expression, 4, DW_OP_breg(DW_REG_sp), 8, DW_OP_deref, DW_OP_deref /* jmpbuf_t* cfa = [[sp,#8]] */  
+-  .cfi_offset sp, 104           /* sp */
+-  .cfi_offset x30, 96           /* lr */
+-  .cfi_offset x29, 88           /* fp */
+-  .cfi_offset x18,  0
+-  .cfi_offset x19,  8
+-  .cfi_offset x20, 16
+-  .cfi_offset x21, 24
+-  .cfi_offset x22, 32
+-  .cfi_offset x23, 40
+-  .cfi_offset x24, 48
+-  .cfi_offset x25, 56
+-  .cfi_offset x26, 64
+-  .cfi_offset x27, 72
+-  .cfi_offset x28, 80  
+-
+-  and     sp, x0, #~31          /* switch to the new stack (aligned down to 32 bytes) */
+-  sub     sp, sp, #32           /* sp = sp - 32 */
+-  stp     x29, x30, [sp, #16]   /* mimic call on new stack: sp[24] = x30, sp[16] = lr */
+-  str     x3, [sp, #8]          /* save jmpbuf_t** on the stack for (future) unwinding: x3 == [sp+8]  */
+-  add     x29, sp, #16          /* set our frame pointer to sp[16] */
+-  
+-  mov     x0, x5                /* argument to x0 */
+-  mov     x1, fp                /* pass unwind frame */
+-  blr     x4                    /* and call the function */
+-
+-  /* should never get here */
+-  #if defined(__MACH__)
+-  bl      _abort
+-  #else
+-  bl      abort
+-  #endif
+-
+-  .cfi_restore_state
+-  ldr     x0, [sp, #8]          /* load jmpbuf_t* and longjmp back */
+-  ldr     x0, [x0]
+-  b       mp_longjmp
+-
+-  .cfi_endproc
+\ No newline at end of file
+diff --git a/src/mprompt/gstack.c b/src/mprompt/gstack.c
+index 071f6f1..7c50fe3 100644
+--- a/src/mprompt/gstack.c
++++ b/src/mprompt/gstack.c
+@@ -14,36 +14,12 @@
+ #include <errno.h>
+ #include "mprompt.h"
+ #include "internal/util.h"
+-#include "internal/longjmp.h"       // mp_stack_enter
+-#include "internal/gstack.h"
++#include "gstack.h"
+ 
+ #ifdef __cplusplus
+ #include <exception>
+ #endif
+ 
+-/*------------------------------------------------------------------------------
+-   Growable stacklets
+-------------------------------------------------------------------------------*/
+-
+-// Stack info. 
+-// For security we allocate this separately from the actual stack.
+-// To save an allocation, we reserve `extra_size` space where the 
+-// `mp_prompt_t` information will be.
+-// All sizes (except for `extra_size`) are `os_page_size` aligned.
+-struct mp_gstack_s {
+-  mp_gstack_t*  next;               // used for the cache and delay list
+-  uint8_t*      full;               // stack reserved memory (including noaccess gaps)
+-  ssize_t       full_size;          // (for now always fixed to be `os_gstack_size`)
+-  uint8_t*      stack;              // stack inside the full area (without gaps)
+-  ssize_t       stack_size;         // actual available total stack size (includes reserved space) (depends on platform, but usually `os_gstack_size - 2*mp_gstack_gap`)
+-  ssize_t       initial_commit;     // initial committed memory (usually `os_page_size`)  
+-  ssize_t       committed;          // current committed estimate
+-  ssize_t       extra_size;         // size of extra allocated bytes.         
+-  uint8_t       extra[1];           // extra allocated (holds the mp_prompt_t structure)
+-};
+-
+-
+-
+ //----------------------------------------------------------------------------------
+ // Configuration
+ //----------------------------------------------------------------------------------
+@@ -60,7 +36,7 @@ static ssize_t os_gstack_size             = 8 * MP_MIB;    // reserved memory fo
+ static ssize_t os_gstack_gap              = 64 * MP_KIB;   // noaccess gap between stacks; `os_gstack_gap > min(64*1024, os_page_size, os_gstack_size/2`.
+ static bool    os_gstack_reset_decommits  = false;         // force full decommit when resetting a stack?
+ static bool    os_gstack_grow_fast        = true;          // use doubling to grow gstacks (up to 1MiB)
+-static ssize_t os_gstack_cache_max_count  = 4;             // number of prompts to keep in the thread local cache
++static ssize_t os_gstack_cache_max_count  = 16;             // number of prompts to keep in the thread local cache
+ static ssize_t os_gstack_exn_guaranteed   = 32 * MP_KIB;   // guaranteed stack size available during an exception unwind (only used on Windows)
+ 
+ #if defined(_MSC_VER) && !defined(NDEBUG)  // gpool a tad smaller in msvc so debug traces work (as the gpool can be placed lower than the system stack)
+@@ -119,7 +95,7 @@ static mp_access_t  mp_gstack_check_access(mp_gstack_t* g, void* address, ssize_
+ typedef struct mp_gpool_s mp_gpool_t;
+ static uint8_t*     mp_gpool_alloc(uint8_t** stk, ssize_t* stk_size);
+ static void         mp_gpool_free(uint8_t* stk);
+-static mp_access_t  mp_gpools_check_access(void* address, ssize_t* available, ssize_t* stack_size, const mp_gpool_t** gp);
++static mp_access_t  mp_gpools_check_access(void* address, ssize_t* available, ssize_t* stack_size, mp_gstack_t** g, const mp_gpool_t** gp);
+ 
+ 
+ // platform specific definitions are in included files
+@@ -224,23 +200,26 @@ mp_gstack_t* mp_gstack_alloc(ssize_t extra_size, void** extra)
+ 
+   // otherwise allocate fresh
+   if (g == NULL) {
+-    // allocate separately for security
+-    extra_size = mp_align_up(extra_size, sizeof(void*));    
+-    g = (mp_gstack_t*)mp_malloc(sizeof(mp_gstack_t) - 1 + extra_size); 
+-    if (g == NULL) {
+-      return NULL;
+-    }
+-
+     // allocate the actual stack
+     uint8_t* stk;
+     ssize_t  stk_size;
+     ssize_t  initial_commit;
+     uint8_t* full = mp_gstack_os_alloc(&stk, &stk_size, &initial_commit);
+     if (full == NULL) { 
+-      mp_free(g);
+       errno = ENOMEM;
+       return NULL;
+-    }    
++    }
++
++    extra_size = mp_align_up(extra_size, sizeof(void*));
++
++    // allocate header in the gap at stack base
++    uint8_t* page = stk + stk_size;
++    // make the page readable and writable
++    if (!mp_os_mem_commit(page, os_page_size)) {
++      mp_gstack_os_free(full, stk, stk_size, initial_commit);
++      errno = ENOMEM;
++      return NULL;
++    }
+     
+     uint8_t* base = mp_base(stk, stk_size);
+     mp_assert_internal((intptr_t)base % 32 == 0);
+@@ -253,6 +232,7 @@ mp_gstack_t* mp_gstack_alloc(ssize_t extra_size, void** extra)
+     #endif
+     
+     //mp_trace_message("alloc gstack: full: %p, base: %p, base_limit: %p\n", full, base, mp_push(base, stk_size,NULL));
++    g = (mp_gstack_t *) page;
+     g->next = NULL;
+     g->full = full;
+     g->full_size = os_gstack_size;
+@@ -262,34 +242,9 @@ mp_gstack_t* mp_gstack_alloc(ssize_t extra_size, void** extra)
+     g->extra_size = extra_size;
+   }
+ 
+-  if (extra != NULL && extra_size > 0) {
+-    *extra = &g->extra[0];
+-  }
+   return g;
+ }
+ 
+-
+-// Enter a gstack
+-void mp_gstack_enter(mp_gstack_t* g, mp_jmpbuf_t** return_jmp, mp_stack_start_fun_t* fun, void* arg) {
+-  uint8_t* base = mp_gstack_base(g);
+-  uint8_t* base_commit_limit = mp_push(base, g->committed, NULL);
+-  uint8_t* base_limit = mp_push(base, g->stack_size, NULL);
+-  uint8_t* base_entry_sp = base;
+-#if _WIN32
+-  if (os_use_gpools || os_gstack_grow_fast) {
+-    // set an artificially low stack limit so our page fault handler gets called and we can:
+-    // - prevent guard pages from growing into a gap in gpools
+-    // - keep track of the committed area and grow by doubling to improve performance.
+-    ULONG guaranteed = 0;
+-    SetThreadStackGuarantee(&guaranteed);
+-    ssize_t guard_size = os_page_size + mp_align_up(guaranteed, os_page_size);
+-    base_limit = mp_push(base_commit_limit, guard_size, NULL);
+-  }
+-#endif
+-  mp_stack_enter(base_entry_sp, base_commit_limit, base_limit, return_jmp, fun, arg);  
+-}
+-
+-
+ // Free a gstack
+ void mp_gstack_free(mp_gstack_t* g, bool delay) {
+   if (g == NULL) return;
+@@ -315,7 +270,7 @@ void mp_gstack_free(mp_gstack_t* g, bool delay) {
+ 
+   // otherwise free it to the OS
+   mp_gstack_os_free(g->full, g->stack, g->stack_size, g->committed);
+-  mp_free(g);
++  // mp_free(g);
+ }
+ 
+ 
+@@ -327,59 +282,12 @@ void mp_gstack_clear_cache(void) {
+     mp_gstack_t* next = _mp_gstack_cache = g->next;
+     _mp_gstack_cache_count--;
+     mp_gstack_os_free(g->full, g->stack, g->stack_size, g->committed);
+-    mp_free(g);
+     g = next;
+   }
+   mp_assert_internal(_mp_gstack_cache == NULL);
+   mp_assert_internal(_mp_gstack_cache_count == 0);
+ }
+ 
+-
+-//----------------------------------------------------------------------------------
+-// Saving / Restoring
+-//----------------------------------------------------------------------------------
+-
+-struct mp_gsave_s {
+-  void*   stack;
+-  ssize_t stack_size;
+-  void*   extra;        // mp_prompt_t structure
+-  ssize_t extra_size;
+-  uint8_t data[1];      // combined data; starts with extra
+-};
+-
+-// save a gstack
+-#if MP_USE_ASAN
+-__attribute__((no_sanitize("address")))
+-#endif
+-mp_gsave_t* mp_gstack_save(mp_gstack_t* g, uint8_t* sp) {
+-  mp_assert_internal(mp_gstack_contains(g, sp));
+-  ssize_t stack_size = mp_unpush(sp, g->stack, g->stack_size);
+-  mp_assert_internal(stack_size >= 0 && stack_size <= g->stack_size);
+-  mp_gsave_t* gs = (mp_gsave_t*)mp_malloc_safe(sizeof(mp_gsave_t) - 1 + stack_size + g->extra_size);
+-  gs->stack = (os_stack_grows_down ? sp : g->stack);
+-  gs->stack_size = stack_size;
+-  gs->extra = &g->extra[0];
+-  gs->extra_size = g->extra_size;
+-  #if MP_USE_ASAN
+-    for(ssize_t i = 0; i < gs->extra_size; i++) { gs->data[i] = ((uint8_t*)gs->extra)[i]; }
+-    for(ssize_t i = 0; i < gs->stack_size; i++) { gs->data[i + gs->extra_size] = ((uint8_t*)gs->stack)[i]; }
+-  #else
+-    memcpy(gs->data, gs->extra, gs->extra_size);
+-    memcpy(gs->data + gs->extra_size, gs->stack, gs->stack_size);
+-  #endif
+-  return gs;
+-}
+-
+-void mp_gsave_restore(mp_gsave_t* gs) {
+-  memcpy(gs->extra, gs->data, gs->extra_size);
+-  memcpy(gs->stack, gs->data + gs->extra_size, gs->stack_size);
+-}
+-
+-void mp_gsave_free(mp_gsave_t* gs) {
+-  mp_free(gs);
+-}
+-
+-
+ //----------------------------------------------------------------------------------
+ // Is an address located in a gstack?
+ //----------------------------------------------------------------------------------
+@@ -401,7 +309,7 @@ static mp_access_t mp_gstack_check_access(mp_gstack_t* g, void* address, ssize_t
+     if (commit_available != NULL) { *commit_available = mp_max(0, g->committed - used); }
+     return MP_ACCESS;
+   }
+-  else if (p >= g->full && p < g->stack) {
++  else if (p >= (g->full + g->stack_size) && p < (g->full + g->full_size)) {
+     // in the gap
+     return MP_NOACCESS_STACK_OVERFLOW;
+   }
+@@ -518,6 +426,10 @@ static void mp_gstack_thread_init(void) {
+ }
+ 
+ 
++mp_gstack_t* mp_gstack_get(char* stack) {
++  return mp_gpools_get_gstack((void*) stack);
++}
++
+ //----------------------------------------------------------------------------------
+ // Support address sanitizer
+ //----------------------------------------------------------------------------------
+diff --git a/src/mprompt/gstack_gpool.c b/src/mprompt/gstack_gpool.c
+index 567b795..3bd1fe5 100644
+--- a/src/mprompt/gstack_gpool.c
++++ b/src/mprompt/gstack_gpool.c
+@@ -210,10 +210,11 @@ static void mp_gpool_free(uint8_t* stk) {
+ // Is a pointer located in a stack page and thus can be made accessible?
+ // This routine is called from exception handler thread while debugging on macOS to verify
+ // if the address is in one of our stacks and is allowed to be committed.
+-static mp_access_t mp_gpools_check_access(void* p, ssize_t* stack_size, ssize_t* available, const mp_gpool_t** gpool) {
++static mp_access_t mp_gpools_check_access(void* p, ssize_t* stack_size, ssize_t* available, mp_gstack_t** g, const mp_gpool_t** gpool) {
+   // for all pools
+   if (available != NULL) *available = 0;
+   if (stack_size != NULL) *stack_size = 0;
++  if (g != NULL) *g = NULL;
+   if (gpool != NULL) *gpool = NULL;
+   for (const mp_gpool_t* gp = mp_gpool_first(); gp != NULL; gp = mp_gpool_next(gp)) {
+     ptrdiff_t ofs = (uint8_t*)p - (uint8_t*)gp;
+@@ -231,6 +232,7 @@ static mp_access_t mp_gpools_check_access(void* p, ssize_t* stack_size, ssize_t*
+         if (block_ofs < (gp->block_size - gp->gap_size)) {  // not in a gap?
+           ssize_t avail = (os_stack_grows_down ? block_ofs : gp->block_size - gp->gap_size - block_ofs);
+           if (available != NULL) *available = avail;
++          if (g != NULL) *g = (mp_gstack_t*)((uint8_t*)p - block_ofs + gp->block_size - gp->gap_size);  // g is the gstack header at stack base.
+           if (gpool != NULL) *gpool = gp;
+           return (avail == 0 ? MP_NOACCESS_STACK_OVERFLOW : MP_ACCESS);
+         }
+@@ -243,3 +245,15 @@ static mp_access_t mp_gpools_check_access(void* p, ssize_t* stack_size, ssize_t*
+   }
+   return MP_NOACCESS;
+ }
++
++static mp_gstack_t* mp_gpools_get_gstack(void* p) {
++  for (const mp_gpool_t* gp = mp_gpool_first(); gp != NULL; gp = mp_gpool_next(gp)) {
++    ptrdiff_t ofs = (uint8_t*)p - (uint8_t*)gp;
++    if (ofs >= 0 && ofs < gp->size) {   // in the pool?
++      ptrdiff_t block_ofs = ofs % gp->block_size;
++      ssize_t stack_size = gp->block_size - gp->gap_size;
++      return (mp_gstack_t*)((uint8_t*)p - block_ofs + stack_size);  // return the gstack header at stack base.
++    }
++  }
++  return NULL;
++}
+diff --git a/src/mprompt/gstack_mmap.c b/src/mprompt/gstack_mmap.c
+index a0ea97f..0d9f81d 100644
+--- a/src/mprompt/gstack_mmap.c
++++ b/src/mprompt/gstack_mmap.c
+@@ -17,6 +17,7 @@
+ 
+ // We need atomic operations for the `gpool` on systems that do not have overcommit.
+ #include "internal/atomic.h"
++#include "gc.h"
+ 
+ // forward declaration 
+ static bool mp_mmap_commit_on_demand(void* addr, bool addr_in_other_thread);
+@@ -168,6 +169,8 @@ static bool mp_mmap_initial_commit(uint8_t* stk, ssize_t stk_size, ssize_t* init
+     }
+     if (initial_commit != NULL) *initial_commit = os_gstack_initial_commit;
+   }
++
++  GC_add_roots(stk + stk_size - *initial_commit, stk + stk_size);
+   return true;
+ }
+ 
+@@ -204,6 +207,7 @@ static uint8_t* mp_gstack_os_alloc(uint8_t** stk, ssize_t* stk_size, ssize_t* in
+ 
+ // Free the memory of a gstack
+ static void mp_gstack_os_free(uint8_t* full, uint8_t* stk, ssize_t stk_size, ssize_t stk_commit) {
++  GC_remove_roots(stk + stk_size - stk_commit, stk + stk_size);
+   MP_UNUSED(stk_commit);
+   if (!os_use_gpools) {
+     mp_os_mem_free(full,os_gstack_size);
+@@ -294,22 +298,13 @@ static struct sigaction mp_sig_bus_prev_act;
+ static mp_decl_thread stack_t* mp_sig_stack;  // every thread needs a signal stack in order do demand commit stack pages
+ 
+ static bool mp_mmap_commit_on_demand(void* addr, bool addr_in_other_thread) {
+-  // demand allocate?
++  // check if addr is in a gpool
+   uint8_t* page = mp_align_down_ptr((uint8_t*)addr, os_page_size);
+   ssize_t available = 0;
+   ssize_t stack_size = 0;
+   mp_access_t access = MP_NOACCESS;
+-  mp_gstack_t* g = mp_gstack_current();  
+-  if (g != NULL) {
+-    // normally we only handle accesses in our current gstack
+-    access = mp_gstack_check_access(g, page, &stack_size, &available, NULL);
+-  }
+-  else if (addr_in_other_thread && os_use_gpools) {
+-     // on mach (macOS) while debugging we use a separate mach exception thread handler
+-     // in that case we can use gpools to determine if the access is in one of our gstacks.
+-     access = mp_gpools_check_access( page, &stack_size, &available, NULL );
+-  }
+-  
++  mp_gstack_t *g = NULL;
++  access = mp_gpools_check_access(page, &stack_size, &available, &g, NULL);
+   if (access == MP_ACCESS) {
+     // a pointer to a valid gstack in our gpool, make the page read-write
+     // mp_trace_message("  segv: unprotect page\n");
+@@ -324,8 +319,11 @@ static bool mp_mmap_commit_on_demand(void* addr, bool addr_in_other_thread) {
+     uint8_t* commit_start;
+     mp_push(page, extra, &commit_start);
+     if (mprotect(commit_start, extra + os_page_size, PROT_READ | PROT_WRITE) == 0) {
+-      if (g != NULL) { g->committed = mp_unpush(commit_start, g->stack, g->stack_size ); }
+-    };
++      if (g != NULL) { 
++        g->committed = mp_unpush(commit_start, g->stack, g->stack_size );
++        GC_add_roots(g->stack + g->stack_size - g->committed, g->stack + g->stack_size);
++      }
++    }
+     return true; 
+   }
+   else if (access == MP_NOACCESS_STACK_OVERFLOW) {
+diff --git a/src/mprompt/main.c b/src/mprompt/main.c
+index a483041..364c361 100644
+--- a/src/mprompt/main.c
++++ b/src/mprompt/main.c
+@@ -8,6 +8,5 @@
+   (and to generate a single object file as well)
+ -----------------------------------------------------------------------------*/
+ 
+-#include "mprompt.c"
+ #include "gstack.c"
+ #include "util.c"
+diff --git a/src/mprompt/mprompt.c b/src/mprompt/mprompt.c
+deleted file mode 100644
+index 2393d31..0000000
+--- a/src/mprompt/mprompt.c
++++ /dev/null
+@@ -1,767 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-#include <stdio.h>
+-#include <string.h>
+-#include <stdlib.h>
+-#include <stdint.h>
+-#include <errno.h>
+-
+-#include "mprompt.h"
+-#include "internal/util.h"
+-#include "internal/longjmp.h"
+-#include "internal/gstack.h"
+-
+-#ifdef __cplusplus
+-#include <exception>
+-#endif
+-
+-
+-
+-//-----------------------------------------------------------------------
+-// Types
+-//-----------------------------------------------------------------------
+-
+-typedef enum mp_return_kind_e {
+-  MP_RETURN,         // normal return
+-  MP_EXCEPTION,      // return with an exception
+-  MP_YIELD,          // yielded up
+-} mp_return_kind_t;
+-
+-
+-typedef struct mp_resume_point_s {   // allocated on the suspended stack (which performed a yield)
+-  mp_jmpbuf_t        jmp;     
+-  void*              result;  // the yield result (= resume argument)
+-} mp_resume_point_t;
+-
+-typedef struct mp_return_point_s {   // allocated on the parent stack (which performed an enter/resume)
+-  mp_jmpbuf_t        jmp;     // must be the first field (in order to find unwind information, see `mp_stack_enter`)
+-  mp_return_kind_t   kind;    
+-  mp_yield_fun_t*    fun;     // if yielding, the function to execute
+-  void*              arg;     // if yielding, the argument to the function; if returning, the result.
+-  #ifdef __cplusplus
+-  std::exception_ptr exn;     // returning with an exception to propagate
+-  #endif
+-} mp_return_point_t;
+-
+-
+-// Prompt:
+-// Represents a piece of stack and can be yielded to.
+-//
+-// A prompt can be in 2 states:
+-// _active_:    top == NULL
+-//              means the prompt (and its gstack) is part of prompt stack chain.
+-// _suspended_: top != NULL, resume_point != NULL
+-//              This when being captured as a resumption. The `top` points to the end of the captured resumption.
+-//              and the prompt (and its children) are not part of the current stack chain.
+-//              note that the prompt children are still themselves in the _active_ state (but not part of a current execution stack chain)
+-
+-struct mp_prompt_s {  
+-  mp_prompt_t*       parent;        // parent: previous prompt up in the stack chain (towards bottom of the stack)
+-  mp_prompt_t*       top;           // top of a suspended prompt chain.
+-  intptr_t           refcount;      // free when drops to zero
+-  mp_gstack_t*       gstack;        // the growable stacklet associated with this prompt;
+-                                 
+-  mp_return_point_t* return_point;  // return point in the parent (if not suspended..)
+-  mp_resume_point_t* resume_point;  // resume point for a suspended prompt chain. (the resume will be in the `top->gstack`)
+-
+-  void*              sp;            // security: contains the (guarded) expected stack pointer for a return (if active) or resume (if suspended)
+-  mp_unwind_frame_t* unwind_frame;  // used to aid with unwinding on some platforms (windows only for now)
+-};
+-
+-
+-// Abstract type of resumptions (never used as such)
+-struct mp_resume_s {
+-  void* abstract;
+-};
+-
+-// If resuming multiple times, the original stack is saved in a corresponding chain of prompt_save structures.
+-typedef struct mp_prompt_save_s {
+-  struct mp_prompt_save_s* next;
+-  mp_prompt_t*             prompt;
+-  mp_gsave_t*              gsave;  
+-} mp_prompt_save_t;
+-
+-
+-// A general resumption that can be resumed multiple times; needs a small allocation and is reference counted.
+-// Only copies the original stack if it is actually being resumed more than once.
+-typedef struct mp_mresume_s {
+-  intptr_t           refcount;
+-  long               resume_count;       // count number of resumes.
+-  mp_prompt_t*       prompt;
+-  mp_prompt_save_t*  save;
+-  mp_return_point_t* tail_return_point;  // need to save this as the one in the prompt may be overwritten by earlier resumes
+-} mp_mresume_t;
+-
+-
+-//-----------------------------------------------------------------------
+-// Distinguish plain once-resumptions from multi-shot resumptions.
+-//
+-// We use bit 2 in the pointers (assuming 8-byte minimal alignment) to 
+-// distinguish  resume-at-most-once from multi-shot resumptions. This way 
+-// we do not need  allocation of at-most-once resumptions while still 
+-// providing a consistent interface.
+-//-----------------------------------------------------------------------
+-
+-// Is this a once resumption (returns NULL if not)
+-static mp_prompt_t* mp_resume_is_once(mp_resume_t* r) {
+-  intptr_t i = (intptr_t)r;
+-  return ((i & 4) == 0 ? (mp_prompt_t*)r : NULL);
+-}
+-
+-// Is this a multi-shot resumption (returns NULL if not)
+-static mp_mresume_t* mp_resume_is_multi(mp_resume_t* r) {
+-  intptr_t i = (intptr_t)r;
+-  return ((i & 4) == 0 ? NULL : (mp_mresume_t*)(i ^ 4));
+-}
+-
+-// Create a non-allocated at-most-once resumption
+-static mp_resume_t* mp_resume_as_once(mp_prompt_t* p) {
+-  return (mp_resume_t*)p;
+-}
+-
+-// Create a multi shot resumption
+-static mp_resume_t* mp_resume_as_multi(mp_mresume_t* r) {
+-  return (mp_resume_t*)(((intptr_t)r) | 4);
+-}
+-
+-
+-//-----------------------------------------------------------------------
+-// Initialize
+-//-----------------------------------------------------------------------
+-
+-void mp_init(const mp_config_t* config) {
+-  mp_guard_init();
+-  mp_gstack_init(config);
+-}
+-
+-
+-//-----------------------------------------------------------------------
+-// Prompt chain
+-//-----------------------------------------------------------------------
+-
+-// The top of the prompts chain; points to the prompt on whose stack we currently execute.
+-mp_decl_thread mp_prompt_t* _mp_prompt_top;
+-
+-// get the top of the prompt chain
+-mp_prompt_t* mp_prompt_top(void) {  
+-  return _mp_prompt_top;
+-}
+-
+-// get the current gstack; used for on-demand-paging in gstack_mmap/gstack_win
+-mp_gstack_t* mp_gstack_current(void) {
+-  mp_prompt_t* top = mp_prompt_top();
+-  return (top != NULL ? top->gstack : NULL);
+-}
+-
+-// walk the prompt chain; returns NULL when done.
+-// with initial argument `NULL` the first prompt returned is the current top.
+-mp_prompt_t* mp_prompt_parent(mp_prompt_t* p) {
+-  return (p == NULL ? mp_prompt_top() : p->parent);
+-}
+-
+-#ifndef NDEBUG
+-// An _active_ prompt is currently part of the stack.
+-static bool mp_prompt_is_active(mp_prompt_t* p) {
+-  return (p != NULL && p->top == NULL);
+-}
+-
+-// Is a prompt an ancestor in the chain?
+-static bool mp_prompt_is_ancestor(mp_prompt_t* p) {
+-  mp_prompt_t* q = NULL;
+-  while ((q = mp_prompt_parent(q)) != NULL) {
+-    if (q == p) return true;
+-  }
+-  return false;
+-}
+-#endif
+-
+-// Allocate a fresh (suspended) prompt
+-mp_prompt_t* mp_prompt_create(void) {
+-  // allocate a fresh growable stack
+-  mp_prompt_t* p;
+-  mp_gstack_t* gstack = mp_gstack_alloc(sizeof(mp_prompt_t), (void**)&p);
+-  if (gstack == NULL) { mp_fatal_message(ENOMEM, "unable to allocate a stack\n"); }
+-  // allocate the prompt structure at the base of the new stack
+-  p->parent = NULL;
+-  p->top = p;
+-  p->refcount = 1;
+-  p->gstack = gstack;
+-  p->resume_point = NULL;
+-  p->return_point = NULL;
+-  p->unwind_frame = NULL;
+-  return p;
+-}
+-
+-// Free a prompt and drop its children
+-static void mp_prompt_free(mp_prompt_t* p, bool delay) {
+-  mp_assert_internal(!mp_prompt_is_active(p));
+-  p = p->top;
+-  while (p != NULL) {
+-    mp_assert_internal(p->refcount == 0);
+-    mp_prompt_t* parent = p->parent;    
+-    mp_gstack_free(p->gstack, delay);
+-    if (parent != NULL) {
+-      mp_assert_internal(parent->refcount == 1);
+-      parent->refcount--;
+-    }
+-    p = parent;
+-  }
+-}
+-
+-// Decrement the refcount (and free when it becomes zero).
+-static void mp_prompt_drop_internal(mp_prompt_t* p, bool delay) {
+-  int64_t i = p->refcount--;
+-  if (i <= 1) {
+-    mp_prompt_free(p, delay);
+-  }
+-}
+-
+-static void mp_prompt_drop(mp_prompt_t* p) {
+-  mp_prompt_drop_internal(p, false);
+-}
+-
+-#ifdef __cplusplus
+-static void mp_prompt_drop_delayed(mp_prompt_t* p) {
+-  mp_prompt_drop_internal(p, true);
+-}
+-#endif
+-
+-// Increment the refcount
+-static mp_prompt_t* mp_prompt_dup(mp_prompt_t* p) {
+-  p->refcount++;
+-  return p;
+-}
+-
+-// Link a suspended prompt to the current prompt chain and set the new prompt top
+-static inline mp_resume_point_t* mp_prompt_link(mp_prompt_t* p, mp_return_point_t* ret, void** sp) {
+-  mp_assert_internal(ret != NULL);
+-  mp_assert_internal(!mp_prompt_is_active(p));
+-  *sp = p->sp;
+-  p->parent = mp_prompt_top();
+-  _mp_prompt_top = p->top;
+-  p->top = NULL;
+-  if (mp_likely(ret != NULL)) { 
+-    p->return_point = ret; 
+-    p->sp = mp_guard(ret->jmp.reg_sp);
+-    mp_unwind_frame_update(p->unwind_frame, &ret->jmp);
+-  }                           
+-  mp_assert_internal(mp_prompt_is_active(p));  
+-  mp_debug_asan_start_switch(_mp_prompt_top->gstack);
+-  return p->resume_point;
+-}
+-
+-// Unlink a prompt from the current chain and make suspend it (and set the new prompt top to its parent)
+-static inline mp_return_point_t* mp_prompt_unlink(mp_prompt_t* p, mp_resume_point_t* res, void** sp) {
+-  mp_assert_internal(mp_prompt_is_active(p));
+-  mp_assert_internal(mp_prompt_is_ancestor(p)); // ancestor of current top?
+-  *sp = p->sp;
+-  p->top = mp_prompt_top();
+-  _mp_prompt_top = p->parent;
+-  p->parent = NULL;  
+-  p->resume_point = res;
+-  if (mp_likely(res != NULL)) {   // on return/exception
+-    p->sp = mp_guard(res->jmp.reg_sp);
+-  }
+-  // note: leave return_point as-is for potential reuse in tail resumes
+-  mp_assert_internal(!mp_prompt_is_active(p));
+-  mp_debug_asan_start_switch(_mp_prompt_top == NULL ? NULL : _mp_prompt_top->gstack);
+-  return p->return_point;
+-}
+-
+-
+-//-----------------------------------------------------------------------
+-// Checked longjmp
+-// We use a form of control-flow integrity by only allowing
+-// a longjmp to two known code locations (one for resume, and one for return)
+-//-----------------------------------------------------------------------
+-
+-// The code addresses are initialized on the first call to setjmp (and are located right after the setjmp call)
+-// todo: can we make this static so these go to the readonly section? 
+-static void* mp_return_label;
+-static void* mp_resume_label;
+-
+-
+-// Checked longjmp to a known location (with a known stack pointer)
+-static mp_decl_noreturn void mp_checked_longjmp(void* label, void* sp, mp_jmpbuf_t* jmp) {
+-  // security: check if we return to the designated label
+-  if (mp_unlikely(mp_unguard(label) != jmp->reg_ip)) {
+-    mp_fatal_message(EFAULT, "potential stack corruption detected: expected ip %p, but found %p\n", mp_unguard(label), jmp->reg_ip);
+-  }
+-  if (mp_unlikely(mp_unguard(sp) != jmp->reg_sp)) {
+-    mp_fatal_message(EFAULT, "potential stack corruption detected: expected sp %p, but found %p\n", mp_unguard(sp), jmp->reg_sp);
+-  }
+-  mp_longjmp(jmp); 
+-}
+-
+-
+-//-----------------------------------------------------------------------
+-// Create an initial prompt
+-//-----------------------------------------------------------------------
+-
+-// Initial stack entry
+-
+-typedef struct mp_entry_env_s {
+-  mp_prompt_t* prompt;
+-  mp_start_fun_t* fun;
+-  void* arg;
+-} mp_entry_env_t;
+-
+-static  void mp_prompt_stack_entry(void* penv, mp_unwind_frame_t* unwind_frame) {
+-  MP_UNUSED(unwind_frame);
+-  mp_entry_env_t* env = (mp_entry_env_t*)penv;
+-  mp_prompt_t* p = env->prompt;
+-  p->unwind_frame = unwind_frame;
+-  mp_debug_asan_end_switch(p->parent==NULL);
+-  //mp_prompt_stack_entry(p, env->fun, env->arg);
+-  void* sp;
+-  mp_return_point_t* ret;
+-  #ifdef __cplusplus
+-  try {
+-  #endif
+-    void* result = (env->fun)(p, env->arg);
+-    // RET: return from a prompt
+-    ret = mp_prompt_unlink(p, NULL, &sp);
+-    ret->arg = result;
+-    ret->fun = NULL;
+-    ret->kind = MP_RETURN;    
+-  #ifdef __cplusplus
+-  }
+-  catch (...) {
+-    mp_trace_message("catch exception to propagate across the prompt %p..\n", p);
+-    ret = mp_prompt_unlink(p, NULL, &sp);
+-    ret->exn = std::current_exception();
+-    ret->arg = NULL;
+-    ret->fun = NULL;
+-    ret->kind = MP_EXCEPTION;
+-  }
+-  #endif  
+-  mp_checked_longjmp(mp_return_label, sp, &ret->jmp);
+-}
+-
+-
+-
+-// Execute the function that is yielded or return normally.
+-static mp_decl_noinline void* mp_prompt_exec_yield_fun(mp_return_point_t* ret, mp_prompt_t* p) {
+-  mp_assert_internal(!mp_prompt_is_active(p));
+-  if (ret->kind == MP_YIELD) {
+-    return (ret->fun)(mp_resume_as_once(p), ret->arg);
+-  }
+-  else if (ret->kind == MP_RETURN) {
+-    void* result = ret->arg;
+-    mp_prompt_drop(p);
+-    return result;
+-  }
+-  else {
+-    #ifdef __cplusplus
+-    mp_assert_internal(ret->kind == MP_EXCEPTION);
+-    mp_trace_message("rethrow propagated exception again (from prompt %p)..\n", p);
+-    mp_prompt_drop_delayed(p);
+-    std::rethrow_exception(ret->exn);
+-    #else
+-    mp_unreachable("invalid return kind");
+-    #endif
+-  }
+-}
+-
+-
+-// Resume a prompt: used for the initial entry as well as for resuming in a suspended prompt.
+-static mp_decl_noinline void* mp_prompt_resume(mp_prompt_t * p, void* arg) {
+-  mp_return_point_t ret;    
+-  // save our return location for yields and regular return  
+-  if (mp_setjmp(&ret.jmp)) {
+-    //mp_return_label:
+-    // P: return from yield (YR), or a regular return (RET)
+-    // printf("%s to prompt %p\n", (ret.kind == MP_RETURN ? "returned" : "yielded"), p);    
+-    mp_debug_asan_end_switch(false);
+-    return mp_prompt_exec_yield_fun(&ret, p);  // must be under the setjmp to preserve the stack
+-  }
+-  else {
+-    // security: longjmp can only jump to a known code point
+-    if (mp_unlikely(mp_return_label == NULL)) { 
+-      mp_return_label = mp_guard(ret.jmp.reg_ip); 
+-    }
+-
+-    mp_assert(p->parent == NULL);
+-    void* sp;
+-    mp_resume_point_t* res = mp_prompt_link(p,&ret,&sp);  // make active
+-    if (res != NULL) {
+-      // PR: resume to yield point
+-      res->result = arg;
+-      mp_checked_longjmp(mp_resume_label, sp, &res->jmp);
+-    }
+-    else {
+-      // PI: initial entry, switch to the new stack with an initial function      
+-      mp_gstack_enter(p->gstack, (mp_jmpbuf_t**)&p->return_point, &mp_prompt_stack_entry, arg);
+-    }
+-    mp_unreachable("mp_prompt_resume");    // should never return
+-  }
+-}
+-
+-void* mp_prompt_enter(mp_prompt_t* p, mp_start_fun_t* fun, void* arg) {
+-  mp_assert_internal(!mp_prompt_is_active(p) && p->resume_point == NULL);
+-  mp_entry_env_t env;
+-  env.prompt = p;
+-  env.fun = fun;
+-  env.arg = arg;
+-  return mp_prompt_resume(p, &env);
+-}
+-
+-// Install a fresh prompt `p` with a growable stack and start running `fun(p,arg)` on it.
+-void* mp_prompt(mp_start_fun_t* fun, void* arg) {
+-  mp_prompt_t* p = mp_prompt_create();
+-  return mp_prompt_enter(p, fun, arg);  // enter the initial stack with fun(arg)
+-}
+-
+-
+-
+-//-----------------------------------------------------------------------
+-// Resume from a yield (once)
+-//-----------------------------------------------------------------------
+-
+-// Forwards for multi-shot resumptions
+-static void* mp_mresume(mp_mresume_t* r, void* arg);
+-static void* mp_mresume_tail(mp_mresume_t* r, void* arg);
+-static void  mp_mresume_drop(mp_mresume_t* r);
+-static mp_mresume_t* mp_mresume_dup(mp_mresume_t* r);
+-
+-
+-// Resume 
+-void* mp_resume(mp_resume_t* resume, void* arg) {
+-  mp_prompt_t* p = mp_resume_is_once(resume);
+-  if (mp_unlikely(p == NULL)) return mp_mresume(mp_resume_is_multi(resume), arg);
+-  mp_assert_internal(p->refcount == 1);
+-  mp_assert_internal(p->resume_point != NULL);
+-  return mp_prompt_resume(p, arg);  // resume back to yield point
+-}
+-
+-// Resume in tail position to a prompt `p`
+-// Uses longjmp back to the `return_jump` as if it is yielding; this
+-// makes the tail-recursion use no stack as they keep getting back (P)
+-// and then into the exec_yield_fun function.
+-static void* mp_prompt_resume_tail(mp_prompt_t* p, void* arg, mp_return_point_t* ret) {
+-  mp_assert_internal(p->refcount == 1);
+-  mp_assert_internal(!mp_prompt_is_active(p));
+-  mp_assert_internal(p->resume_point != NULL);
+-  void* sp;
+-  mp_resume_point_t* res = mp_prompt_link(p,ret,&sp);   // make active using the given return point!
+-  res->result = arg;
+-  mp_checked_longjmp(mp_resume_label, sp, &res->jmp);
+-}
+-
+-
+-// Resume in tail position (last and only resume in scope)
+-void* mp_resume_tail(mp_resume_t* resume, void* arg) {
+-  mp_prompt_t* p = mp_resume_is_once(resume);
+-  if (mp_unlikely(p == NULL)) return mp_mresume_tail(mp_resume_is_multi(resume), arg);
+-  return mp_prompt_resume_tail(p, arg, p->return_point);  // reuse return-point of the original entry
+-}
+-
+-void mp_resume_drop(mp_resume_t* resume) {
+-  mp_prompt_t* p = mp_resume_is_once(resume);
+-  if (mp_unlikely(p == NULL)) return mp_mresume_drop(mp_resume_is_multi(resume));
+-  mp_prompt_drop(p);
+-}
+-
+-mp_resume_t* mp_resume_dup(mp_resume_t* resume) {
+-  mp_mresume_t* r = mp_resume_is_multi(resume);
+-  if (mp_unlikely(r == NULL)) {
+-    mp_error_message(EINVAL, "cannot dup once-resumptions; use 'mp_myield' instead.\n");    
+-    return NULL;
+-  }
+-  else {
+-    mp_mresume_dup(r);
+-    return resume;
+-  }
+-}
+-
+-
+-long mp_resume_resume_count(mp_resume_t* resume) {
+-  mp_mresume_t* r = mp_resume_is_multi(resume);
+-  return (r == NULL ? 0 : r->resume_count);
+-}
+-
+-int mp_resume_should_unwind(mp_resume_t* resume) {
+-  mp_mresume_t* r = mp_resume_is_multi(resume);
+-  return (r != NULL && r->refcount == 1 && r->resume_count == 0);
+-}
+-
+-
+-//-----------------------------------------------------------------------
+-// Yield up to a prompt
+-//-----------------------------------------------------------------------
+-
+-
+-// Yield back to a prompt with a `mp_resume_once_t` resumption and run `fun(arg)` at the yield point
+-void* mp_yield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
+-  mp_assert(mp_prompt_is_ancestor(p));           // can only yield up to an ancestor
+-  mp_assert_internal(mp_prompt_is_active(p));    // can only yield to an active prompt
+-  // set our resume point (Y)
+-  mp_resume_point_t res;
+-  if (mp_setjmp(&res.jmp)) {
+-    //mp_resume_label:
+-    // Y: resuming with a result (from PR)
+-    mp_assert_internal(mp_prompt_is_active(p));  // when resuming, we should be active again
+-    mp_assert_internal(mp_prompt_is_ancestor(p));
+-    mp_debug_asan_end_switch(p->parent==NULL);
+-    return res.result;
+-  }
+-  else {
+-    // security: can only longjmp to a static location
+-    if (mp_unlikely(mp_resume_label == NULL)) {
+-      mp_resume_label = mp_guard(res.jmp.reg_ip);
+-    }
+-    // YR: yielding to prompt, or resumed prompt (P)
+-    void* sp;
+-    mp_return_point_t* ret = mp_prompt_unlink(p, &res, &sp);
+-    ret->fun = fun;
+-    ret->arg = arg;
+-    ret->kind = MP_YIELD;
+-    mp_checked_longjmp(mp_return_label, sp, &ret->jmp);
+-  }
+-}
+-
+-
+-
+-//-----------------------------------------------------------------------
+-// General resume's that are first-class (and need allocation)
+-//-----------------------------------------------------------------------
+-
+-// Create a multi-shot resumption from a single-shot one
+-mp_resume_t* mp_resume_multi(mp_resume_t* once) {
+-  mp_prompt_t* p = mp_resume_is_once(once);
+-  if (p == NULL) return once; // already multi-shot
+-  mp_mresume_t* r = mp_malloc_safe_tp(mp_mresume_t);
+-  r->prompt = p;
+-  r->refcount = 1;
+-  r->resume_count = 0;
+-  r->save = NULL;
+-  r->tail_return_point = p->return_point;
+-  return mp_resume_as_multi(r);
+-}
+-
+-// Increment the reference count of a resumption.
+-static mp_mresume_t* mp_mresume_dup(mp_mresume_t* r) {
+-  r->refcount++;  
+-  return r;
+-}
+-
+-// Decrement the reference count of a resumption.
+-static void mp_mresume_drop(mp_mresume_t* r) {
+-  int64_t i = r->refcount--;
+-  if (i <= 1) {
+-    // free saved stacklets
+-    mp_prompt_save_t* s = r->save;
+-    while (s != NULL) {
+-      mp_prompt_save_t* next = s->next;
+-      mp_prompt_t* p = s->prompt;
+-      mp_gsave_free(s->gsave);
+-      mp_free(s);
+-      mp_prompt_drop(p);
+-      s = next;
+-    }
+-    mp_prompt_drop(r->prompt);
+-    //mp_trace_message("free resume: %p\n", r);
+-    mp_free(r);
+-  }
+-}
+-
+-
+-// Save a full prompt chain started at `p`
+-static mp_prompt_save_t* mp_prompt_save(mp_prompt_t* p) {
+-  mp_assert_internal(!mp_prompt_is_active(p));  
+-  mp_prompt_save_t* savep = NULL;
+-  uint8_t* sp = (uint8_t*)p->resume_point->jmp.reg_sp;
+-  p = p->top;
+-  do {
+-    mp_prompt_save_t* save = mp_malloc_tp(mp_prompt_save_t);
+-    save->prompt = mp_prompt_dup(p);
+-    save->next = savep;
+-    save->gsave = mp_gstack_save(p->gstack,sp);
+-    savep = save;
+-    sp = (uint8_t*)(p->parent == NULL ? NULL : p->return_point->jmp.reg_sp);  // set to parent's sp
+-    p = p->parent;    
+-  } while (p != NULL);
+-  mp_assert_internal(savep != NULL);
+-  return savep;
+-}
+-
+-// Restore all prompt stacks from a save.
+-static void mp_prompt_restore(mp_prompt_t* p, mp_prompt_save_t* save) {
+-  mp_assert_internal(!mp_prompt_is_active(p));
+-  mp_assert_internal(p == save->prompt);
+-  MP_UNUSED(p);
+-  do {
+-    //mp_assert_internal(p == save->prompt);
+-    mp_gsave_restore(save->gsave);  // TODO: restore refcount?
+-    save = save->next;
+-  } while (save != NULL);
+-}
+-
+-
+-// Ensure proper refcount and pristine stack
+-static mp_prompt_t* mp_resume_get_prompt(mp_mresume_t* r) {
+-  mp_prompt_t* p = r->prompt;
+-  if (r->save != NULL) {
+-    mp_prompt_restore(p, r->save);
+-  }
+-  else if (r->refcount > 1 || p->refcount > 1) {
+-    r->save = mp_prompt_save(p);
+-  }
+-  mp_prompt_dup(p);
+-  mp_mresume_drop(r);
+-  return p;
+-}
+-
+-
+-// Resume with a regular resumption (and consumes `r` so dup if it needs to used later on)
+-static void* mp_mresume(mp_mresume_t* r, void* arg) {
+-  r->resume_count++;
+-  mp_prompt_t* p = mp_resume_get_prompt(r);
+-  return mp_prompt_resume(p, arg);  // set a fresh prompt 
+-}
+-
+-// Resume in tail position 
+-// Note: this only works if all earlier resumes were in-scope -- which should hold
+-// or otherwise the tail resumption wasn't in tail position anyways.
+-static void* mp_mresume_tail(mp_mresume_t* r, void* arg) {
+-  mp_return_point_t* ret = r->tail_return_point;
+-  if (ret == NULL) {
+-    return mp_mresume(r, arg);  // resume normally as the return_point may not be preserved correctly
+-  }
+-  else {
+-    r->tail_return_point = NULL;                    // todo: do we need `sp` as well?
+-    r->resume_count++;
+-    mp_prompt_t* p = mp_resume_get_prompt(r);       
+-    return mp_prompt_resume_tail(p, arg, ret);      // resume tail by reusing the original entry return point
+-  }
+-}
+-
+-
+-//-----------------------------------------------------------------------
+-// Backtrace
+-//-----------------------------------------------------------------------
+-
+-#if defined(_WIN32)
+-
+-#include <windows.h>
+-// On windows, CaptureStackBackTrace only captures to the first prompt 
+-// (probably due to stack extent checks stored in the TIB?). 
+-// To return a proper backtrace, we can yield up to each parent prompt and 
+-// recursively capture partial backtraces at each point.
+-typedef struct mp_yield_backtrace_env_s {
+-  void** bt;
+-  int    len;
+-} mp_yield_backtrace_env_t;
+-
+-static int mp_win_backtrace(void** bt, int len, int skip);
+-
+-static void* mp_yield_backtrace(mp_resume_t* resume, void* envarg) {
+-  mp_yield_backtrace_env_t* env = (mp_yield_backtrace_env_t*)envarg;
+-  intptr_t n = mp_win_backtrace(env->bt, env->len, 1 /* don't include yield_backtrace */);
+-  return mp_resume_tail(resume, (void*)n);
+-}
+-
+-static int mp_win_backtrace(void** bt, int len, int skip) {
+-  if (len <= 0) return 0; // done
+-  int n = (int)CaptureStackBackTrace(skip + 1 /* don't include our own frame */, len, bt, NULL);
+-  if (n <= 0 || n >= len) return n;
+-  // check if we have more parent frames in a parent prompt
+-  mp_prompt_t* p = mp_prompt_top();
+-  if (p == NULL) return n;  // no more frames available
+-  // yield recursively up to get more frames
+-  mp_yield_backtrace_env_t env = { bt + n, len - n };
+-  intptr_t m = (intptr_t)mp_yield(p, &mp_yield_backtrace, &env);
+-  mp_assert_internal(m + n <= len);
+-  return (int)(n + m);
+-}
+-
+-int mp_backtrace(void** bt, int len) {
+-  return mp_win_backtrace(bt, len, 1 /* don't include mp_backtrace */ );
+-}
+-
+-#elif defined(__MACH__)
+-
+-// On macOS, standard backtrace fails cross the prompt boundaries (despite proper dwarf info).
+-// We use a similar strategy as on windows recursively yielding up and 
+-// capturing backtraces per prompt using the standard unwind provided on macOS.
+-// Note, we could just unwind directly but that is not always working in release mode.
+-
+-#define UNW_LOCAL_ONLY
+-#include <libunwind.h>
+-
+-typedef struct mp_yield_backtrace_env_s {
+-  void** bt;
+-  int    len;
+-} mp_yield_backtrace_env_t;
+-
+-static int mp_mach_backtrace(void** bt, int len);
+-
+-static void* mp_yield_backtrace(mp_resume_t* resume, void* envarg) {
+-  mp_yield_backtrace_env_t* env = (mp_yield_backtrace_env_t*)envarg;
+-  intptr_t n = mp_mach_backtrace(env->bt, env->len);
+-  return mp_resume_tail(resume, (void*)n);
+-}
+-
+-static int mp_mach_unw_backtrace(void** bt, int len, int skip) {
+-  unw_cursor_t cursor; 
+-  unw_context_t uc;  
+-  unw_getcontext(&uc);
+-  unw_init_local(&cursor, &uc);
+-  int count = 0;
+-  while (count < len && unw_step(&cursor) > 0) {
+-    unw_word_t ip;
+-    unw_get_reg(&cursor, UNW_REG_IP, &ip);
+-    if (skip > 0) {
+-      skip--;
+-    }
+-    else {     
+-      bt[count++] = (void*)ip;
+-    }
+-    unw_proc_info_t pinfo;
+-    unw_get_proc_info(&cursor, &pinfo);
+-    if ((void*)pinfo.start_ip == &mp_stack_enter) break;
+-  }
+-  return count;
+-}
+-
+-static int mp_mach_backtrace(void** bt, int len) {
+-  if (len <= 0) return 0; // done
+-  int n = mp_mach_unw_backtrace(bt,len, 2);
+-  if (n <= 0 || n >= len) return n;
+-  // check if we have more parent frames in a parent prompt
+-  mp_prompt_t* p = mp_prompt_top();
+-  if (p == NULL) return n;  // no more frames available
+-  // yield recursively up to get more frames
+-  mp_yield_backtrace_env_t env = { bt + n, len - n };
+-  intptr_t m = (intptr_t)mp_yield(p, &mp_yield_backtrace, &env);
+-  mp_assert_internal(m + n <= len);
+-  return (int)(n + m);
+-}
+-
+-int mp_backtrace(void** bt, int len) {
+-  return mp_mach_backtrace(bt, len);
+-}
+-
+-
+-#else
+-
+-// Linux, etc. 
+-// Unwinding works as is (due to reliable dwarf unwind info and no stack limits in the thread local data)
+-#include <execinfo.h>
+-int mp_backtrace(void** bt, int len) {
+-  return backtrace(bt, len);
+-}
+-
+-#endif
+-
+-/*
+-void mp_gstack_win_test(mp_gstack_t* g);
+-void* win_test(mp_prompt_t* p, void* arg) {
+-  mp_gstack_win_test(p->gstack);
+-  return NULL;
+-}
+-*/
+\ No newline at end of file
+diff --git a/test/common_effects.c b/test/common_effects.c
+deleted file mode 100644
+index e6879c6..0000000
+--- a/test/common_effects.c
++++ /dev/null
+@@ -1,210 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-#include "test.h"
+-#include <assert.h>
+-
+-/*-----------------------------------------------------------------
+-  Standard effect implementations
+------------------------------------------------------------------*/
+-
+-/*-----------------------------------------------------------------
+-  Reader
+------------------------------------------------------------------*/
+-MPE_DEFINE_EFFECT1(reader, ask)
+-MPE_DEFINE_OP0(reader, ask, long)
+-
+-// Tail optimized reader 
+-static void* handle_reader_ask(mpe_resume_t* r, void* local, void* arg) {
+-  UNUSED(arg);
+-  return mpe_resume_tail(r, local, local);
+-}
+- 
+-void* reader_handle(mpe_actionfun_t action, long init, void* arg) {
+-  static const mpe_handlerdef_t reader_hdef = { MPE_EFFECT(reader), NULL, {
+-    { MPE_OP_TAIL_NOOP, MPE_OPTAG(reader,ask), &handle_reader_ask },
+-    { MPE_OP_NULL, mpe_op_null, NULL }
+-  } };
+-  return mpe_handle(&reader_hdef, mpe_voidp_long(init), action, arg);
+-}
+-
+-// General reader that uses full resumptions
+-static void* handle_greader_ask(mpe_resume_t* r, void* local, void* arg) {
+-  UNUSED(arg);
+-  return mpe_resume_tail(r, local, mpe_voidp_long(42));
+-}
+- 
+-void* greader_handle(mpe_actionfun_t action, long init, void* arg) {
+-  static const mpe_handlerdef_t greader_hdef = { MPE_EFFECT(reader), NULL, {
+-    { MPE_OP_SCOPED_ONCE, MPE_OPTAG(reader,ask), &handle_greader_ask },
+-    { MPE_OP_NULL, mpe_op_null, NULL }
+-  } };
+-  return mpe_handle(&greader_hdef, mpe_voidp_long(init), action, arg);
+-}
+-
+-
+-/*-----------------------------------------------------------------
+-  Exception
+------------------------------------------------------------------*/
+-MPE_DEFINE_EFFECT1(exn, raise)
+-MPE_DEFINE_VOIDOP1(exn, raise, mpe_string_t)
+-
+-static void* handle_exn_raise(mpe_resume_t* r, void* local, void* arg) {
+-  UNUSED(local); UNUSED(r);
+-  fprintf(stderr, "exn raised: %s\n", (const char*)arg);
+-  return NULL;
+-}
+-
+-void* exn_handle(mpe_actionfun_t action, void* arg) {
+-  static const mpe_handlerdef_t exn_hdef = { MPE_EFFECT(exn), NULL, {
+-    { MPE_OP_NEVER, MPE_OPTAG(exn,raise), &handle_exn_raise },
+-    { MPE_OP_NULL, mpe_op_null, NULL }
+-  } };
+-  return mpe_handle(&exn_hdef, NULL, action, arg);
+-}
+-
+-
+-/*-----------------------------------------------------------------
+-  State
+------------------------------------------------------------------*/
+-MPE_DEFINE_EFFECT2(state, get, set)
+-MPE_DEFINE_OP0(state, get, long)
+-MPE_DEFINE_VOIDOP1(state, set, long)
+-
+-static void* handle_state_get(mpe_resume_t* r, void* local, void* arg) {
+-  UNUSED(arg);
+-  return mpe_resume_tail(r, local, local);
+-}
+-
+-static void* handle_state_set(mpe_resume_t* r, void* local, void* arg) {
+-  UNUSED(local);
+-  return mpe_resume_tail(r, arg, NULL);
+-}
+-
+-static const mpe_handlerdef_t state_hdef = { MPE_EFFECT(state), NULL, {
+-  { MPE_OP_TAIL_NOOP, MPE_OPTAG(state,get), &handle_state_get },
+-  { MPE_OP_TAIL_NOOP, MPE_OPTAG(state,set), &handle_state_set },
+-  { MPE_OP_NULL, mpe_op_null, NULL }
+-}};
+-
+-void* state_handle(mpe_actionfun_t action, long init, void* arg) {
+-  return mpe_handle(&state_hdef, mpe_voidp_long(init), action, arg);
+-}
+-
+-
+-// Variants
+-
+-static const mpe_handlerdef_t ustate_hdef = { MPE_EFFECT(state), NULL, {
+-  { MPE_OP_TAIL, MPE_OPTAG(state,get), &handle_state_get },
+-  { MPE_OP_TAIL, MPE_OPTAG(state,set), &handle_state_set },
+-  { MPE_OP_NULL, mpe_op_null, NULL }
+-} };
+-
+-void* ustate_handle(mpe_actionfun_t action, long init, void* arg) {
+-  return mpe_handle(&ustate_hdef, mpe_voidp_long(init), action, arg);
+-}
+-
+-static const mpe_handlerdef_t ostate_hdef = { MPE_EFFECT(state), NULL, {
+-  { MPE_OP_SCOPED_ONCE, MPE_OPTAG(state,get), &handle_state_get },
+-  { MPE_OP_SCOPED_ONCE, MPE_OPTAG(state,set), &handle_state_set },
+-  { MPE_OP_NULL, mpe_op_null, NULL }
+-} };
+-
+-void* ostate_handle(mpe_actionfun_t action, long init, void* arg) {
+-  return mpe_handle(&ostate_hdef, mpe_voidp_long(init), action, arg);
+-}
+-
+-static const mpe_handlerdef_t gstate_hdef = { MPE_EFFECT(state), NULL, {
+-  { MPE_OP_MULTI, MPE_OPTAG(state,get), &handle_state_get },
+-  { MPE_OP_MULTI, MPE_OPTAG(state,set), &handle_state_set },
+-  { MPE_OP_NULL, mpe_op_null, NULL }
+-} };
+-
+-void* gstate_handle(mpe_actionfun_t action, long init, void* arg) {
+-  return mpe_handle(&gstate_hdef, mpe_voidp_long(init), action, arg);
+-}
+-
+-
+-/*-----------------------------------------------------------------
+-   ambiguity handler
+------------------------------------------------------------------*/
+-
+-MPE_DEFINE_EFFECT1(amb, flip)
+-MPE_DEFINE_OP0(amb, flip, bool)
+-
+-// return(x){ [x] }
+-static void* handle_amb_result(void* local, void* arg) {
+-  UNUSED(local);  
+-  return mpe_voidp_blist( blist_single(arg) );
+-}
+-
+-// control amb(){ resume(False) ++ resume(True) }
+-static void* handle_amb_flip(mpe_resume_t* rc, void* local, void* arg) {
+-  UNUSED(rc);
+-  UNUSED(local);
+-  UNUSED(arg);
+-  blist xs = mpe_blist_voidp( mpe_resume(rc,local,mpe_voidp_bool(false)));
+-  blist ys = mpe_blist_voidp( mpe_resume_final(rc,local,mpe_voidp_bool(true)));
+-  return mpe_voidp_blist(blist_appendto(xs,ys));
+-}
+-  
+-
+-static const mpe_handlerdef_t amb_def = { MPE_EFFECT(amb), &handle_amb_result, {
+-  { MPE_OP_SCOPED, MPE_OPTAG(amb,flip), &handle_amb_flip },
+-  { MPE_OP_NULL, mpe_op_null, NULL }
+-}};
+-
+-blist amb_handle(mpe_actionfun_t* action, void* arg) {
+-  return mpe_blist_voidp( mpe_handle(&amb_def, NULL, action, arg) );
+-}
+-
+-/*-----------------------------------------------------------------
+-  choice handler
+------------------------------------------------------------------*/
+-
+-MPE_DEFINE_EFFECT2(choice, choose, fail)
+-MPE_DEFINE_OP1(choice, choose, long, long)
+-MPE_DEFINE_VOIDOP0(choice, fail)
+-
+-
+-static void* handle_choice_result(void* local, void* arg) {
+-  UNUSED(local);  
+-  return mpe_voidp_blist( blist_single(arg) );
+-}
+-
+-static void* handle_choice_fail(mpe_resume_t* rc, void* local, void* arg) {
+-  UNUSED(rc);
+-  UNUSED(local);
+-  UNUSED(arg);
+-  //assert(rc == NULL);
+-  mpe_resume_release(rc);
+-  return mpe_voidp_blist( NULL );
+-}
+-
+-static void* handle_choice_choose(mpe_resume_t* rc, void* local, void* arg) {
+-  UNUSED(rc);
+-  UNUSED(local);
+-  long max = mpe_long_voidp(arg);
+-  blist xss = blist_nil;
+-  for( long i = 1; i <= max; i++) {
+-    blist yss = mpe_blist_voidp( (i<max ? mpe_resume(rc,local,mpe_voidp_long(i))
+-                                        : mpe_resume_final(rc, local, mpe_voidp_long(i))) );
+-    xss = blist_appendto(yss,xss); // hmm, reversed order
+-  }
+-  return mpe_voidp_blist(xss);
+-}
+-  
+-
+-static const mpe_handlerdef_t choice_def = { MPE_EFFECT(choice), &handle_choice_result, {
+-  { MPE_OP_SCOPED, MPE_OPTAG(choice,choose), &handle_choice_choose },
+-  { MPE_OP_ABORT,  MPE_OPTAG(choice,fail), &handle_choice_fail },
+-  //{ MPE_OP_NEVER,  MPE_OPTAG(choice,fail), &handle_choice_fail },  // very slow in C++: nqueens(12) is about 15s vs. 0.6s with abort.
+-  { MPE_OP_NULL, mpe_op_null, NULL }
+-}};
+-
+-blist choice_handle(mpe_actionfun_t* action, void* arg) {
+-  return mpe_blist_voidp( mpe_handle(&choice_def, mpe_voidp_null, action, arg) );
+-}
+diff --git a/test/common_util.c b/test/common_util.c
+deleted file mode 100644
+index 0a953ae..0000000
+--- a/test/common_util.c
++++ /dev/null
+@@ -1,214 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it 
+-  under the terms of the MIT License. A copy of the License can be 
+-  found in the file "license.txt" at the root of this distribution.
+------------------------------------------------------------------------------*/
+-#include "test.h"
+-
+-#define MP_USEC_PER_SEC  1000000
+-
+-void mpt_assert_at(bool condition, const char* msg, const char* fname, int line) {
+-  if (condition) return;
+-  fprintf(stderr,"\n-----------------------------------\nTEST FAILED: %s:%d: %s\n-----------------------------------\n\n", 
+-                 fname, line, msg );
+-  exit(1);                 
+-}
+-
+-void mpt_timer_print(mpt_timer_t start) {
+-  mpt_usecs_t t = mpt_timer_end(start);
+-  fprintf(stderr,"%2ld.%03lds: ", (long)(t / 1000000), (long)((t % 1000000) / 1000));
+-}
+-
+-// ----------------------------------------------------------------
+-// Basic timer for convenience; use micro-seconds to avoid doubles
+-// (2^63-1) us ~= 292471 years
+-// ----------------------------------------------------------------
+-#ifdef _WIN32
+-#include <windows.h>
+-static mpt_usecs_t mpt_to_usecs(LARGE_INTEGER t) {
+-  static LARGE_INTEGER mfreq; // = 0
+-  if (mfreq.QuadPart == 0) {
+-    QueryPerformanceFrequency(&mfreq);
+-    //mfreq.QuadPart = f.QuadPart/I64(1000000);
+-    if (mfreq.QuadPart == 0) mfreq.QuadPart = 1000;
+-  }
+-  // calculate in parts to avoid overflow
+-  int64_t secs = t.QuadPart / mfreq.QuadPart;
+-  int64_t frac = t.QuadPart % mfreq.QuadPart;
+-  mpt_usecs_t u = secs*MP_USEC_PER_SEC + ((frac*MP_USEC_PER_SEC)/mfreq.QuadPart);
+-  return u;
+-}
+-
+-static mpt_usecs_t mpt_timer_now(void) {
+-  LARGE_INTEGER t;
+-  QueryPerformanceCounter(&t);
+-  return mpt_to_usecs(t);
+-}
+-#else
+-#include <time.h>
+-#ifdef CLOCK_REALTIME
+-static mpt_usecs_t mpt_timer_now(void) {
+-  struct timespec t;
+-  clock_gettime(CLOCK_REALTIME, &t);
+-  return ((mpt_usecs_t)t.tv_sec * MP_USEC_PER_SEC) + ((mpt_usecs_t)t.tv_nsec/1000);
+-}
+-#else
+-// low resolution timer
+-static mpt_usecs_t mpt_timer_now(void) {
+-  int64_t t = (int64_t)clock();
+-  // calculate in parts to avoid overflow
+-  int64_t secs = t / (int64_t)CLOCKS_PER_SEC;
+-  int64_t frac = t % (int64_t)CLOCKS_PER_SEC;
+-  return (secs*MP_USEC_PER_SEC + ((frac*MP_USEC_PER_SEC)/CLOCKS_PER_SEC);
+-}
+-#endif
+-#endif
+-
+-static mpt_usecs_t mpt_timer_diff;
+-
+-mpt_timer_t mpt_timer_start(void) {
+-  if (mpt_timer_diff == 0) {
+-    mpt_timer_t t0 = mpt_timer_now();
+-    mpt_timer_diff = mpt_timer_now() - t0;
+-    if (mpt_timer_diff==0) mpt_timer_diff = 1;
+-  }
+-  return mpt_timer_now();
+-}
+-
+-mpt_usecs_t mpt_timer_end(mpt_timer_t start) {
+-  mpt_usecs_t end = mpt_timer_now();
+-  return (end - start - mpt_timer_diff);
+-}
+-
+-
+-// --------------------------------------------------------
+-// Basic process statistics
+-// --------------------------------------------------------
+-
+-#if defined(_WIN32)
+-#include <windows.h>
+-#include <psapi.h>
+-#pragma comment(lib,"psapi.lib")
+-
+-static mpt_msecs_t mpt_filetime_msecs(const FILETIME* ftime) {
+-  ULARGE_INTEGER i;
+-  i.LowPart = ftime->dwLowDateTime;
+-  i.HighPart = ftime->dwHighDateTime;
+-  mpt_msecs_t msecs = (i.QuadPart / 10000); // FILETIME is in 100 nano seconds
+-  return msecs;
+-}
+-
+-void mpt_process_info(mpt_msecs_t* utime, mpt_msecs_t* stime, size_t* peak_rss, size_t* page_faults, size_t* page_reclaim, size_t* peak_commit) {
+-  FILETIME ct;
+-  FILETIME ut;
+-  FILETIME st;
+-  FILETIME et;
+-  GetProcessTimes(GetCurrentProcess(), &ct, &et, &st, &ut);
+-  *utime = mpt_filetime_msecs(&ut);
+-  *stime = mpt_filetime_msecs(&st);
+-
+-  PROCESS_MEMORY_COUNTERS info;
+-  GetProcessMemoryInfo(GetCurrentProcess(), &info, sizeof(info));
+-  *peak_rss = (size_t)info.PeakWorkingSetSize;
+-  *page_faults = (size_t)info.PageFaultCount;
+-  *peak_commit = (size_t)info.PeakPagefileUsage;
+-  *page_reclaim = 0;
+-}
+-
+-#elif defined(__unix__) || defined(__unix) || defined(unix) || (defined(__APPLE__) && defined(__MACH__)) || defined(__HAIKU__)
+-#include <stdio.h>
+-#include <unistd.h>
+-#include <sys/resource.h>
+-
+-#if defined(__APPLE__) && defined(__MACH__)
+-#include <mach/mach.h>
+-#endif
+-
+-#if defined(__HAIKU__)
+-#include <kernel/OS.h>
+-#endif
+-
+-static mpt_msecs_t timeval_secs(const struct timeval* tv) {
+-  return ((mpt_msecs_t)tv->tv_sec * 1000L) + ((mpt_msecs_t)tv->tv_usec / 1000L);
+-}
+-
+-void mpt_process_info(mpt_msecs_t* utime, mpt_msecs_t* stime, size_t* peak_rss, size_t* page_faults, size_t* page_reclaim, size_t* peak_commit) {
+-  struct rusage rusage;
+-  getrusage(RUSAGE_SELF, &rusage);
+-#if !defined(__HAIKU__)
+-#if defined(__APPLE__) && defined(__MACH__)
+-  *peak_rss = rusage.ru_maxrss;  // apple reports in bytes
+-#else
+-  *peak_rss = rusage.ru_maxrss * 1024;
+-#endif
+-  *page_faults = rusage.ru_majflt;
+-  *page_reclaim = rusage.ru_minflt;
+-  *peak_commit = 0;
+-#else
+-  // Haiku does not have (yet?) a way to
+-  // get these stats per process
+-  thread_info tid;
+-  area_info mem;
+-  ssize_t c;
+-  *peak_rss = 0;
+-  *page_faults = 0;
+-  *page_reclaim = 0;
+-  *peak_commit = 0;
+-  get_thread_info(find_thread(0), &tid);
+-  while (get_next_area_info(tid.team, &c, &mem) == B_OK) {
+-      *peak_rss += mem.ram_size;
+-  }
+-#endif
+-  *utime = timeval_secs(&rusage.ru_utime);
+-  *stime = timeval_secs(&rusage.ru_stime);
+-}
+-
+-#else
+-#ifndef __wasi__
+-// WebAssembly instances are not processes
+-#pragma message("define a way to get process info")
+-#endif
+-
+-void mpt_process_info(mpt_msecs_t* utime, mpt_msecs_t* stime, size_t* peak_rss, size_t* page_faults, size_t* page_reclaim, size_t* peak_commit) {
+-  *peak_rss = 0;
+-  *page_faults = 0;
+-  *page_reclaim = 0;
+-  *peak_commit = 0;
+-  *utime = 0;
+-  *stime = 0;
+-}
+-#endif
+-
+-mpt_timer_t mpt_show_process_info_start(size_t* process_start_rss) {
+-  if (process_start_rss != NULL) {
+-    mpt_msecs_t user_time;
+-    mpt_msecs_t sys_time;
+-    size_t peak_rss;
+-    size_t page_faults;
+-    size_t page_reclaim;
+-    size_t peak_commit;
+-    mpt_process_info(&user_time, &sys_time, &peak_rss, &page_faults, &page_reclaim, &peak_commit);
+-    *process_start_rss = peak_rss;
+-  }
+-  return mpt_timer_start();
+-}
+-
+-void mpt_show_process_info(FILE* f, mpt_timer_t process_start, size_t process_start_rss) {
+-  mpt_usecs_t wall_time = mpt_timer_end(process_start);
+-  mpt_msecs_t user_time;
+-  mpt_msecs_t sys_time;
+-  size_t peak_rss;
+-  size_t page_faults;
+-  size_t page_reclaim;
+-  size_t peak_commit;
+-  mpt_process_info(&user_time, &sys_time, &peak_rss, &page_faults, &page_reclaim, &peak_commit);
+-  size_t main_rss = peak_rss - process_start_rss;
+-  fprintf(f, "elapsed: %ld.%03lds, user: %ld.%03lds, sys: %ld.%03lds, rss: %zu%s, main rss: %zu%s\n", 
+-                  (long)(wall_time/1000000), (long)((wall_time%1000000)/1000), 
+-                  (long)(user_time/1000), (long)(user_time%1000), (long)(sys_time/1000), (long)(sys_time%1000), 
+-                  (peak_rss > 10*1024*1024 ? peak_rss/(1024*1024) : (peak_rss+1023)/1024),
+-                  (peak_rss > 10*1024*1024 ? "mb" : "kb"),
+-                  (main_rss > 10*1024*1024 ? main_rss/(1024*1024) : (main_rss+1023)/1024),
+-                  (main_rss > 10*1024*1024 ? "mb" : "kb") );
+-}
+\ No newline at end of file
+diff --git a/test/src/amb.c b/test/src/amb.c
+deleted file mode 100644
+index 4d7fa20..0000000
+--- a/test/src/amb.c
++++ /dev/null
+@@ -1,44 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-
+-/* ----------------------------------------------------------------------------
+-   Ambiguity
+------------------------------------------------------------------------------*/
+-
+-#include "test.h"
+-
+-/*-----------------------------------------------------------------
+-  Benchmark
+------------------------------------------------------------------*/
+-
+-static void* bench_xor(void* arg) {
+-  UNUSED(arg);
+-  bool x = amb_flip();
+-  bool y = amb_flip();
+-  return mpe_voidp_bool((x && !y) || (!x && y));
+-}
+-
+-/*-----------------------------------------------------------------
+-  Bench
+------------------------------------------------------------------*/
+-static void print_bool(void* arg) {
+-  mpt_printf("%s", mpe_bool_voidp(arg) ? "true" : "false");
+-}
+-
+-static void test() {
+-  blist xs = NULL;
+-  mpt_bench{ xs = mpe_blist_voidp(amb_handle(&bench_xor, NULL)); }
+-  mpt_printf("amb:      : "); blist_println(xs, &print_bool); 
+-  mpt_assert(blist_length(xs)==4, "ambxor");
+-  blist_free(xs);  
+-}
+-
+-
+-void amb_run(void) {
+-  test();
+-}
+-
+diff --git a/test/src/amb_state.c b/test/src/amb_state.c
+deleted file mode 100644
+index aded188..0000000
+--- a/test/src/amb_state.c
++++ /dev/null
+@@ -1,76 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-
+-/* ----------------------------------------------------------------------------
+-   Ambiguity with state
+------------------------------------------------------------------------------*/
+-
+-#include "test.h"
+-
+-/*-----------------------------------------------------------------
+-  Benchmark
+------------------------------------------------------------------*/
+-
+-static bool xxor(void) {
+-  bool x = amb_flip();
+-  bool y = amb_flip();
+-  return ((x && !y) || (!x && y));
+-}
+-
+-
+-static void* foo(void* arg) {
+-  UNUSED(arg);
+-  bool p = amb_flip();
+-  long i = state_get();
+-  state_set(i + 1);
+-  bool b = ((i > 0 && p) ? xxor() : false);
+-  return mpe_voidp_bool(b);
+-}
+-
+-
+-/*-----------------------------------------------------------------
+-  Test
+------------------------------------------------------------------*/
+-
+-static void print_bool(void* arg) {
+-  mpt_printf("%s", mpe_bool_voidp(arg) ? "true" : "false" );
+-}
+-
+-static void* hstate( void* arg ) {
+-  return state_handle( &foo, 0, arg );
+-}
+-
+-static blist amb_state(void) {
+-  return amb_handle( &hstate, NULL );
+-}
+-
+-static void* hamb(void* arg) {
+-  return amb_handle(&foo, arg);
+-}
+-
+-static blist state_amb(void) {
+-  return mpe_blist_voidp(state_handle(&hamb, 0, NULL));
+-}
+-
+-static void test() {
+-  blist xs = NULL;
+-  mpt_bench{ xs = amb_state(); }
+-  mpt_printf("amb-state : "); blist_println(xs, &print_bool); 
+-  mpt_assert(blist_length(xs)==2, "amb-state");
+-  blist_free(xs);
+-
+-  mpt_bench{ xs = state_amb(); }
+-  mpt_printf("state-amb : "); blist_println(xs, &print_bool);
+-  mpt_assert(blist_length(xs) == 5, "state-amb");
+-  blist_free(xs);
+-}
+-
+-
+-void amb_state_run(void) {
+-  test();
+-}
+-
+diff --git a/test/src/async.c b/test/src/async.c
+deleted file mode 100644
+index d2bba71..0000000
+--- a/test/src/async.c
++++ /dev/null
+@@ -1,116 +0,0 @@
+-#include "test.h"
+-
+-// Simulate async scheduler with an effect
+-// that can either "fork" new strands of control,
+-// or where a strand can "sleep" for a while (ie. a blocking operation)
+-
+-// Types
+-typedef void (*mpt_void_fun_t)(void);
+-#define mpe_voidp_mpt_void_fun_t(v)   ((void*)(v))
+-
+-// A list of actions to schedule
+-enum mpt_action_kind_t {
+-  MPT_RESUME
+-  MPT_FORK
+-};
+-
+-typedef struct mpt_action_s {
+-  long            time;    // wait until this time; 0 is uninitialized
+-  mpe_resume_t*   resume;
+-  mpt_void_fun_t  start;
+-} mpt_action_t;
+-
+-#define MAX_ACTIONS 100
+-
+-static long now = 0        // simulate time ticks
+-
+-
+-// Effect that returns its resumption
+-MPE_DEFINE_EFFECT2(async, fork, sleep)
+-MPE_DEFINE_VOIDOP1(fork, mpt_void_fun_t)
+-MPE_DEFINE_VOIDOP0(sleep)
+-
+-static void* op_async_sleep(mpe_resume_t* r, void* local, void* arg) {
+-  // insert in scheduling queue
+-  mpt_action_t* queue = (mpt_action_t*)local;
+-  mpt_void_fun_t action = (mpt_void_fun_t)(arg);
+-  for(int i = 0; i < MAX_ACTIONS; i++) {
+-    if (queue[i].time == 0) {
+-      queue[i].time = now;
+-      queue[i].resume = NULL;
+-      queue[i].start = action;
+-      break;
+-    }
+-  }
+-  return mpe_resume_tail(r,NULL); // and resume normally 
+-}
+-
+-static void* op_async_sleep(mpe_resume_t* r, void* local, void* arg) {
+-  // insert in scheduling queue
+-  mpt_action_t* queue = (mpt_action_t*)local;
+-  long upto = now + mpe_long_voidp(arg);
+-  for(int i = 0; i < MAX_ACTIONS; i++) {
+-    if (queue[i].time == 0) {
+-      queue[i].time = upto;
+-      queue[i].resume = r;
+-      queue[i].start = NULL;
+-      break;
+-    }
+-  }
+-  // and find the next action to schedule instead
+-  while (true) {
+-    now++;
+-    for(int i = 0; i < MAX_ACTIONS; i++) {
+-      if (queue[i].time != 0 && queue[i].time <= now) {
+-        // schedule it
+-        queue[i].time = 0;
+-        if (queue[i].resume != NULL) {
+-          return mpe_resume_tail(queue[i].resume, NULL); // resume sleeping strand
+-        }
+-      }
+-    }
+-  }
+-  // unreachable
+-  return NULL; 
+-}
+- 
+-static void* exit_handle(mpe_actionfun_t action, void* arg) {
+-  static const mpe_handlerdef_t exit_hdef = { MPE_EFFECT(exit), NULL, NULL, NULL, {
+-    { MPE_OP_ONCE, MPE_OPTAG(exit,capture), &op_exit_capture },
+-    { MPE_OP_NULL, mpe_op_null, NULL }
+-  } };
+-  return mpe_handle(&exit_hdef, NULL, action, arg);
+-}
+-
+-
+-// Ask twice with an exit_capture in between
+-static void* body(void* arg) {
+-  UNUSED(arg); 
+-  long x = reader_ask();   // return 1
+-  exit_capture();          // exit and resume under a new reader
+-  long y = reader_ask();   // now it returns 2
+-  return mpe_voidp_long(x + y);
+-}
+-
+-static void* with_exit_handle(void* arg) {
+-  return exit_handle(&body, arg);
+-}
+-
+-static void* with_resume(void* arg) {
+-  mpe_resume_t* r = (mpe_resume_t*)arg;
+-  return mpe_resume_final(r, NULL, NULL);
+-}
+-
+-static void test(void) {
+-  long res;
+-  mpt_bench{
+-    void* r = reader_handle(&with_exit_handle, 1, NULL);        // reader returns 1  -- final return is a resumption from with_exit_handle
+-    res = mpe_long_voidp(reader_handle(&with_resume, 2, r));    // new reader returns 2 -- this resumes the resumption under a new reader
+-  }
+-  printf("rehandle  : %ld\n", res);
+-  mpt_assert(res == 3, "test-rehandle");
+-}
+-
+-void rehandle_run(void) {
+-  test();
+-}
+\ No newline at end of file
+diff --git a/test/src/counter.c b/test/src/counter.c
+deleted file mode 100644
+index d5e78e8..0000000
+--- a/test/src/counter.c
++++ /dev/null
+@@ -1,58 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-
+-#include "test.h"
+-
+-
+-/*-----------------------------------------------------------------
+-  Benchmark
+------------------------------------------------------------------*/
+-
+-static void* bench_counter(void* arg) {
+-  UNUSED(arg);
+-  long count = 0;
+-  long i;
+-  while ((i = state_get()) > 0) {
+-    //trace_printf("counter: %i\n", i);
+-    state_set(i-1);
+-    count++;
+-  }
+-  return mpe_voidp_long(count);
+-}
+-
+-
+-/*-----------------------------------------------------------------
+-  Run
+------------------------------------------------------------------*/
+-static void test(long count) {
+-  long res = 0;
+-  mpt_bench{ res = mpe_long_voidp(state_handle(&bench_counter,count,NULL)); }
+-  mpt_printf("counter   : %ld\n", res);
+-  mpt_assert(res == count, "counter");
+-
+-  mpt_bench{ res = mpe_long_voidp(ustate_handle(&bench_counter, count, NULL)); }
+-  mpt_printf("ucounter  : %ld\n", res);
+-  mpt_assert(res == count, "ucounter");
+-  
+-  mpt_bench{ res = mpe_long_voidp(ostate_handle(&bench_counter, count, NULL)); }
+-  mpt_printf("ocounter  : %ld\n", res);
+-  mpt_assert(res == count, "ocounter");
+-
+-  mpt_bench{ res = mpe_long_voidp(gstate_handle(&bench_counter, count/10, NULL)); }  
+-  mpt_printf("gcounter  : %ld\n", res);
+-  mpt_assert(res == count/10, "gcounter");
+-}
+-
+-
+-void counter_run(void) {
+-#ifdef NDEBUG
+-  test(10010010L);
+-#else
+-  test(100100L);
+-#endif
+-}
+-
+diff --git a/test/src/countern.c b/test/src/countern.c
+deleted file mode 100644
+index 73b5513..0000000
+--- a/test/src/countern.c
++++ /dev/null
+@@ -1,90 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-
+-/* ----------------------------------------------------------------------------
+-   Counter10: state under 10 readers
+------------------------------------------------------------------------------*/
+-#include "test.h"
+-
+-/*-----------------------------------------------------------------
+-  Benchmark
+------------------------------------------------------------------*/
+-
+-static void* bench_counter(void* arg) {
+-  UNUSED(arg);
+-  long count = 0;
+-  long i;
+-  while ((i = state_get()) > 0) {
+-    //trace_printf("counter: %i\n", i);
+-    state_set(i-1);
+-    count++;
+-  }
+-  return mpe_voidp_long(count);
+-}
+-
+-
+-/*-----------------------------------------------------------------
+-  Run
+------------------------------------------------------------------*/
+-static void* bench_reader1(void* arg) {
+-  return reader_handle(&bench_counter, 1, arg);
+-}
+-static void* bench_reader2(void* arg) {
+-  return reader_handle(&bench_reader1, 2, arg);
+-}
+-static void* bench_reader3(void* arg) {
+-  return reader_handle(&bench_reader2, 3, arg);
+-}
+-static void* bench_reader4(void* arg) {
+-  return reader_handle(&bench_reader3, 4, arg);
+-}
+-static void* bench_reader5(void* arg) {
+-  return reader_handle(&bench_reader4,5,arg);
+-}
+-static void* bench_reader6(void* arg) {
+-  return reader_handle(&bench_reader5, 6, arg);
+-}
+-static void* bench_reader7(void* arg) {
+-  return reader_handle(&bench_reader6, 7, arg);
+-}
+-static void* bench_reader8(void* arg) {
+-  return reader_handle(&bench_reader7, 8, arg);
+-}
+-static void* bench_reader9(void* arg) {
+-  return reader_handle(&bench_reader8, 9, arg);
+-}
+-static void* bench_reader10(void* arg) {
+-  return reader_handle(&bench_reader9, 10, arg);
+-}
+-
+-static void test(long count) {
+-  long res = 0;
+-  /*mpt_bench{ res = mpe_long_voidp(state_handle(&bench_reader1,count,NULL)); }
+-  mpt_printf("counter1  : %ld\n", res);
+-  mpt_assert(res == count, "counter1");*/
+-
+-  mpt_bench{ res = mpe_long_voidp(ostate_handle(&bench_reader1,count,NULL)); }
+-  mpt_printf("ocounter1 : %ld\n", res);
+-  mpt_assert(res == count, "ocounter1");
+-
+-  mpt_bench{ res = mpe_long_voidp(state_handle(&bench_reader10,count,NULL)); }  
+-  mpt_printf("counter10 : %ld\n", res);
+-  mpt_assert(res == count, "counter10");
+-  
+-  mpt_bench{ res = mpe_long_voidp(ostate_handle(&bench_reader10,count,NULL)); }
+-  mpt_printf("ocounter10: %ld\n", res);
+-  mpt_assert(res == count, "ocounter10");
+-}
+-
+-void countern_run(void) {
+-  #ifdef NDEBUG
+-  test(10010010L);
+-  #else
+-  test(100100L);
+-  #endif
+-}
+-
+diff --git a/test/src/exn.cpp b/test/src/exn.cpp
+deleted file mode 100644
+index b4f0c7d..0000000
+--- a/test/src/exn.cpp
++++ /dev/null
+@@ -1,52 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-#include <mprompt.h>
+-#include "test.h"
+-
+-#ifdef __cplusplus
+-#include <stdexcept>
+-#endif
+-
+-
+-
+-/*-----------------------------------------------------------------
+-  Benchmark
+------------------------------------------------------------------*/
+-static bool d1_destructed;
+-static bool d2_destructed;
+-
+-static void* bench_exn(void* arg) {
+-  test_raii_t d1("d1", &d1_destructed);
+-  UNUSED(arg);
+-  long i = state_get() + state_get();
+-  if (i > 42) {
+-    exn_raise("i > 42");
+-  }
+-  return mpe_voidp_long(i);
+-}
+-
+-
+-/*-----------------------------------------------------------------
+-  Run
+------------------------------------------------------------------*/
+-static void* bench_state(void* arg) {
+-  test_raii_t d2("d2", &d2_destructed);
+-  return state_handle(&bench_exn, 42, arg);
+-}
+-
+-static void test(void) {
+-  long res = 0; 
+-  mpt_bench{ res = mpe_long_voidp(exn_handle(&bench_state,NULL)); }
+-  mpt_printf("test-exn  : %ld\n", res);
+-  mpt_assert(res == 0 && d1_destructed && d2_destructed, "test-exn");  
+-}
+-
+-
+-void exn_run(void) {
+-  test();
+-}
+-
+diff --git a/test/src/mstate.c b/test/src/mstate.c
+deleted file mode 100644
+index 157ddcd..0000000
+--- a/test/src/mstate.c
++++ /dev/null
+@@ -1,146 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-
+-/* ----------------------------------------------------------------------------
+-   Monadic state
+------------------------------------------------------------------------------*/
+-#include "test.h"
+-
+-/*-----------------------------------------------------------------
+-  Benchmark
+------------------------------------------------------------------*/
+-
+-static void* bench_counter(void* arg) {
+-  UNUSED(arg);
+-  long count = 0;
+-  long i;
+-  while ((i = state_get()) > 0) {    
+-    state_set(i-1);
+-    count++;
+-  }
+-  return mpe_voidp_long(count);
+-}
+-
+-/*-----------------------------------------------------------------
+-  functions from long -> long
+------------------------------------------------------------------*/
+-
+-typedef struct function_s {
+-  void* env;
+-  long (*fun)(void*,long);
+-} function_t;
+-
+-static long function_apply( function_t f, long arg ) {
+-  return (f.fun)(f.env,arg);
+-}
+-
+-static function_t function_create( void* env, long (*f)(void*,long) ) {
+-  function_t fun = { env, f };
+-  return fun;
+-}
+-
+-static function_t mpe_fun_voidp( void* v ) {
+-  function_t* p  = (function_t*)(mpe_ptr_voidp(v));
+-  function_t fun = *p;
+-  free(p);
+-  return fun;
+-}
+-
+-static void* mpe_voidp_fun( function_t fun ) {
+-  function_t* p = (function_t*)malloc( sizeof(function_t) );
+-  if (p!=NULL) *p = fun;
+-  return mpe_voidp_ptr(p);
+-}
+-
+-/*-----------------------------------------------------------------
+-  monadic state handler
+------------------------------------------------------------------*/
+-
+-// fn(x:long){ fn(s){ x } }
+-static long fun_result( void* env, long st ) {
+-  UNUSED(env);
+-  UNUSED(st);
+-  return mpe_long_voidp(env);
+-}
+-
+-static void* _mstate_result(void* local, void* arg) {
+-  UNUSED(local);
+-  //trace_prlongf("state result: %i, %li\n", *((long*)local), (long)(x));
+-  return mpe_voidp_fun( function_create(arg,&fun_result) ); 
+-} 
+-
+-// control get(){ fn(s){ resume(s)(s) } }
+-static long fun_get( void* venv, long st ) {
+-  mpe_resume_t* rc = (mpe_resume_t*)(venv);
+-  void* res = mpe_resume_final(rc, NULL, mpe_voidp_long(st));
+-  function_t f = mpe_fun_voidp( res );
+-  return function_apply( f, st );
+-}
+-
+-static void* _mstate_get(mpe_resume_t* rc, void* local, void* arg) {
+-  UNUSED(arg);
+-  UNUSED(local);
+-  //trace_prlongf("state get: %i\n", *((long*)local));
+-  return mpe_voidp_fun( function_create( rc, &fun_get ) );
+-}
+-
+-
+-struct env_put_t {
+-  long newst;
+-  mpe_resume_t* rc;
+-};
+-
+-// control put(s'){ fn(s){ resume(())(s') } }
+-static long fun_put( void* venv, long st ) {
+-  UNUSED(st);
+-  struct env_put_t env = *((struct env_put_t*)(venv));
+-  free(venv);
+-  function_t f = mpe_fun_voidp( mpe_resume_final( env.rc, NULL, NULL ) );
+-  return function_apply( f, env.newst );
+-}
+-
+-static void* _mstate_set(mpe_resume_t* rc, void* local, void* st) {
+-  UNUSED(local);
+-  struct env_put_t* env = (struct env_put_t*)malloc( sizeof(struct env_put_t) );
+-  env->newst = mpe_long_voidp(st);
+-  env->rc = rc;
+-  return mpe_voidp_fun( function_create( env, &fun_put ) );
+-}
+-
+-static const mpe_handlerdef_t mstate_def = { MPE_EFFECT(state), &_mstate_result, {
+-  { MPE_OP_ONCE, MPE_OPTAG(state,get), &_mstate_get },
+-  { MPE_OP_ONCE, MPE_OPTAG(state,set), &_mstate_set },
+-  { MPE_OP_NULL, mpe_op_null, NULL }
+-} };
+-
+-static void* mstate_handle(mpe_actionfun_t action, long st, void* arg) {
+-  function_t f = mpe_fun_voidp( mpe_handle(&mstate_def, NULL, action, arg) );
+-  return mpe_voidp_long( function_apply( f, st ) );
+-}
+-
+-/*-----------------------------------------------------------------
+-  Run
+------------------------------------------------------------------*/
+-static void test(long count) {
+-  long res = 0;
+-  mpt_bench{
+-    res = mpe_int_voidp(mstate_handle(&bench_counter, count, NULL));
+-  }
+-  mpt_printf("mstate    : %ld\n", res);
+-  mpt_assert(res == count, "mstate");
+-}
+-
+-
+-void mstate_run(void) {
+-#ifdef NDEBUG
+-  test(1000L);
+-  // test(10100100L);  // only if the compiler does tail-call optimization
+-#else
+-  test(100L);
+-#endif
+-}
+-
+diff --git a/test/src/multi_unwind.cpp b/test/src/multi_unwind.cpp
+deleted file mode 100644
+index 2a2130f..0000000
+--- a/test/src/multi_unwind.cpp
++++ /dev/null
+@@ -1,71 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-#include <mprompt.h>
+-#include "test.h"
+-
+-#ifdef __cplusplus
+-#include <stdexcept>
+-#endif
+-
+-MPE_DEFINE_EFFECT1(multi, unwind)
+-MPE_DEFINE_OP0(multi, unwind, long)
+-
+-
+-
+-/*-----------------------------------------------------------------
+-  Benchmark
+------------------------------------------------------------------*/
+-static bool d3_destructed;
+-
+-static void* bench_main(void* arg) {
+-  test_raii_t d3("d3", &d3_destructed);
+-  UNUSED(arg);
+-  long i = multi_unwind() + multi_unwind();
+-  return mpe_voidp_long(i);
+-}
+-
+-
+-/*-----------------------------------------------------------------
+-   multi-unwind handler
+------------------------------------------------------------------*/
+-
+-
+-
+-static void* handle_multi_unwind(mpe_resume_t* r, void* local, void* arg) {
+-  UNUSED(local);
+-  UNUSED(arg);
+-  // void* res = mpe_resume(r, mpe_voidp_long(1), mpe_voidp_long(42));
+-  mpe_resume_release(r);
+-  return mpe_voidp_long(42);
+-}
+-  
+-
+-static const mpe_handlerdef_t multi_hdef = { MPE_EFFECT(multi), NULL, {
+-  { MPE_OP_MULTI, MPE_OPTAG(multi,unwind), &handle_multi_unwind },
+-  { MPE_OP_NULL, mpe_op_null, NULL }
+-}};
+-
+-void* multi_handle(mpe_actionfun_t* action, void* arg) {
+-  return mpe_handle(&multi_hdef, NULL, action, arg);
+-}
+-
+-/*-----------------------------------------------------------------
+-  Run
+------------------------------------------------------------------*/
+-
+-static void test(void) {
+-  long res = 0; 
+-  mpt_bench{ res = mpe_long_voidp(multi_handle(&bench_main,NULL)); }
+-  mpt_printf("test-multi-unwind  : %ld\n", res);
+-  mpt_assert(res == 42 && d3_destructed, "test-multi-unwind");  
+-}
+-
+-
+-void multi_unwind_run(void) {
+-  test();
+-}
+-
+diff --git a/test/src/nqueens.c b/test/src/nqueens.c
+deleted file mode 100644
+index e0a8bef..0000000
+--- a/test/src/nqueens.c
++++ /dev/null
+@@ -1,61 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-
+-#include "test.h"
+-
+-
+-static bool safe( int queen, blist xs ) {
+-  for( int diag = 1; xs != NULL; diag++, xs = xs->next) {
+-    int q = mpe_int_voidp(xs->value);
+-    if (queen == q || queen == q + diag || queen == q - diag) return false;    
+-  }
+-  return true;
+-}
+-
+-static blist find_solution( int n, int col ) {
+-  if (col == 0) return NULL;
+-  blist sol = find_solution( n, col - 1);
+-  int queen = choice_choose( n );
+-  if (safe(queen,sol)) {
+-    return blist_cons(mpe_voidp_int(queen),sol);
+-  }
+-  else {
+-    choice_fail();
+-    return NULL; 
+-  }
+-}
+-
+-static void* bench_nqueens(void* arg) {
+-  int n = mpe_int_voidp(arg);
+-  return mpe_voidp_blist( find_solution(n,n) );
+-}
+-
+-
+-/*-----------------------------------------------------------------
+- bench
+------------------------------------------------------------------*/
+-
+-static void test(int n, int expect) {
+-  blist xss = NULL;
+-  mpt_bench{
+-    xss = mpe_blist_voidp(choice_handle(&bench_nqueens, mpe_voidp_int(n)));
+-  }
+-  int len = blist_length(xss);
+-  mpt_printf("nqueens %2d: %d\n", n, len);
+-  mpt_assert(expect == len, "nqueens");
+-  // note: xss leaks but it has shared sublists so we need a region allocator or ref counting to dispose of it properly
+-}
+-
+-
+-void nqueens_run(void) {
+-#ifdef NDEBUG
+-  test(12, 14200);
+-#else
+-  test(8, 92);
+-#endif
+-}
+-
+diff --git a/test/src/reader.c b/test/src/reader.c
+deleted file mode 100644
+index 71760dc..0000000
+--- a/test/src/reader.c
++++ /dev/null
+@@ -1,43 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-#include "test.h"
+-   
+-static long stack_use(uint8_t* p, long kb) {
+-  if (kb <= 4) {    
+-    return reader_ask();
+-  }
+-
+-  if (p != NULL) p[4095] = 1;
+-  uint8_t arr[4096];
+-  arr[4095] = 0;
+-  return stack_use(arr,kb - 4);
+-}
+-
+-/*-----------------------------------------------------------------
+-  Example programs
+------------------------------------------------------------------*/
+-
+-void* reader_action(void* arg) {
+-  UNUSED(arg);
+-  long i = stack_use(NULL,64);
+-  return mpe_voidp_long( i + reader_ask());
+-}
+-
+-/*-----------------------------------------------------------------
+-  testing
+------------------------------------------------------------------*/
+-void reader_run(void) {
+-  long init = 42;
+-  long res = 0;
+-  mpt_bench{ res = mpe_long_voidp(reader_handle(reader_action, init, NULL)); }
+-  mpt_printf("reader    : %ld\n", res);
+-  mpt_assert(res == 2*init, "reader");
+-  mpt_bench{ res = mpe_long_voidp(greader_handle(reader_action, init, NULL)); }
+-  mpt_printf("greader   : %ld\n", res);
+-  mpt_assert(res == 2*init, "greader");
+-}
+-
+diff --git a/test/src/rehandle.c b/test/src/rehandle.c
+deleted file mode 100644
+index 3b6d150..0000000
+--- a/test/src/rehandle.c
++++ /dev/null
+@@ -1,191 +0,0 @@
+-/* ---------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+-
+-  Rehandle implements the "evil" example from 
+-  Ningning Xie and Daan Leijen, "Generalized Evidence Passing for Effect Handlers", MSR-TR-2021-5, Mar 2021.
+-  It shows how the stack can change after the call to `exit_capture` 
+-  with a different reader_handler on top.
+------------------------------------------------------------------------------*/
+-#include "test.h"
+-
+-/* ---------------------------------------------------------------------------
+-  Show dynamic backtraces (just testing unwinding through prompts)
+------------------------------------------------------------------------------*/
+-
+-#define SHOW_BACKTRACE  0
+-#define USE_LIB_UNWIND  0
+-
+-#if SHOW_BACKTRACE  // show dynamic backtrace
+-#include <mprompt.h>
+-
+-#if defined(_WIN32)
+-#include <windows.h>
+-#include <dbghelp.h>
+-#pragma comment(lib,"dbghelp")
+-static HANDLE current_process = INVALID_HANDLE_VALUE;
+-static void print_backtrace(const char* msg) {
+-  fprintf(stderr,"-----------------------------\n");
+-  fprintf(stderr, "backtrace at: %s\n", msg);
+-  void* bt[128];
+-  int n = mp_backtrace(bt, 128);
+-  if (current_process == INVALID_HANDLE_VALUE) {
+-    current_process = GetCurrentProcess();
+-    SymInitialize(current_process, NULL, TRUE);
+-  }
+-  PSYMBOL_INFO info = (PSYMBOL_INFO)calloc(1, sizeof(SYMBOL_INFO) + 256 * sizeof(TCHAR));
+-  info->MaxNameLen = 255;
+-  info->SizeOfStruct = sizeof(SYMBOL_INFO);
+-  for (int i = 0; i < n; i++) {
+-    if (SymFromAddr(current_process, (DWORD64)(bt[i]), 0, info)) {
+-      fprintf(stderr, "frame %2d: %8p: %s\n", i, bt[i], info->Name);
+-    }
+-    else {
+-      fprintf(stderr, "frame %2d: %8p: <unknown: error: 0x%04x>\n", i, bt[i], GetLastError());
+-    }
+-  }
+-  free(info);
+-  fprintf(stderr,"\n");
+-}
+-
+-#elif USE_LIB_UNWIND 
+-// if not on macOS: 
+-// edit the cmake to link the mptest target with libunwind:
+-//   target_link_libraries(mptest PRIVATE mpeff )  
+-//    ==> target_link_libraries(mptest PUBLIC mpeff unwind)
+-// on ARM64 you also need to link gcc_s _before_ libunwind:
+-//    ==> target_link_libraries(mptest PRIVATE mpeff gcc_s unwind)
+-// or otherwise exceptions are not caught!
+-// install libunwind as: 
+-//   $ sudo apt-get install libunwind-dev
+-#define UNW_LOCAL_ONLY
+-#include <libunwind.h>
+-#include <string.h>
+-static void print_backtrace(const char* msg) {
+-  fprintf(stderr,"-----------------------------\n");
+-  fprintf(stderr, "libunwind backtrace at: %s\n", msg);
+-  unw_cursor_t cursor; unw_context_t uc;
+-  
+-  unw_getcontext(&uc);
+-  unw_init_local(&cursor, &uc);
+-  int i = 0;
+-  while (unw_step(&cursor) > 0) {
+-    unw_word_t ip;
+-    unw_get_reg(&cursor, UNW_REG_IP, &ip);
+-    char name[128];
+-    unw_word_t ofs;
+-    unw_get_proc_name(&cursor, name, 128, &ofs);
+-    
+-    mpt_printf ("frame %2d: %8p: %s at offset %ld\n", i, (void*)ip, name, (long)ofs);
+-    i++;
+-    if (false) { //strcmp(name,"mp_stack_enter") == 0) {
+-      unw_proc_info_t pinfo;
+-      unw_get_proc_info(&cursor,&pinfo);
+-      bool sig = unw_is_signal_frame(&cursor);
+-      mpt_printf("signal: %i\n", sig);
+-    }
+-  }
+-  fprintf(stderr,"\n");
+-}
+-
+-#else
+-
+-// Posix simple stack trace
+-#include <execinfo.h>
+-static void print_backtrace(const char* msg) {
+-  fprintf(stderr,"-----------------------------\n");
+-  fprintf(stderr, "backtrace at: %s\n", msg);
+-  void* bt[128];
+-  int n = mp_backtrace(bt,128);
+-  if (n <= 0) {
+-    fprintf(stderr, "  unable to get a backtrace\n");
+-    return;
+-  }
+-
+-  char** bts = backtrace_symbols(bt,n);
+-  for(int i = 0; i < n; i++) {
+-    void* ip = bt[i];
+-    char* s = bts[i];
+-    if (ip!=NULL && s!=NULL) {
+-      fprintf(stderr,"  frame %d: %8p: %s\n", i, ip, s);
+-    }
+-    else {
+-      break;
+-    }
+-  }
+-  fprintf(stderr,"\n");
+-  free(bts);
+-} 
+-#endif
+-
+-#else  // no backtrace
+-static void print_backtrace(const char* msg) {
+-  UNUSED(msg);
+-}
+-#endif
+-
+-
+-/* ---------------------------------------------------------------------------
+-  Rehandling effect
+------------------------------------------------------------------------------*/
+-
+-// Effect that returns its resumption
+-MPE_DEFINE_EFFECT1(exit, capture)
+-MPE_DEFINE_VOIDOP0(exit, capture)
+-
+-static void* op_exit_capture(mpe_resume_t* r, void* local, void* arg) {
+-  UNUSED(arg); UNUSED(local);
+-  return r; // return the resumption as is
+-}
+- 
+-static void* exit_handle(mpe_actionfun_t action, void* arg) {
+-  static const mpe_handlerdef_t exit_hdef = { MPE_EFFECT(exit), NULL, {
+-    { MPE_OP_ONCE, MPE_OPTAG(exit,capture), &op_exit_capture },
+-    { MPE_OP_NULL, mpe_op_null, NULL }
+-  } };
+-  return mpe_handle(&exit_hdef, NULL, action, arg);
+-}
+-
+-
+-/* ---------------------------------------------------------------------------
+-  Test
+------------------------------------------------------------------------------*/
+-
+-
+-// Ask twice with an exit_capture in between
+-static void* rehandle_body(void* arg) {
+-  UNUSED(arg);
+-  print_backtrace("reader_ask 1");
+-  long x = reader_ask();   // return 1
+-  exit_capture();          // exit and resume under a new reader
+-  print_backtrace("reader_ask 2");
+-  long y = reader_ask();   // now it returns 2
+-  return mpe_voidp_long(x + y);
+-}
+-
+-// first handler
+-static void* with_exit_handle(void* arg) {
+-  return exit_handle(&rehandle_body, arg);
+-}
+-
+-// and second replacement handler
+-static void* with_resume(void* arg) {
+-  mpe_resume_t* r = (mpe_resume_t*)arg;
+-  return mpe_resume_final(r, NULL, NULL);
+-}
+-
+-static void test(void) {
+-  long res;
+-  mpt_bench{
+-    void* r = reader_handle(&with_exit_handle, 1, NULL);        // reader returns 1  -- final return is a resumption from with_exit_handle
+-    res = mpe_long_voidp(reader_handle(&with_resume, 2, r));    // new reader returns 2 -- this resumes the resumption under a new reader
+-  }
+-  mpt_printf("rehandle  : %ld\n", res);
+-  mpt_assert(res == 3, "test-rehandle");
+-}
+-
+-void rehandle_run(void) {
+-  test();
+-}
+diff --git a/test/src/state.c b/test/src/state.c
+deleted file mode 100644
+index 931b88f..0000000
+--- a/test/src/state.c
++++ /dev/null
+@@ -1,81 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-#include "test.h"
+-
+-/*-----------------------------------------------------------------
+-  Define operations
+------------------------------------------------------------------*/
+-MPE_DEFINE_EFFECT2(state, get, set)
+-MPE_DEFINE_OP0(state, get, int)
+-MPE_DEFINE_VOIDOP1(state, set, int)
+-
+-/*-----------------------------------------------------------------
+-  Example programs
+------------------------------------------------------------------*/
+-
+-void* state_action(void* arg) {
+-  UNUSED(arg);
+-  int i;
+-  int count = 0;
+-  while ((i = state_get()) > 0) {
+-    //printf("counter: %i\n", i);
+-    count++;
+-    state_set(i-1);
+-  }
+-  return mpe_voidp_int(count);
+-}
+-
+-/*-----------------------------------------------------------------
+-  Reader handler
+------------------------------------------------------------------*/
+-
+-static void* _state_get(mpe_resume_t* r, void* local, void* arg) {
+-  UNUSED(arg);
+-  return mpe_resume_tail(r, local, local);
+-}
+-
+-static void* _state_set(mpe_resume_t* r, void* local, void* arg) {
+-  return mpe_resume_tail(r, arg, NULL);
+-}
+-
+-static const mpe_handlerdef_t state_hdef = { MPE_EFFECT(state), NULL, NULL, NULL, {
+-  { MPE_OP_SCOPED_ONCE, MPE_OPTAG(state,get), &_state_get },
+-  { MPE_OP_SCOPED_ONCE, MPE_OPTAG(state,set), &_state_set },
+-  //  { MPE_OP_GENERAL, MPE_OPTAG(state,get), &_state_get },
+-  //  { MPE_OP_GENERAL, MPE_OPTAG(state,set), &_state_set },
+-  //  { MPE_OP_TAIL_NOOP, MPE_OPTAG(state,get), &_state_get },
+-  //  { MPE_OP_TAIL_NOOP, MPE_OPTAG(state,set), &_state_set },
+-  { MPE_OP_NULL, mpe_op_null, NULL }
+-}};
+-
+-static void* state_handle(mpe_actionfun_t action, int init, void* arg) {
+-  return mpe_handle(&state_hdef, mpe_voidp_int(init), action, arg);
+-}
+-
+-/*-----------------------------------------------------------------
+-  testing
+------------------------------------------------------------------*/
+-static void test(int init) {
+-  int res = mpe_int_voidp(state_handle(&state_action, init, NULL));
+-  printf("state: %d\n", res);
+-}
+-void state_run(void) {
+-#ifdef NDEBUG
+-  test(10100100L);
+-#else
+-  test(100);
+-#endif
+-}
+-
+-/*
+-void test_state()
+-{
+-  test("state", run,
+-    "final result counter: 42\n"
+-  );
+-}
+-*/
+diff --git a/test/src/throw.cpp b/test/src/throw.cpp
+deleted file mode 100644
+index d55a0e5..0000000
+--- a/test/src/throw.cpp
++++ /dev/null
+@@ -1,52 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-#include <mprompt.h>
+-#include "test.h"
+-
+-#ifdef __cplusplus
+-#include <stdexcept>
+-#endif
+-
+-/*-----------------------------------------------------------------
+-  Benchmark
+------------------------------------------------------------------*/
+-
+-
+-static void* bench_counter(void* arg) {
+-  UNUSED(arg);
+-  long i = state_get() + state_get();
+-  if (i > 42) {
+-    throw std::logic_error("ouch!");
+-  }
+-  return mpe_voidp_long(i);
+-}
+-
+-
+-/*-----------------------------------------------------------------
+-  Run
+------------------------------------------------------------------*/
+-static void* bench_reader(void* arg) {
+-  return reader_handle(&bench_counter, 42, arg);
+-}
+-
+-static void test(long count) {
+-  long res = 0;
+-  try {
+-    mpt_bench{ res = mpe_long_voidp(state_handle(&bench_reader,count,NULL)); }
+-    mpt_printf("test-throw : %ld\n", res);
+-    mpt_assert(res == count, "test-throw");
+-  }
+-  catch (const std::exception& e) {
+-    mpt_printf("exception caught: %s\n", e.what());
+-  }
+-}
+-
+-
+-void throw_run(void) {
+-  test(100);
+-}
+-
+diff --git a/test/src/triples.c b/test/src/triples.c
+deleted file mode 100644
+index 1c8455f..0000000
+--- a/test/src/triples.c
++++ /dev/null
+@@ -1,124 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+------------------------------------------------------------------------------*/
+-
+-#include "test.h"
+-
+-
+-/*-----------------------------------------------------------------
+-  Define operations
+------------------------------------------------------------------*/
+-MPE_DEFINE_EFFECT1(yield, yield)
+-MPE_DEFINE_VOIDOP1(yield, yield, long)
+-
+-
+-/*-----------------------------------------------------------------
+-  Benchmark
+------------------------------------------------------------------*/
+-
+-static void triples( long n, long s ) {
+-  long x = choice_choose(n);
+-  long y = choice_choose(x-1);
+-  long z = choice_choose(y-1);
+-  if (x+y+z == s) yield_yield(x);
+-             else choice_fail();
+-}
+-
+-static void* do_triples(void* arg) {
+-  long l = mpe_long_voidp(arg);
+-  long n = (l >> 16);
+-  long s = (l & 0xFFFF);
+-  triples(n,s);
+-  return mpe_voidp_int(0);
+-}
+-
+-/*-----------------------------------------------------------------
+- choice handler
+------------------------------------------------------------------*/
+-
+-static void* _choice_result(void* local, void* arg) {
+-  UNUSED(local);  
+-  return arg;
+-}
+-
+-static void* _choice_fail(mpe_resume_t* rc, void* local, void* arg) {
+-  UNUSED(local);
+-  UNUSED(arg);  
+-  mpe_resume_release(rc);
+-  return mpe_voidp_long(0);
+-}
+-
+-static void* _choice_choose(mpe_resume_t* rc, void* local, void* arg) {
+-  UNUSED(local);
+-  long n = mpe_long_voidp(arg);  
+-  for( long i = 1; i <= n; i++) {
+-    if (i!=n) mpe_resume(rc,local,mpe_voidp_long(i));
+-         else mpe_resume_final(rc,local,mpe_voidp_long(i));
+-  }
+-  //mpe_release(rc);
+-  return mpe_voidp_long(0);
+-}
+-  
+-
+-
+-static const mpe_handlerdef_t choice_def = { MPE_EFFECT(choice), &_choice_result, {
+-  { MPE_OP_SCOPED, MPE_OPTAG(choice,choose), &_choice_choose },
+-  { MPE_OP_ABORT,  MPE_OPTAG(choice,fail), &_choice_fail },
+-  { MPE_OP_NULL, mpe_op_null, NULL }
+-} };
+-
+-static void* xchoice_handle(void*(*action)(void*), void* arg) {
+-  return mpe_handle(&choice_def, mpe_voidp_null, action, arg);
+-}
+-
+-
+-
+-static void* _yield_result(void* local, void* arg) {
+-  UNUSED(arg);
+-  //trace_printf("reader result: %i, %li\n", *((long*)local), (long)(x));
+-  return local;
+-} 
+-
+-static void* _yield_yield(mpe_resume_t* rc, void* local, void* arg) {
+-  UNUSED(arg);
+-  //trace_printf("reader ask: %i\n", *((long*)local));
+-  return mpe_resume_tail(rc, mpe_voidp_long( mpe_long_voidp(local)+1 ), local);
+-}
+-
+-static const mpe_handlerdef_t yield_def = { MPE_EFFECT(yield),  &_yield_result, {
+-  { MPE_OP_TAIL_NOOP, MPE_OPTAG(yield,yield), &_yield_yield },
+-  { MPE_OP_NULL, mpe_op_null, NULL }
+-} };
+-
+-static void* yield_handle(void*(*action)(void*), long val, void* arg) {
+-  return mpe_handle(&yield_def, mpe_voidp_long(val), action, arg);
+-}
+-
+-/*-----------------------------------------------------------------
+- bench
+------------------------------------------------------------------*/
+-
+-static void* do_choose_triples( void* arg ) {
+-  return xchoice_handle( &do_triples, arg );
+-}
+-
+-static void test(int n, int s, long expect) {
+-  long count = 0;
+-  mpt_bench{ 
+-    count = mpe_long_voidp( yield_handle( &do_choose_triples, 0, mpe_voidp_long(n << 16 | s) ) );
+-  }
+-  printf("triples %2d,%2d: %ld\n", n, s, count);
+-  mpt_assert(expect == count, "triples");
+-}
+-
+-
+-void triples_run(void) {
+-#ifdef NDEBUG
+-  test(500,127,1281);
+-#else
+-  test(100, 27, 48);
+-#endif
+-}
+diff --git a/test/test.h b/test/test.h
+deleted file mode 100644
+index 093e88e..0000000
+--- a/test/test.h
++++ /dev/null
+@@ -1,214 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+-
+-  Common definitions for most tests.
+------------------------------------------------------------------------------*/
+-#pragma once
+-
+-#include <stdlib.h>
+-#include <stdbool.h>
+-#include <stdint.h>
+-#include <stdio.h>
+-#include <mpeff.h>
+-
+-
+-
+-#define UNUSED(x)  (void)(x)
+-#define mpt_assert(cond,msg)  mpt_assert_at(cond,msg,__FILE__,__LINE__)
+-
+-void mpt_assert_at(bool condition, const char* msg, const char* fname, int line);
+-
+-#define mpt_printf(...)  fprintf(stderr, __VA_ARGS__)   // so it shows up in an azure pipeline
+-
+-/*-----------------------------------------------------------------
+-  Tests
+------------------------------------------------------------------*/
+-
+-void reader_run(void);
+-void state_run(void);
+-void counter_run(void);
+-void countern_run(void);
+-void mstate_run(void);
+-void nqueens_run(void);
+-void triples_run(void);
+-void amb_run(void);
+-void amb_state_run(void);
+-void rehandle_run(void);
+-
+-
+-#ifdef __cplusplus
+-void throw_run(void);
+-void exn_run(void);
+-void multi_unwind_run(void);
+-void thread_rehandle_run(void);
+-#else
+-// dummies in C
+-static inline void throw_run(void) { }
+-static inline void exn_run(void) { }
+-static inline void multi_unwind_run(void) { };
+-static inline void thread_rehandle_run(void) { };
+-#endif
+-
+-#ifdef __cplusplus
+-class test_raii_t {
+-private:
+-  const char* msg;
+-  bool* destructed;
+-public:
+-  test_raii_t(const char* s, bool* is_destructed) : msg(s), destructed(is_destructed) {
+-    mpt_printf("construct: %s\n", msg);
+-    if (destructed != NULL) *destructed = false;
+-  }
+-  ~test_raii_t() {
+-    mpt_printf("destruct: %s\n", msg);
+-    if (destructed != NULL) *destructed = true;
+-  }
+-};
+-#endif
+-
+-
+-/*-----------------------------------------------------------------
+-  Standard effects
+------------------------------------------------------------------*/
+-
+-// Reader
+-MPE_DECLARE_EFFECT1(reader, ask)
+-MPE_DECLARE_OP0(reader, ask, long)
+-
+-void* reader_handle(mpe_actionfun_t* action, long init, void* arg);   // tail_noop
+-void* greader_handle(mpe_actionfun_t* action, long init, void* arg);  // general 
+-
+-MPE_DECLARE_EFFECT1(exn, raise)
+-MPE_DECLARE_VOIDOP1(exn, raise, mpe_string_t)
+-
+-void* exn_handle(mpe_actionfun_t* action, void* arg);
+-
+-// State
+-MPE_DECLARE_EFFECT2(state, get, set)
+-MPE_DECLARE_OP0(state, get, long)
+-MPE_DECLARE_VOIDOP1(state, set, long)
+-
+-void* state_handle(mpe_actionfun_t* action, long init, void* arg);    // tail_noop
+-void* ustate_handle(mpe_actionfun_t* action, long init, void* arg);   // tail
+-void* gstate_handle(mpe_actionfun_t* action, long init, void* arg);   // general
+-void* ostate_handle(mpe_actionfun_t* action, long init, void* arg);   // scoped_once
+-
+-// Ambiguity
+-MPE_DECLARE_EFFECT1(amb, flip)
+-MPE_DECLARE_OP0(amb, flip, bool)
+-
+-typedef struct _bnode* blist;  // void* lists
+-blist amb_handle(mpe_actionfun_t* action, void* arg);
+-
+-// Choice
+-MPE_DECLARE_EFFECT2(choice, choose, fail)
+-MPE_DECLARE_OP1(choice, choose, long, long)
+-MPE_DECLARE_VOIDOP0(choice, fail)
+-
+-blist choice_handle(mpe_actionfun_t* action, void* arg);
+-
+-
+-/*-----------------------------------------------------------------
+-  Statistics
+------------------------------------------------------------------*/
+-typedef int64_t mpt_msecs_t;
+-typedef int64_t mpt_usecs_t;
+-typedef mpt_usecs_t mpt_timer_t;
+-
+-mpt_timer_t mpt_timer_start(void);
+-mpt_usecs_t mpt_timer_end(mpt_timer_t start);
+-
+-void mpt_timer_print(mpt_timer_t start);
+-
+-#define mpt_bench  for(mpt_timer_t t = mpt_timer_start(); t != 0; mpt_timer_print(t), t = 0)
+-
+-
+-void mpt_process_info(mpt_msecs_t* utime, mpt_msecs_t* stime, size_t* peak_rss,
+-  size_t* page_faults, size_t* page_reclaim, size_t* peak_commit);
+-
+-mpt_timer_t mpt_show_process_info_start(size_t* process_start_rss);
+-void mpt_show_process_info(FILE* f, mpt_timer_t process_start, size_t process_start_rss);
+-
+-
+-
+-/*-----------------------------------------------------------------
+-  Mini implementation of list of void*'s (for amb and choice)
+------------------------------------------------------------------*/
+-
+-struct _bnode {
+-  struct _bnode* next;
+-  void* value;
+-};
+-
+-
+-#define mpe_voidp_blist(l)  mpe_voidp_ptr(l)
+-#define mpe_blist_voidp(v)  ((blist)(mpe_ptr_voidp(v)))
+-
+-
+-#define blist_nil  ((blist)(NULL))
+-
+-static inline blist blist_cons(void* val, blist tail) {
+-  blist res = (blist)malloc(sizeof(struct _bnode));
+-  res->next = tail;
+-  res->value = val;
+-  return res;
+-}
+-
+-static inline blist blist_single(void* val) {
+-  return blist_cons(val, NULL);
+-}
+-
+-static inline blist blist_copy(blist xs) {
+-  if (xs == NULL) return xs;
+-  return blist_cons(xs->value, blist_copy(xs->next));
+-}
+-
+-static inline blist blist_appendto(blist xs, blist ys)
+-{
+-  if (xs == NULL) return ys;
+-  blist tl = xs;
+-  while (tl->next != NULL) { tl = tl->next; }
+-  tl->next = ys;
+-  return xs;
+-}
+-
+-
+-static inline void blist_free(blist xs) {
+-  while (xs != NULL) {
+-    blist next = xs->next;
+-    free(xs);
+-    xs = next;
+-  }
+-}
+-
+-static inline void blists_free(blist xs) {
+-  while (xs != NULL) {
+-    blist next = xs->next;
+-    blist_free(mpe_blist_voidp(xs->value));
+-    free(xs);
+-    xs = next;
+-  }
+-}
+-
+-static inline long blist_length(blist xs) {
+-  long count = 0;
+-  while (xs != NULL) {
+-    count++;
+-    xs = xs->next;
+-  }
+-  return count;
+-}
+-
+-static inline void blist_println(blist xs, void (*print_elem)(void*)) {
+-  mpt_printf("[");
+-  while (xs != NULL) {
+-    print_elem(xs->value);
+-    xs = xs->next;
+-    if (xs != NULL) mpt_printf(",");
+-  }
+-  mpt_printf("]\n");
+-}
+-
+diff --git a/test/test_mp_async.c b/test/test_mp_async.c
+deleted file mode 100644
+index 4191f42..0000000
+--- a/test/test_mp_async.c
++++ /dev/null
+@@ -1,112 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+-
+-  Test async prompts where each worker use stack space
+------------------------------------------------------------------------------*/
+-#include <stdlib.h>
+-#include <stdio.h>
+-#include <stdint.h>
+-#include <mprompt.h>
+-#include "test.h"
+-
+-#define N         10000    // max active async workers
+-#define M      10000000    // total number of requests
+-#define USE_KB       32    // use 32KiB stack per request
+-
+-static void async_workers(void);
+-
+-int main() {
+-  mp_config_t config = mp_config_default();
+-  //config.stack_use_overcommit = true;  // easier debugging in gdb/lldb as no SEGV signals are used
+-  //config.gpool_enable = true;
+-  //config.stack_grow_fast = true;
+-  //config.stack_cache_count = -1; // disable per-thread cache
+-  mp_init(&config);
+-
+-  async_workers();
+-  return 0;
+-}
+-
+-
+-// -------------------------------
+-// Helper to use stack space
+-
+-#if defined(_MSC_VER) && !defined(__clang__) && !defined(__GNUC__)
+-# define __noinline     __declspec(noinline)
+-#else
+-# define __noinline     __attribute__((noinline))
+-#endif
+-
+-static __noinline void* as_stack_address(void* p) {
+-  return p;
+-}
+-
+-static __noinline void* get_stack_top(void) {
+-  void* top = NULL;
+-  return as_stack_address(&top);
+-}
+-
+-static void stack_use(intptr_t totalkb) {
+-  uint8_t* sp = (uint8_t*)get_stack_top();
+-  size_t page_size = 4096;
+-  size_t total_pages = ((size_t)totalkb*1024 + page_size - 1) / page_size;
+-  for (size_t i = 0; i < total_pages; i++) {
+-    volatile uint8_t b = *(sp - (i * page_size));
+-    (void)(b);
+-  }
+-}
+-
+-
+-// -------------------------------
+-// Async workers
+-
+-static void* await_result(mp_resume_t* r, void* arg) {
+-  (void)(arg);
+-  return r;  // instead of resuming ourselves, we return the resumption as a "suspended async computation" (A)
+-}
+-
+-static void* async_worker(mp_prompt_t* parent, void* arg) {
+-  (void)(arg);
+-  // start a fresh worker
+-  // ... do some work
+-  intptr_t partial_result = 0;
+-  // and await some request; we do this by yielding up to our prompt and running `await_result` (in the parent context!)
+-  intptr_t kb =(intptr_t)mp_yield( parent, &await_result, NULL );
+-  // when we are resumed at some point, we do some more work 
+-  // ... do more work
+-  stack_use(kb);
+-  partial_result++;
+-  // and return with the result (B)
+-  return (void*)(partial_result);
+-}
+-
+-static void async_workers(void) {
+-  mp_resume_t** workers = (mp_resume_t**)calloc(N,sizeof(mp_resume_t*));  // allocate array of N resumptions
+-  intptr_t count = 0;
+-  printf("run requests...\n");  
+-  size_t start_rss;
+-  mpt_timer_t start = mpt_show_process_info_start(&start_rss);
+-  for( int i = 0; i < M+N; i++) {  // perform M connections
+-    int j = i % N;               // pick an active worker
+-    // if the worker is actively waiting (suspended), resume it
+-    if (workers[j] != NULL) {  
+-      count += (intptr_t)mp_resume(workers[j], (void*)((intptr_t)USE_KB));  // (B)
+-      workers[j] = NULL;
+-    }
+-    // and start a fresh worker and wait for its first yield (suspension). 
+-    // the worker returns its own resumption as a result.
+-    if (i < M) {
+-      workers[j] = (mp_resume_t*)mp_prompt( &async_worker, NULL );  // (A)
+-    }
+-    //if (j == 0) mpt_printf("%6i todo\n", M + N - i);
+-  }
+-  free(workers);
+-  mpt_show_process_info(stdout, start, start_rss);
+-  size_t total_kb = M * USE_KB;
+-  double total_mb = (double)total_kb / 1024.0;
+-  printf("Total of %d prompts with %d active at a time\nUsing %dkb stack per request, total stack used: %.3fmb, count=%zd\n", M, N, USE_KB, total_mb, count);
+-}
+-
+diff --git a/test/test_mp_example_async.c b/test/test_mp_example_async.c
+deleted file mode 100644
+index 4159dab..0000000
+--- a/test/test_mp_example_async.c
++++ /dev/null
+@@ -1,59 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+-
+-  Example for the low-level mprompt API with async workers
+------------------------------------------------------------------------------*/
+-#include <stdlib.h>
+-#include <stdio.h>
+-#include <stdint.h>
+-#include <mprompt.h>
+-
+-#define N 1000       // max active async workers
+-#define M 1000000    // total number of requests
+-
+-static void* await_result(mp_resume_t* r, void* arg) {
+-  (void)(arg);
+-  return r;  // instead of resuming ourselves, we return the resumption as a "suspended async computation" (A)
+-}
+-
+-static void* async_worker(mp_prompt_t* parent, void* arg) {
+-  (void)(arg);
+-  // start a fresh worker
+-  // ... do some work
+-  intptr_t partial_result = 0;
+-  // and await some request; we do this by yielding up to our prompt and running `await_result` (in the parent context!)
+-  mp_yield( parent, &await_result, NULL );
+-  // when we are resumed at some point, we do some more work 
+-  // ... do more work
+-  partial_result++;
+-  // and return with the result (B)
+-  return (void*)(partial_result);
+-}
+-
+-static void async_workers(void) {
+-  mp_resume_t** workers = (mp_resume_t**)calloc(N,sizeof(mp_resume_t*));  // allocate array of N resumptions
+-  intptr_t count = 0;
+-  for( int i = 0; i < M+N; i++) {  // perform M connections
+-    int j = i % N;               // pick an active worker
+-    // if the worker is actively waiting (suspended), resume it
+-    if (workers[j] != NULL) {  
+-      count += (intptr_t)mp_resume(workers[j], NULL);  // (B)
+-      workers[j] = NULL;
+-    }
+-    // and start a fresh worker and wait for its first yield (suspension). 
+-    // the worker returns its own resumption as a result.
+-    if (i < M) {
+-      workers[j] = (mp_resume_t*)mp_prompt( &async_worker, NULL );  // (A)
+-    }
+-  }
+-  printf("ran %zd workers\n", count);
+-  free(workers);
+-}
+-
+-int main() {
+-  async_workers();
+-  return 0;
+-}
+diff --git a/test/test_mp_example_generator.c b/test/test_mp_example_generator.c
+deleted file mode 100644
+index a14786f..0000000
+--- a/test/test_mp_example_generator.c
++++ /dev/null
+@@ -1,54 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+-
+-  Example of using low-level prompts for a generator
+------------------------------------------------------------------------------*/
+-#include <stdlib.h>
+-#include <stdio.h>
+-#include <stdint.h>
+-#include <mprompt.h>
+-
+-typedef void* (iterator_fun)(intptr_t arg);
+-
+-typedef struct iter_env_s {
+-  iterator_fun* iter;
+-  intptr_t      arg;
+-} iter_env_t;
+-
+-// Executed for each yielded value (as the body of a foreach)
+-static void* gen_yield(mp_resume_t* r, void* arg) {
+-  iter_env_t* env = (iter_env_t*)arg;
+-  mp_resume_tail( r, (env->iter)( env->arg) );
+-  return NULL;
+-}
+-
+-// Generator
+-static void* gen_action(mp_prompt_t* p, void* arg) {
+-  iter_env_t* env = (iter_env_t*)arg;
+-  intptr_t n = env->arg;
+-  for(intptr_t i = 0; i < n; i++) {
+-    env->arg = i;
+-    mp_yield(p, &gen_yield, env);
+-  };
+-  return NULL;
+-}
+-
+-// Foreach
+-static void gen_foreach( iterator_fun* iter, intptr_t n ) {
+-  iter_env_t env = { iter, n };
+-  mp_prompt( &gen_action, &env );
+-}
+-
+-// Our foreach body
+-static void* my_foreach_body(intptr_t i) {
+-  printf("%zd.", i);
+-  return NULL;
+-}
+-
+-int main() {
+-  gen_foreach( my_foreach_body, 10);
+-  printf("\ndone\n");
+-}
+diff --git a/test/test_mpe_main.c b/test/test_mpe_main.c
+deleted file mode 100644
+index 6229783..0000000
+--- a/test/test_mpe_main.c
++++ /dev/null
+@@ -1,89 +0,0 @@
+-/* ----------------------------------------------------------------------------
+-  Copyright (c) 2021, Microsoft Research, Daan Leijen
+-  This is free software; you can redistribute it and/or modify it
+-  under the terms of the MIT License. A copy of the license can be
+-  found in the "LICENSE" file at the root of this distribution.
+-
+-  Tests various standard effect handlers
+------------------------------------------------------------------------------*/
+-#include <stdio.h>
+-#include <stdint.h>
+-
+-#include <mprompt.h>
+-#include <mpeff.h>
+-#include "test.h"
+-
+-static void test_c(void);
+-static void test_cpp(void);
+-static void test_cpp_threaded(void);
+-
+-int main(int argc, char** argv) {
+-  mpt_printf("testing..\n");
+-  
+-  mp_config_t config = mp_config_default();
+-  //config.stack_use_overcommit = true;  // easier debugging in gdb/lldb as no SEGV signals are used
+-  //config.gpool_enable = true;
+-  //config.stack_grow_fast = true;
+-  //config.stack_max_size = 1 * 1024 * 1024L;
+-  //config.stack_initial_commit = 64 * 1024L; 
+-  //config.stack_cache_count = 0; // disable per-thread cache
+-  mp_init(&config);
+-
+-  size_t start_rss = 0;
+-  mpt_timer_t start = mpt_show_process_info_start(&start_rss);
+-  
+-  test_c();
+-  test_cpp();
+-  test_cpp_threaded();
+-  
+-  mpt_printf("done.\n");
+-  mpt_show_process_info(stderr, start, start_rss);
+-}
+-
+-static void test_c(void) {
+-  // effect handlers
+-  reader_run();
+-  counter_run();
+-  countern_run();
+-  mstate_run();
+-  rehandle_run();
+-
+-  // multi-shot tests
+-  amb_run();
+-  amb_state_run();
+-
+-  nqueens_run();
+-  triples_run();
+-}
+-
+-
+-#ifdef __cplusplus
+-
+-static void test_cpp(void) {
+-  // C++ exception tests  
+-  exn_run();
+-  multi_unwind_run();
+-  throw_run();
+-}
+-
+-
+-#include <thread>
+-static void thread_test() {
+-  mpt_printf("\n-----------------------------\nrun tests again in a separate thread:\n\n");
+-  test_c();
+-  test_cpp();
+-  mpt_printf("done testing in separate thread.\n");
+-}
+-void test_cpp_threaded(void) {
+-  auto t = std::thread(&thread_test);
+-  t.join();  
+-}
+-
+-#else // C
+-static void test_cpp(void) {
+-  // nothing
+-}
+-static void test_cpp_threaded(void) {
+-  // nothing
+-}
+-#endif  
+\ No newline at end of file

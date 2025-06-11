@@ -3,7 +3,7 @@ import argparse
 import subprocess
 import os
 
-def run_commands(source_file, output_file, lexac_args, output_ll, tl, gen_offset, stack_size):
+def run_commands(source_file, output_file, lexac_args, output_ll, tl, gen_offset, stack_size, gstack):
     src_path = os.path.abspath(source_file)
 
     if source_file.endswith(".c"):
@@ -44,6 +44,9 @@ def run_commands(source_file, output_file, lexac_args, output_ll, tl, gen_offset
     if stack_size:
         clang_command += ["-DSTACK_SIZE=" + str(stack_size * 1024)]
 
+    if gstack:
+        clang_command += ["-lmprompt", "-DUSE_GSTACK"]
+
     # link-time optimization may seem like a good idea
     # but we disable it because we need to keep the function address stable
     # while changing the definition of stackwalk function
@@ -72,14 +75,15 @@ def main():
     parser.add_argument("source_file", type=str, help="The source file to compile")
     parser.add_argument("--output-ll", action="store_true", help="Output the generated LLVM IR")
     parser.add_argument("-o", "--output", type=str, default="a.out", help="The binary output file")
-    parser.add_argument("--stack-size", type=int, default=8, help="The binary output file")
+    parser.add_argument("--stack-size", type=int, help="The size of each stack (in KB)")
     parser.add_argument("--lexac-args", type=str, default="", help="Arguments to pass to lexac")
     parser.add_argument("--tl", action="store_true", help="Compile with TL syntax")
     parser.add_argument("--gen-offset", action="store_true", help="Generate offset_functions.h")
+    parser.add_argument("--gstack", action="store_true", help="Use growable stacks")
     
     args = parser.parse_args()
 
-    run_commands(args.source_file, args.output, args.lexac_args, args.output_ll, args.tl, args.gen_offset, args.stack_size)
+    run_commands(args.source_file, args.output, args.lexac_args, args.output_ll, args.tl, args.gen_offset, args.stack_size, args.gstack)
 
 if __name__ == "__main__":
     main()
