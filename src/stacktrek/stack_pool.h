@@ -59,6 +59,13 @@ char* GC_get_main_stack_sp() {
 
 #ifdef USE_GSTACK
 
+#define BLOCK_SIZE (8 * MP_MIB)
+#define STACK_SIZE (BLOCK_SIZE - 64 * MP_KIB)
+#define CACHE_MAX_SIZE 16
+
+static mp_gstack_t *cache = NULL;
+static int cache_size = 0;
+
 void init_stack_pool() {
     init_system_stack_bounds();
 
@@ -72,6 +79,12 @@ void destroy_stack_pool() {
 }
 
 char* get_stack() {
+    if (cache != NULL) {
+        mp_gstack_t* g = cache;
+        cache = cache -> next;
+        --cache_size;
+        return (char*)g;
+    }
     mp_gstack_t* g = mp_gstack_alloc(1, NULL);  // extra_size needs to be at least 1
     if (!g) return NULL;
 
@@ -80,8 +93,13 @@ char* get_stack() {
 
 void free_stack(char* stack) {
     // Locate gstack
-    mp_gstack_t* g = mp_gstack_get(stack);
-    if (g == NULL) return;
+    mp_gstack_t* g = (mp_gstack_t*)((intptr_t)stack / BLOCK_SIZE * BLOCK_SIZE + STACK_SIZE);
+    if (cache_size < CACHE_MAX_SIZE) {
+        g->next = cache;
+        cache = g;
+        ++cache_size;
+        return;
+    }
     mp_gstack_free(g, true);  // delay?
 }
 
@@ -90,20 +108,17 @@ void free_stack_on_abort(char* curr_stack, char* target_stack) {
         // We are currently on the main stack, no need to free
         return;
     }
-    mp_gstack_t* g = mp_gstack_get(curr_stack);
-    char* stack_bottom = (char*) (g->stack + g->stack_size);
-    if (target_stack > stack_bottom && target_stack - stack_bottom <= 8 * MP_MIB) {
+    if ((intptr_t)curr_stack / BLOCK_SIZE == (intptr_t)target_stack / BLOCK_SIZE) {
         // Going to the same stack, no need to free
         return;
     }
-    mp_gstack_free(g, true);
+    free_stack(curr_stack);
 }
 
 // Does not work for an empty stack. But such situation should not happen.
 char* dup_stack(char* sp) {
-    mp_gstack_t* g = mp_gstack_get(sp);
     char* new_stack = get_stack();
-    size_t num_bytes = (char*) g->stack + g->stack_size - sp;
+    size_t num_bytes = STACK_SIZE - (intptr_t)sp % BLOCK_SIZE;
     char* new_sp = new_stack - num_bytes;
     memcpy(new_sp, sp, num_bytes);
     return new_sp;

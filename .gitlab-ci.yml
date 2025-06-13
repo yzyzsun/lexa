@@ -21,24 +21,24 @@ unit-test-job:
 benchmarks-test-job:
   stage: test
   script:
-    - nix --accept-flake-config --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c "dune runtest ./test/benchmarks"
+    - nix --accept-flake-config --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c "dune runtest ./test/benchmarks && GSTACK=true dune runtest ./test/benchmarks"
 
 compile-test-job:
   stage: test
   script:
-    - nix --accept-flake-config --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c "dune runtest ./test/compile"
+    - nix --accept-flake-config --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c "dune runtest ./test/compile && GSTACK=true dune runtest ./test/compile"
 
 integration-test-job:
   stage: test
   script:
-    - nix --accept-flake-config --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c "dune runtest ./test/integration"
+    - nix --accept-flake-config --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c "dune runtest ./test/integration && GSTACK=true dune runtest ./test/integration"
 
 benchmark-quick:
   stage: test
   script:
     - |
       nix --accept-flake-config --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c \
-      "cd scripts && ./bench.py --quick --all-benchmarks --systems lexa lexaz"
+      "cd scripts && ./bench.py --quick --all-benchmarks --systems lexa lexaz && GSTACK=true ./bench.py --quick --all-benchmarks --systems lexa lexaz"
 
 
 # Temporarily disable until the LLVM build issue was resolved.
