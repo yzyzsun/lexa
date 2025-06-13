@@ -44,7 +44,7 @@ def run_commands(source_file, output_file, lexac_args, output_ll, tl, gen_offset
     if stack_size:
         clang_command += ["-DSTACK_SIZE=" + str(stack_size * 1024)]
 
-    if gstack:
+    if gstack or os.environ.get("GSTACK"):
         clang_command += ["-lmprompt", "-DUSE_GSTACK"]
 
     # link-time optimization may seem like a good idea

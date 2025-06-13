@@ -176,13 +176,13 @@ index 87e714a..6508358 100644
 -  add_test( ${test_target} ${test_target})
 -endforeach()
 diff --git a/include/internal/gstack.h b/include/gstack.h
-similarity index 56%
+similarity index 57%
 rename from include/internal/gstack.h
 rename to include/gstack.h
-index 58a040d..49dae37 100644
+index 58a040d..314928b 100644
 --- a/include/internal/gstack.h
 +++ b/include/gstack.h
-@@ -8,25 +8,44 @@
+@@ -8,26 +8,41 @@
  #ifndef MP_GSTACK_H
  #define MP_GSTACK_H
  
@@ -211,6 +211,7 @@ index 58a040d..49dae37 100644
  
  mp_gstack_t* mp_gstack_current(void);             // implemented in <mprompt.c>
  
+-
 +// Stack info.
 +// For security we allocate this separately from the actual stack.
 +// To save an allocation, we reserve `extra_size` space where the
@@ -227,13 +228,10 @@ index 58a040d..49dae37 100644
 +  ssize_t       extra_size;         // size of extra allocated bytes.
 +  uint8_t       extra[1];           // extra allocated (holds the mp_prompt_t structure)
 +};
-+
-+// get gstack header from raw stack
-+mp_gstack_t* mp_gstack_get(char* stack);
- 
  
  /*------------------------------------------------------------------------------
-@@ -52,4 +71,4 @@ static inline void mp_debug_asan_end_switch(bool from_system)       { MP_UNUSED(
+   Support address sanitizer
+@@ -52,4 +67,4 @@ static inline void mp_debug_asan_end_switch(bool from_system)       { MP_UNUSED(
  #endif
  
  
@@ -2058,7 +2056,7 @@ index 2430792..0000000
 -  .cfi_endproc
 \ No newline at end of file
 diff --git a/src/mprompt/gstack.c b/src/mprompt/gstack.c
-index 071f6f1..7c50fe3 100644
+index 071f6f1..c446faa 100644
 --- a/src/mprompt/gstack.c
 +++ b/src/mprompt/gstack.c
 @@ -14,36 +14,12 @@
@@ -2108,7 +2106,15 @@ index 071f6f1..7c50fe3 100644
  static ssize_t os_gstack_exn_guaranteed   = 32 * MP_KIB;   // guaranteed stack size available during an exception unwind (only used on Windows)
  
  #if defined(_MSC_VER) && !defined(NDEBUG)  // gpool a tad smaller in msvc so debug traces work (as the gpool can be placed lower than the system stack)
-@@ -119,7 +95,7 @@ static mp_access_t  mp_gstack_check_access(mp_gstack_t* g, void* address, ssize_
+@@ -102,6 +78,7 @@ static void     mp_gstack_thread_done(void);  // called by hook installed in os
+ 
+ // Used by the gpool implementation
+ static uint8_t* mp_os_mem_reserve(ssize_t size);
++static uint8_t* mp_os_mem_reserve_aligned(ssize_t size, ssize_t align);
+ static void     mp_os_mem_free(uint8_t* p, ssize_t size);
+ static bool     mp_os_mem_commit(uint8_t* start, ssize_t size);
+ 
+@@ -119,7 +96,7 @@ static mp_access_t  mp_gstack_check_access(mp_gstack_t* g, void* address, ssize_
  typedef struct mp_gpool_s mp_gpool_t;
  static uint8_t*     mp_gpool_alloc(uint8_t** stk, ssize_t* stk_size);
  static void         mp_gpool_free(uint8_t* stk);
@@ -2117,6 +2123,14 @@ index 071f6f1..7c50fe3 100644
  
  
  // platform specific definitions are in included files
+@@ -192,7 +169,6 @@ static void mp_gstack_clear_delayed(void) {
+ mp_gstack_t* mp_gstack_alloc(ssize_t extra_size, void** extra)
+ {
+   if (extra != NULL) { *extra = NULL;  }
+-  mp_gstack_init(NULL);  // always check initialization
+   mp_assert(os_page_size != 0);
+   mp_gstack_clear_delayed();  // this might free some gstacks to our local cache
+   
 @@ -224,23 +200,26 @@ mp_gstack_t* mp_gstack_alloc(ssize_t extra_size, void** extra)
  
    // otherwise allocate fresh
@@ -2274,21 +2288,27 @@ index 071f6f1..7c50fe3 100644
      // in the gap
      return MP_NOACCESS_STACK_OVERFLOW;
    }
-@@ -518,6 +426,10 @@ static void mp_gstack_thread_init(void) {
+@@ -517,7 +425,6 @@ static void mp_gstack_thread_init(void) {
+   mp_gstack_os_thread_init();  
  }
  
- 
-+mp_gstack_t* mp_gstack_get(char* stack) {
-+  return mp_gpools_get_gstack((void*) stack);
-+}
-+
+-
  //----------------------------------------------------------------------------------
  // Support address sanitizer
  //----------------------------------------------------------------------------------
 diff --git a/src/mprompt/gstack_gpool.c b/src/mprompt/gstack_gpool.c
-index 567b795..3bd1fe5 100644
+index 567b795..f031621 100644
 --- a/src/mprompt/gstack_gpool.c
 +++ b/src/mprompt/gstack_gpool.c
+@@ -155,7 +155,7 @@ static uint8_t* mp_gpool_alloc(uint8_t** stk, ssize_t* stk_size) {
+ 
+   // allocate a fresh gpool
+   size_t poolsize = os_gpool_max_size;
+-  uint8_t* pool = mp_os_mem_reserve(poolsize);
++  uint8_t* pool = mp_os_mem_reserve_aligned(poolsize, os_gstack_size);
+   if (pool == NULL) return NULL;
+ 
+   // commit on demand in the regular fault handler
 @@ -210,10 +210,11 @@ static void mp_gpool_free(uint8_t* stk) {
  // Is a pointer located in a stack page and thus can be made accessible?
  // This routine is called from exception handler thread while debugging on macOS to verify
@@ -2310,24 +2330,8 @@ index 567b795..3bd1fe5 100644
            if (gpool != NULL) *gpool = gp;
            return (avail == 0 ? MP_NOACCESS_STACK_OVERFLOW : MP_ACCESS);
          }
-@@ -243,3 +245,15 @@ static mp_access_t mp_gpools_check_access(void* p, ssize_t* stack_size, ssize_t*
-   }
-   return MP_NOACCESS;
- }
-+
-+static mp_gstack_t* mp_gpools_get_gstack(void* p) {
-+  for (const mp_gpool_t* gp = mp_gpool_first(); gp != NULL; gp = mp_gpool_next(gp)) {
-+    ptrdiff_t ofs = (uint8_t*)p - (uint8_t*)gp;
-+    if (ofs >= 0 && ofs < gp->size) {   // in the pool?
-+      ptrdiff_t block_ofs = ofs % gp->block_size;
-+      ssize_t stack_size = gp->block_size - gp->gap_size;
-+      return (mp_gstack_t*)((uint8_t*)p - block_ofs + stack_size);  // return the gstack header at stack base.
-+    }
-+  }
-+  return NULL;
-+}
 diff --git a/src/mprompt/gstack_mmap.c b/src/mprompt/gstack_mmap.c
-index a0ea97f..0d9f81d 100644
+index a0ea97f..127d74e 100644
 --- a/src/mprompt/gstack_mmap.c
 +++ b/src/mprompt/gstack_mmap.c
 @@ -17,6 +17,7 @@
@@ -2338,7 +2342,32 @@ index a0ea97f..0d9f81d 100644
  
  // forward declaration 
  static bool mp_mmap_commit_on_demand(void* addr, bool addr_in_other_thread);
-@@ -168,6 +169,8 @@ static bool mp_mmap_initial_commit(uint8_t* stk, ssize_t stk_size, ssize_t* init
+@@ -89,6 +90,24 @@ static uint8_t* mp_os_mem_reserve(ssize_t size) {
+   return mp_os_mmap_reserve(size, PROT_NONE, NULL);
+ }
+ 
++// Reserve aligned virtual memory range 
++static uint8_t* mp_os_mem_reserve_aligned(ssize_t size, ssize_t align) {
++  uint8_t* p = mp_os_mem_reserve(size + align);
++
++  size_t base = (size_t)p;
++  size_t aligned = (base + align - 1) & ~(align - 1);
++  uint8_t* aligned_p = (uint8_t*)aligned;
++
++  // Unmap the front and end regions so that the region is os_gstack_size-aligned
++  size_t prefix = aligned - base;
++  size_t suffix = (base + size + align) - (aligned + size);
++
++  if (prefix > 0) munmap(p, prefix);
++  if (suffix > 0) munmap((void*)(aligned + size), suffix);
++
++  return aligned_p;
++}
++
+ // Free reserved memory
+ static void  mp_os_mem_free(uint8_t* p, ssize_t size) {
+   MP_UNUSED(size);
+@@ -168,6 +187,8 @@ static bool mp_mmap_initial_commit(uint8_t* stk, ssize_t stk_size, ssize_t* init
      }
      if (initial_commit != NULL) *initial_commit = os_gstack_initial_commit;
    }
@@ -2347,7 +2376,7 @@ index a0ea97f..0d9f81d 100644
    return true;
  }
  
-@@ -204,6 +207,7 @@ static uint8_t* mp_gstack_os_alloc(uint8_t** stk, ssize_t* stk_size, ssize_t* in
+@@ -204,6 +225,7 @@ static uint8_t* mp_gstack_os_alloc(uint8_t** stk, ssize_t* stk_size, ssize_t* in
  
  // Free the memory of a gstack
  static void mp_gstack_os_free(uint8_t* full, uint8_t* stk, ssize_t stk_size, ssize_t stk_commit) {
@@ -2355,7 +2384,7 @@ index a0ea97f..0d9f81d 100644
    MP_UNUSED(stk_commit);
    if (!os_use_gpools) {
      mp_os_mem_free(full,os_gstack_size);
-@@ -294,22 +298,13 @@ static struct sigaction mp_sig_bus_prev_act;
+@@ -294,22 +316,13 @@ static struct sigaction mp_sig_bus_prev_act;
  static mp_decl_thread stack_t* mp_sig_stack;  // every thread needs a signal stack in order do demand commit stack pages
  
  static bool mp_mmap_commit_on_demand(void* addr, bool addr_in_other_thread) {
@@ -2381,7 +2410,7 @@ index a0ea97f..0d9f81d 100644
    if (access == MP_ACCESS) {
      // a pointer to a valid gstack in our gpool, make the page read-write
      // mp_trace_message("  segv: unprotect page\n");
-@@ -324,8 +319,11 @@ static bool mp_mmap_commit_on_demand(void* addr, bool addr_in_other_thread) {
+@@ -324,8 +337,11 @@ static bool mp_mmap_commit_on_demand(void* addr, bool addr_in_other_thread) {
      uint8_t* commit_start;
      mp_push(page, extra, &commit_start);
      if (mprotect(commit_start, extra + os_page_size, PROT_READ | PROT_WRITE) == 0) {
