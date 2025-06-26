@@ -3,7 +3,7 @@ import argparse
 import subprocess
 import os
 
-def run_commands(source_file, output_file, lexac_args, output_ll, tl, gen_offset, stack_size, gstack):
+def run_commands(source_file, output_file, lexac_args, output_ll, tl, stack_size, gstack):
     src_path = os.path.abspath(source_file)
 
     if source_file.endswith(".c"):
@@ -44,7 +44,7 @@ def run_commands(source_file, output_file, lexac_args, output_ll, tl, gen_offset
     if stack_size:
         clang_command += ["-DSTACK_SIZE=" + str(stack_size * 1024)]
 
-    if gstack or os.environ.get("GSTACK"):
+    if gstack:
         clang_command += ["-lmprompt", "-DUSE_GSTACK"]
 
     # link-time optimization may seem like a good idea
@@ -54,21 +54,16 @@ def run_commands(source_file, output_file, lexac_args, output_ll, tl, gen_offset
     if lto:
         clang_command += ["-fuse-ld=lld", "-flto"]
 
-    if gen_offset:
-        # We compile twice. The first time we produce the binary for analysis.
-        subprocess.run(clang_command + ["-DNO_OFFSET"], check=True)
-        analyze_command = [os.path.dirname(os.path.realpath(__file__)) + "/src/stackwalk/analyze_binary.py", output_file, "--gen-offset", "--path", os.path.dirname(src_path)]
-        subprocess.run(analyze_command, check=True)
+    # We compile twice. The first time we produce the binary for analysis.
+    subprocess.run(clang_command + ["-DNO_OFFSET"], check=True)
+    analyze_command = [os.path.dirname(os.path.realpath(__file__)) + "/src/stackwalk/analyze_binary.py", output_file, "--gen-offset", "--path", os.path.dirname(src_path)]
+    subprocess.run(analyze_command, check=True)
 
-        # The second time we produce the binary for execution
-        subprocess.run(clang_command, check=True)
-        analyze_command = [os.path.dirname(os.path.realpath(__file__)) + "/src/stackwalk/analyze_binary.py", output_file]
-        subprocess.run(analyze_command, check=True)
+    # The second time we produce the binary for execution
+    subprocess.run(clang_command, check=True)
+    analyze_command = [os.path.dirname(os.path.realpath(__file__)) + "/src/stackwalk/analyze_binary.py", output_file]
+    subprocess.run(analyze_command, check=True)
 
-    else:
-        subprocess.run(clang_command, check=True)
-        analyze_command = [os.path.dirname(os.path.realpath(__file__)) + "/src/stackwalk/analyze_binary.py", output_file]
-        subprocess.run(analyze_command, check=True)
 
 def main():
     parser = argparse.ArgumentParser(description="Compile lexa programs.")
@@ -78,12 +73,11 @@ def main():
     parser.add_argument("--stack-size", type=int, help="The size of each stack (in KB)")
     parser.add_argument("--lexac-args", type=str, default="", help="Arguments to pass to lexac")
     parser.add_argument("--tl", action="store_true", help="Compile with TL syntax")
-    parser.add_argument("--gen-offset", action="store_true", help="Generate offset_functions.h")
-    parser.add_argument("--gstack", action="store_true", help="Use growable stacks")
+    parser.add_argument("--gstack", action="store_true", default=True, help="Use growable stacks")
     
     args = parser.parse_args()
 
-    run_commands(args.source_file, args.output, args.lexac_args, args.output_ll, args.tl, args.gen_offset, args.stack_size, args.gstack)
+    run_commands(args.source_file, args.output, args.lexac_args, args.output_ll, args.tl, args.stack_size, args.gstack)
 
 if __name__ == "__main__":
     main()

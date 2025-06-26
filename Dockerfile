@@ -7,10 +7,11 @@ RUN nix --extra-experimental-features "nix-command flakes" build .#clang_18_pres
 RUN nix --extra-experimental-features "nix-command flakes" build nixpkgs#texliveSmall --cores 16
 RUN nix --extra-experimental-features "nix-command flakes" build .#effect_latest --cores 16
 RUN nix --extra-experimental-features "nix-command flakes" develop -j8 --cores 2
-RUN nix --extra-experimental-features "nix-command flakes" develop --command bash -c "opam init --disable-sandboxing && eval $(opam env) && opam switch create -y 5.3.0+trunk && opam install -y multicont"
+RUN nix --extra-experimental-features "nix-command flakes" develop --command bash -c "opam init --disable-sandboxing && eval $(opam env) && opam switch create -y 5.3.0 && opam install -y multicont"
 RUN nix-env -iA nixpkgs.util-linux nixpkgs.time
 
 COPY src src
+COPY passes passes
 COPY test test
 COPY benchmarks benchmarks
 COPY casestudies casestudies
@@ -22,7 +23,7 @@ COPY LICENSE LICENSE
 COPY dune-project dune-project
 
 RUN echo -e '#!/usr/bin/env bash\n\
-nix --extra-experimental-features "nix-command flakes" develop' > /entrypoint.sh
+nix --extra-experimental-features "nix-command flakes" --accept-flake-config develop' > /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

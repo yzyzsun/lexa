@@ -2,23 +2,23 @@ import os
 import psutil
 import pwd
 
-# On my machine with i5-13600K, the 6 performance cores
-# uses hyperthreading, so we have 6 physical cores as follow
-with open('/proc/cpuinfo') as f:
-    for line in f:
-        if 'model name' in line:
-            cpu_model = line.split(': ')[1].strip()
-            break
-if "i5-13600K" in cpu_model:
-    bench_CPUs = ["0", "2", "4", "6", "8", "10"]
-elif "7700X" in cpu_model:
-    bench_CPUs = ["0", "1", "2", "3", "4", "5"]
-else:
-    # list all the physical cores
-    bench_CPUs = list(range(psutil.cpu_count()))
-    if len(bench_CPUs) > 4:
-        # do not use too much CI resources
-        bench_CPUs = bench_CPUs[:4]
+def get_smt_groups():
+    import subprocess
+    from collections import defaultdict
+    result = subprocess.run(["lscpu", "-e=CPU,Core,Socket"], capture_output=True, text=True)
+    lines = result.stdout.strip().splitlines()[1:]  # skip header
+
+    core_map = defaultdict(list)
+    for line in lines:
+        cpu_id, core_id, socket_id = map(int, line.strip().split())
+        key = (socket_id, core_id)
+        core_map[key].append(cpu_id)
+
+    # pick one core from each SMT group
+    return [min(cpus) for cpus in core_map.values()]
+
+NUM_CPUs = 4
+bench_CPUs = get_smt_groups()[:NUM_CPUs]  # limit to the first few cores
 
 benchmarks = ["countdown", "fibonacci_recursive", "product_early", "iterator", "nqueens", "generator", "tree_explore", "triples", "resume_nontail", "parsing_dollars", "handler_sieve", "resume_nontail_2", "scheduler", "interruptible_iterator"]
 platforms = ["lexa", "lexaz", "effekt", "koka_named", "koka", "ocaml"]
@@ -40,13 +40,13 @@ for benchmark in benchmarks:
         "build": LEXA_BUILD_COMMAND, "run": LEXA_RUN_COMMAND,
     }
 
-    LEXAZ_BUILD_COMMAND = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main --gen-offset'"
+    LEXAZ_BUILD_COMMAND = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main'"
     LEXAZ_RUN_COMMAND = "./main {IN}"
     config[("lexaz", benchmark)] = {
         "build": LEXAZ_BUILD_COMMAND, "run": LEXAZ_RUN_COMMAND,
     }
 
-    OCAML_BUILD_COMMAND = "flock /tmp/opam_lockfile -c 'opam exec --switch=5.3.0+trunk -- ocamlopt -O3 -o main -I $(opam var lib)/multicont multicont.cmxa main.ml -o main'"
+    OCAML_BUILD_COMMAND = "flock /tmp/opam_lockfile -c 'opam exec --switch=5.3.0 -- ocamlopt -O3 -o main -I $(opam var lib)/multicont multicont.cmxa main.ml -o main'"
     OCAML_RUN_COMMAND = "./main {IN}"
     config[("ocaml", benchmark)] = {
         "build": OCAML_BUILD_COMMAND, "run": OCAML_RUN_COMMAND,
@@ -85,16 +85,12 @@ config[("effekt", "interruptible_iterator")]["run"] = "node --eval \"require(\'\
 config[("effekt", "interruptible_iterator")]["adjust_warmup"] = True
 config[("effekt", "two_threads_ackermann")]["build"] = "effekt_latest.sh --backend chez-lift --compile main.effekt"
 config[("effekt", "two_threads_ackermann")]["run"] = "scheme --script out/main.ss {IN} 0"
-config[("lexa", "two_threads_ackermann")]["build"] = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main --stack-size 1024'"
-config[("lexaz", "two_threads_ackermann")]["build"] = f"flock /tmp/dune_lockfile_{username} -c 'lexa main.lx -o main --gen-offset --stack-size 1024'"
 
 # Known Failures
 config[("koka", "interruptible_iterator")]["fail_reason"] = "Koka type system limitation"
 config[("koka_named", "scheduler")]["fail_reason"] = "Koka internal compiler error"
 config[("koka_named", "two_threads_ackermann")]["fail_reason"] = "Koka internal compiler error"
 config[("effekt", "bezout")]["fail_reason"] = "Stack Overflow"
-# config[("koka_named", "concurrent_search")]["fail_reason"] = "Koka internal compiler error"
-# config[("effekt", "concurrent_search")]["fail_reason"] = "MLton typing error"
 config[("lexaz", "scheduler")]["fail_reason"] = "Not implemented"
 config[("lexaz", "interruptible_iterator")]["fail_reason"] = "Not implemented"
 config[("lexaz", "resume_nontail_2")]["fail_reason"] = "Not implemented"

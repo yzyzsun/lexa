@@ -12,7 +12,9 @@ import argparse
 import pandas as pd
 import numpy as np
 
-from lexaz_config import config, platforms, benchmarks, bench_CPUs
+import sys
+sys.path.append("..")
+from config import config, bench_CPUs
 
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype'] = 42
@@ -71,7 +73,7 @@ def plot_df(df, dirname):
     plt.savefig(dirname + filename, dpi=600)
 
 
-def main():
+def main(config):
     # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--plot-only", type=str, default=None)
@@ -83,6 +85,7 @@ def main():
         result_txt = "plotting_runtimes.txt"
         result_csv = "plotting_runtimes.csv"
 
+        config = {key: value for key, value in config.items() if key[0] in ["lexa", "lexaz"] and key[1] == "two_threads_ackermann" and key[1] == "two_threads_ackermann"}
         # Build
         config_tups = [(platform, benchmark, 0, params) for (platform, benchmark), params in config.items()]
         with ThreadPoolExecutor(max_workers=len(bench_CPUs)) as executor:
@@ -123,4 +126,4 @@ def main():
     plot_df(df, args.output_dir)
 
 if __name__ == "__main__":
-    main()
+    main(config)

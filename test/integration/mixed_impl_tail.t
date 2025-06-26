@@ -1,4 +1,4 @@
-  $ lexa ../lexa_snippets/mixed_impl_tail/mixed_impl_tail.lx -o main --gen-offset &> /dev/null
+  $ lexa ../lexa_snippets/mixed_impl_tail/mixed_impl_tail.lx -o main &> /dev/null
   $ ./main
   0
   0

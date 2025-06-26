@@ -18,6 +18,8 @@ def main():
     parser.add_argument("--all-higher-order-benchmarks", action="store_true")
     parser.add_argument("--all-zero-cost-benchmarks", action="store_true")
     args = parser.parse_args()
+    if (args.systems and "," in args.systems[0]) or (args.benchmarks and "," in args.benchmarks[0]):
+        raise ValueError("Please provide --systems or --benchmarks as space-separated lists, not comma-separated.")
 
     config_tups = [(platform, benchmark, params) for (platform, benchmark), params in config.items()]
     config_tups.sort(key=lambda x: (platforms.index(x[0]), benchmarks.index(x[1].strip("_z"))))
@@ -59,7 +61,7 @@ def main():
         if "fail_reason" in params:
             return (platform, benchmark, (None, None))
         (mean_mili, std_mili) = build_and_bench(f"../benchmarks/{platform}/{benchmark}", params["build"], params["run"], params["bench_input"], adjust_warmup=params.get("adjust_warmup", False), quick=args.quick)
-        if "scale" in params:
+        if "scale" in params and mean_mili and std_mili:
             mean_mili *= params["scale"]
             std_mili *= params["scale"]
         return (platform, benchmark, (mean_mili, std_mili))
@@ -82,14 +84,16 @@ def main():
         print(pivoted_df)
     if any(df["mean_mili"].isna()):
         rt_code = 0
+        msg = "OKAY. SOME BENCHMARKS FAILED AS EXPECTED."
         for platform, benchmark, mean_mili, std_mili in results:
             if mean_mili is None:
                 if config[(platform, benchmark)].get("fail_reason"):
                     print(f"{platform} {benchmark} failed as expected: {config[(platform, benchmark)]['fail_reason']}")
                 else:
                     print(f"{platform} {benchmark} failed unexpectedly")
+                    msg = "SOME BENCHMARKS FAILED UNEXPECTEDLY!!!"
                     rt_code = 1
-        print("SOME BENCHMARKS FAILED")
+        print(msg)
         import sys
         sys.exit(rt_code)
 
