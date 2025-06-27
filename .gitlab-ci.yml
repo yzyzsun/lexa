@@ -51,6 +51,7 @@ nightly-bench-job-intel:
     - |
       nix --accept-flake-config --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c \
       "opam init; \
+      opam update; \
       opam switch create 5.3.0; \
       opam install -y multicont; \
       cd scripts && \
@@ -66,6 +67,7 @@ nightly-bench-job-amd:
     - |
       nix --accept-flake-config --extra-experimental-features "nix-command flakes" develop --print-build-logs --verbose --command bash -c \
       "opam init; \
+      opam update; \
       opam switch create 5.3.0; \
       opam install -y multicont; \
       cd scripts && \
