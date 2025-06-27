@@ -1,5 +1,5 @@
 effect Yield {
-  dcl yield
+  yield
 }
 
 def make(n) {

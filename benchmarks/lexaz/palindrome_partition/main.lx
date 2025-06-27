@@ -1,5 +1,5 @@
 effectz Abort {
-    dcl invalid_arg: () -> unit
+    invalid_arg: () -> unit
 }
 
 def partition [; abort_l: Abort] (s: string): int {

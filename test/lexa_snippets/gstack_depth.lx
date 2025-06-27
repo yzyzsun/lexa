@@ -1,5 +1,5 @@
 effect E {
-    dcl eff: (int) -> int
+    eff: (int) -> int
 }
 
 def loop [; e: E] (i: int): int {

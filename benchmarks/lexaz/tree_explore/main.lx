@@ -1,5 +1,5 @@
 effectz Choice {
-  dcl choose: () -> bool
+  choose: () -> bool
 }
 
 type list =

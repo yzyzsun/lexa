@@ -42,7 +42,6 @@
 %token IF
 %token THEN
 %token ELSE
-%token DCL
 %token EFFECT
 %token EXC
 %token HDL1
@@ -109,7 +108,7 @@ top_level:
   | OPEN_C_HEADER filename = STRING { TLOpenC filename }
       
 effect_sig:
-  | DCL v = VAR { v }
+  | v = VAR { v }
 
 hdl_anno:
   | DEF { HDef }

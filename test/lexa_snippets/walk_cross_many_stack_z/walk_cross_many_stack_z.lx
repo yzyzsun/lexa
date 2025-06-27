@@ -1,21 +1,21 @@
 effectz E1 {
-    dcl op1: () -> int
+    op1: () -> int
 }
 
 effectz E2 {
-    dcl op2: () -> int
+    op2: () -> int
 }
 
 effectz E3 {
-    dcl op3: () -> int
+    op3: () -> int
 }
 
 effectz E4 {
-    dcl op4: () -> int
+    op4: () -> int
 }
 
 effectz E5 {
-    dcl op5: () -> int
+    op5: () -> int
 }
 
 def main [;] (): int {

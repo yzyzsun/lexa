@@ -1,5 +1,5 @@
 effect E {
-    dcl op: (int, int) -> int
+    op: (int, int) -> int
 }
 
 def main(): int {

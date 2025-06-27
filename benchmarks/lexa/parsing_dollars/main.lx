@@ -1,13 +1,13 @@
 effect Read {
-    dcl read: () -> int
+    read: () -> int
 }
 
 effect Emit {
-    dcl emit: (int) -> unit
+    emit: (int) -> unit
 }
 
 effect Stop {
-    dcl stop: () -> int
+    stop: () -> int
 }
 
 def newline(): int {

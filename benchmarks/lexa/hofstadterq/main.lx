@@ -1,5 +1,5 @@
 effect Abort {
-  dcl invalid_arg: (int) -> int
+  invalid_arg: (int) -> int
 }
 
 def hofstadterq [; abort: Abort](n: int): int {

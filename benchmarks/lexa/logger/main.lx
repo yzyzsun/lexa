@@ -1,5 +1,5 @@
 effect Logging {
-    dcl lognum: (int) -> int
+    lognum: (int) -> int
 }
 
 def countdown [; logger: Logging] (i: int): int {

@@ -1,14 +1,14 @@
 effect Process {
-    dcl yield
-    dcl fork
+    yield
+    fork
 }
 
 effect Tick {
-    dcl tick
+    tick
 }
 
 effect Exn {
-    dcl throw
+    throw
 }
 
 def queueDeqExn(q, exn_stub) {

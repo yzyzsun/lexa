@@ -1,5 +1,5 @@
 effect Choose {
-    dcl choose: (int, tree, tree) -> tree
+    choose: (int, tree, tree) -> tree
 }
 
 type tree = 

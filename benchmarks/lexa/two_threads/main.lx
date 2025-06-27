@@ -1,5 +1,5 @@
 effect Thread {
-    dcl yield
+    yield
 }
 
 def run(n) {

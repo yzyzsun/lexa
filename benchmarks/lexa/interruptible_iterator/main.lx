@@ -1,11 +1,11 @@
 effect Yield {
-    dcl yield: () -> (<> [; behead_stub: Behead, replace_stub: Replace] (int) -> unit)
+    yield: () -> (<> [; behead_stub: Behead, replace_stub: Replace] (int) -> unit)
 }
 effect Replace {
-    dcl replace: (int) -> unit
+    replace: (int) -> unit
 }
 effect Behead {
-    dcl behead: () -> unit
+    behead: () -> unit
 }
 
 def loop [; yield_stub: Yield, behead_stub: Behead] (it: node_t::[int]): node_t::[int] {

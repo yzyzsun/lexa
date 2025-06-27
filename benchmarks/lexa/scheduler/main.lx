@@ -1,14 +1,14 @@
 effect Process {
-    dcl yield: () -> unit
-    dcl fork: (<> [a; process_stub: Process] () -> unit) -> unit
+    yield: () -> unit
+    fork: (<> [a; process_stub: Process] () -> unit) -> unit
 }
 
 effect Tick {
-    dcl tick: () -> unit
+    tick: () -> unit
 }
 
 effect Exn {
-    dcl throw: () -> unit
+    throw: () -> unit
 }
 
 def queueDeqExn [a; exn_stub: Exn] (q: queue_t::[cont <a; > unit -> unit]): (cont <a; > unit -> unit) {

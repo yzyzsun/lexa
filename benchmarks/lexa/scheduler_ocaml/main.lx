@@ -1,6 +1,6 @@
 effect Scheduler {
-    dcl yield
-    dcl fork
+    yield
+    fork
 }
 
 def spawn(job_closure, suspend_closure, runnext_closure) {

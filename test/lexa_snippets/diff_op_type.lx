@@ -1,6 +1,6 @@
 effect State {
-    dcl get: (int) -> int
-    dcl set: (int) -> int
+    get: (int) -> int
+    set: (int) -> int
 }
 
 def countdown [; state_stub: State] (): int {

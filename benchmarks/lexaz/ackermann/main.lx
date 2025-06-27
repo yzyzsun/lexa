@@ -1,5 +1,5 @@
 effectz Abort {
-  dcl invalid_arg: (int, int) -> int
+  invalid_arg: (int, int) -> int
 }
 
 def ackermann [; abort_l: Abort] (m: int, n: int): int {

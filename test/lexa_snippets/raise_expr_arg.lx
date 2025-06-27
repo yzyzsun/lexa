@@ -1,5 +1,5 @@
 effect Choose {
-    dcl choose: (ref int) -> int
+    choose: (ref int) -> int
 }
 
 def main(): int {

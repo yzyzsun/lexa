@@ -1,6 +1,6 @@
 effectz Choice {
-    dcl flip: () -> int
-    dcl fail: () -> int
+    flip: () -> int
+    fail: () -> int
 }
 
 def choice [; choice_l: Choice](n: int): int {

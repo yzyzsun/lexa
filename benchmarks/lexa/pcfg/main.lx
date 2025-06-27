@@ -1,7 +1,7 @@
 effect Prob {
-  dcl choose
-  dcl sampleCategorical
-  dcl fail
+  choose
+  sampleCategorical
+  fail
 }
 
 def parse(prob_stub, tokens, symbols) {

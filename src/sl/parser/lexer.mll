@@ -58,7 +58,6 @@ rule read =
   | "if" { IF }
   | "then" { THEN }
   | "else" { ELSE }
-  | "dcl" { DCL }
   | "effect" { EFFECT }
   | "exc" { EXC }
   | "." { DOT }

@@ -1,5 +1,5 @@
 effect Abort {
-  dcl invalid_denominator: () -> int
+  invalid_denominator: () -> int
 }
 
 def mod [; abort_l: Abort] (a: int, b: int): int {

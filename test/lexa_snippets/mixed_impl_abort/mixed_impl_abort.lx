@@ -1,13 +1,13 @@
 effect E {
-    dcl op: () -> int
+    op: () -> int
 }
 
 effect E2 {
-    dcl op2: () -> int
+    op2: () -> int
 }
 
 effectz Ez {
-    dcl opz: () -> int
+    opz: () -> int
 }
 
 def main [;] (): int {

@@ -1,0 +1,46 @@
+effect State {
+    get: () -> int
+    set: (int) -> unit
+}
+
+effectz End {
+  end: (int) -> int
+}
+
+def countdown [; state_stub: State, end_stub: End] (): int {
+    val i = raise state_stub.get();
+    if i == 0 then
+        raise end_stub.end(i)
+    else (
+        raise state_stub.set(i-1);
+        countdown:[; state_stub, end_stub]()
+    )
+}
+
+def run(n: int): int {
+    val s = newref {n};
+    handle <> {
+        handle <end_stub> {
+            countdown:[; state_stub, end_stub]()
+        } with state_stub: State {
+            def get() { 
+                s[0]
+            }
+
+            def set(i) {
+                s[0] := i;
+                0
+            }
+        }
+    } with end_stub: End {
+        exc end(i) {
+            ~printInt(i);
+            0
+        }
+    }
+}
+
+def main(): int {
+    ~printInt(run(~readInt()));
+    0
+}

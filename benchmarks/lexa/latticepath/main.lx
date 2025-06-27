@@ -1,5 +1,5 @@
 effect Abort {
-  dcl invalid_arg: () -> int
+  invalid_arg: () -> int
 }
 
 def latticepaths [; abort_l: Abort] (x1: int, y1: int, x2: int, y2: int, xbad: int, ybad: int): int {

@@ -1,5 +1,5 @@
 effectz Operator {
-    dcl operator: (int) -> int
+    operator: (int) -> int
 }
 
 def loop [;op_label: Operator](i: int, s: int): int {

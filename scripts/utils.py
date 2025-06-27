@@ -43,15 +43,18 @@ def build(path, build_command):
         return False
     return True
 
-def bench(path, run_command, input, adjust_warmup, quick=False):
+def bench(path, run_command, input, adjust_warmup, quick=False, precise=False):
     thread_id = int(current_thread().getName().split('_')[1])
     CPU = bench_CPUs[thread_id]
     print_message(f"Benchmarking {path}")
     if quick:
         hyperfine_cmd = f"hyperfine --shell none --warmup 0 -M 2 --time-unit millisecond '{run_command.format(IN=input)}'"
     else:
-        hyperfine_cmd = f"hyperfine --shell none --warmup 5 --time-unit millisecond '{run_command.format(IN=input)}'"
-    # NB: use five spaces so that the command can be parsed out later
+        if precise:
+            hyperfine_cmd = f"hyperfine --shell none --warmup 5 --min-runs 30 --time-unit millisecond '{run_command.format(IN=input)}'"
+        else:
+            hyperfine_cmd = f"hyperfine --shell none --warmup 5 --time-unit millisecond '{run_command.format(IN=input)}'"
+
     taskset_cmd = f"taskset -c {CPU} {hyperfine_cmd} "
     try:
         result = run_processe(taskset_cmd, path)

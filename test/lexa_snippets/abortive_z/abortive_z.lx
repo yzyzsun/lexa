@@ -1,5 +1,5 @@
 effectz E {
-    dcl op: () -> int
+    op: () -> int
 }
 
 def main [;] (): int {
