@@ -1,5 +1,5 @@
 effectz Abort {
-  dcl invalid_arg: (int) -> int
+  invalid_arg: (int) -> int
 }
 
 def golomb [; abort_l: Abort] (n: int): int {

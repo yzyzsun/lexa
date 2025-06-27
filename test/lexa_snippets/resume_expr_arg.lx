@@ -1,7 +1,7 @@
 open "../../stdlib/option.lx"
 
 effect E {
-    dcl e: (int) -> int
+    e: (int) -> int
 }
 
 def main(): int {

@@ -1,5 +1,5 @@
 effect Operator {
-    dcl operator: (int) -> int
+    operator: (int) -> int
 }
 
 def loop [;operator_stub: Operator](i: int, s: int): int {

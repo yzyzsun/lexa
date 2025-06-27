@@ -1,6 +1,6 @@
 effectz Search {
-    dcl pick: (int) -> int
-    dcl fail: () -> int
+    pick: (int) -> int
+    fail: () -> int
 }
 
 def safe(queen: int, diag: int, xs: node_t::[int]): bool {

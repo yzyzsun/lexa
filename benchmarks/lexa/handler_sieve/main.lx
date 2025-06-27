@@ -1,5 +1,5 @@
 effect Prime {
-    dcl prime: (int) -> bool
+    prime: (int) -> bool
 }
 
 def primes [; prime_stub: Prime] (i: int, n: int, a: int): int {

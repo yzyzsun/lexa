@@ -17,8 +17,13 @@ def get_smt_groups():
     # pick one core from each SMT group
     return [min(cpus) for cpus in core_map.values()]
 
-NUM_CPUs = 4
-bench_CPUs = get_smt_groups()[:NUM_CPUs]  # limit to the first few cores
+# Get NUM_CPUS from the environment or set a default
+try:
+    NUM_CPUS = int(os.environ.get("NUM_CPUS", 4))
+except ValueError:
+    print("Invalid NUM_CPUS value, defaulting to 4")
+    NUM_CPUS = 4
+bench_CPUs = get_smt_groups()[:NUM_CPUS]  # limit to the first few cores
 
 benchmarks = ["countdown", "fibonacci_recursive", "product_early", "iterator", "nqueens", "generator", "tree_explore", "triples", "resume_nontail", "parsing_dollars", "handler_sieve", "resume_nontail_2", "scheduler", "interruptible_iterator"]
 platforms = ["lexa", "lexaz", "effekt", "koka_named", "koka", "ocaml"]

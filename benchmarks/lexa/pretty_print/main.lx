@@ -1,9 +1,9 @@
 effect Emit {
-    dcl emit
+    emit
 }
 
 effect Value {
-    dcl get
+    get
 }
 
 def constant() {

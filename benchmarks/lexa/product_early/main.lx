@@ -1,6 +1,6 @@
 
 effect Abort {
-  dcl done: (int) -> int
+  done: (int) -> int
 }
 
 def product [; abort_stub: Abort] (xs: node_t::[int]): int {

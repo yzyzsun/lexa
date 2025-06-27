@@ -1,5 +1,5 @@
 effectz Prime {
-    dcl prime: (int) -> bool
+    prime: (int) -> bool
 }
 
 def primes [; prime_l: Prime] (i: int, n: int, a: int): int {

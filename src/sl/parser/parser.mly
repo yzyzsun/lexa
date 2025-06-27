@@ -44,7 +44,6 @@
 %token IF
 %token THEN
 %token ELSE
-%token DCL
 %token EFFECT
 %token EXC
 %token HDL1
@@ -190,7 +189,7 @@ top_level:
   | OPEN_C_HEADER filename = STRING { TLOpenC filename }
       
 effect_sig:
-  | DCL v = VAR COLON LPAREN inputs_ty = separated_list(COMMA, type_exp) RPAREN RARROW return_ty = type_exp 
+  | v = VAR COLON LPAREN inputs_ty = separated_list(COMMA, type_exp) RPAREN RARROW return_ty = type_exp 
     { (v, (inputs_ty, return_ty)) }
 
 hdl_anno:

@@ -1,5 +1,5 @@
 effectz Emit {
-    dcl emit: (int) -> unit
+    emit: (int) -> unit
 }
 
 type list = 

@@ -1,5 +1,5 @@
 effect Abort {
-  dcl invalid_arg: (int) -> int
+  invalid_arg: (int) -> int
 }
 
 def catalan_loop [; abort_l: Abort] (i: int, n: int, acc: int): int {

@@ -77,7 +77,6 @@ def main(config):
     # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--plot-only", type=str, default=None)
-    parser.add_argument("--quick", action="store_true")
     parser.add_argument("--output-dir", type=str, default='./')
     args = parser.parse_args()
 
@@ -97,8 +96,7 @@ def main(config):
 
         # Run for sequence of inputs
         results = []
-        inputs = [
-            i for i in range(10000, 80000, 5000)]
+        inputs = [i for i in range(10000, 120000, 5000)]
         config_tups = [(platform, benchmark, i, params) for (platform, benchmark), params in config.items() for i in inputs]
         with ThreadPoolExecutor(max_workers=len(bench_CPUs)) as executor:
             results_generator = executor.map(
@@ -106,7 +104,7 @@ def main(config):
                     (c[0], 
                     c[1],
                     c[2],
-                    bench(f"../../benchmarks/{c[0]}/{c[1]}", c[3]["run"], c[2], c[3].get("adjust_warmup", False), quick=args.quick)
+                    bench(f"../../benchmarks/{c[0]}/{c[1]}", c[3]["run"], c[2], c[3].get("adjust_warmup", False), precise=True)
                         * c[3].get("scale", 1))
                     if "fail_reason" not in c[3] else (c[0], c[1], c[2], None),
                 config_tups

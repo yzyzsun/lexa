@@ -1,6 +1,6 @@
 
 effectz Abort {
-  dcl done: (int) -> int
+  done: (int) -> int
 }
 
 def product [; abort_l: Abort] (xs: node_t::[int]): int {

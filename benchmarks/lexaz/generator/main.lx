@@ -1,5 +1,5 @@
 effectz Yield {
-    dcl yield: (int) -> generator
+    yield: (int) -> generator
 }
 
 type tree = 

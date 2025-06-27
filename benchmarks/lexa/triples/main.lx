@@ -1,6 +1,6 @@
 effect Choice {
-    dcl flip: () -> int
-    dcl fail: () -> int
+    flip: () -> int
+    fail: () -> int
 }
 
 def choice [; choice_stub: Choice](n: int): int {

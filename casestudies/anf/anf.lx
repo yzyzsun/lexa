@@ -19,7 +19,7 @@ type stmt =
 
 // utility effect
 effect Fresh {
-    dcl fresh
+    fresh
 }
 
 def fresh_vars(prog) {
@@ -36,7 +36,7 @@ def fresh_vars(prog) {
 
 // the bind effect
 effect Bind {
-    dcl bind
+    bind
 }
 
 def bind_here(prog, fresh_stub) {

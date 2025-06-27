@@ -1,5 +1,5 @@
 effect Thread {
-    dcl yield: () -> int
+    yield: () -> int
 }
 
 def ackermann [; thread: Thread] (m: int, n: int, quota: ref int): int {

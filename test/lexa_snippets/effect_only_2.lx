@@ -1,5 +1,5 @@
 effect E {
-    dcl plus_42: (int) -> int
+    plus_42: (int) -> int
 }
 
 def f(): int {
