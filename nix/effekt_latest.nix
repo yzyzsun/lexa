@@ -2,15 +2,15 @@
 
 mkSbtDerivation.${system} {
     pname = "effekt";
-    version = "07_25_2024";
+    version = "v0.39.0";
 
-    depsSha256 = "sha256-PF+t+rbWYt9NOiWVO9B7Ey8/TGtnj9ZTZkiMoWodf6A=";
+    depsSha256 = "sha256-5eoRSnuckJXED8RuXoE6s/HJetT3nijgiUIYE49CWtg=";
 
     src = (pkgs.fetchFromGitHub {
     owner = "effekt-lang";
     repo = "effekt";
-    rev = "7b7629c942e2809cab08b0122e244ba3bcbb9410";
-    sha256 = "sha256-/VQUsXpkPLGcin2UWgvo2sV8bDopSfAn8dewCBu4pkw="; 
+    rev = "v0.39.0";
+    sha256 = "sha256-dn/eq4WdTMpCgeGUyQNBZJjpVzvV7q0F2zwv2UHp7Bg="; 
     fetchSubmodules = true;
     }).overrideAttrs (_: { #https://github.com/NixOS/nixpkgs/issues/195117#issuecomment-1410398050
     GIT_CONFIG_COUNT = 1;
