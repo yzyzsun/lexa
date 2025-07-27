@@ -1,16 +1,43 @@
-{ stdenv, fetchurl, pkgsHostTarget, cmake, makeWrapper, mkDerivation, fetchFromGitHub
-, alex, array, base, bytestring, cond, containers, directory, extra
-, filepath, hpack, hspec, hspec-core, isocline, json, lib, mtl
-, parsec, process, regex-compat, text, time, FloatingHex, aeson
-, async, co-log-core, hashable, lens, lsp, network, network-simple, text-rope }:
+{
+  stdenv,
+  pkgsHostTarget,
+  cmake,
+  makeWrapper,
+  mkDerivation,
+  fetchFromGitHub,
+  alex,
+  lib,
+  hpack,
+  aeson,
+  array,
+  async,
+  base,
+  bytestring,
+  co-log-core,
+  cond,
+  containers,
+  directory,
+  FloatingHex,
+  isocline,
+  lens,
+  lsp_2_4_0_0,
+  mtl,
+  network,
+  network-simple,
+  parsec,
+  process,
+  text,
+  text-rope,
+  time,
+}:
 
 let
-  version = "3.1.1";
+  version = "3.2.2";
   src = fetchFromGitHub {
     owner = "koka-lang";
     repo = "koka";
     rev = "v${version}";
-    sha256 = "sha256-Go0Qm532RpD/T2vFisYBZYPKFK/phibZrBS03AF1ZoE=";
+    hash = "sha256-k1N085NoAlxewAhg5UDMo7IUf2A6gCTc9k5MWMbU0d0=";
     fetchSubmodules = true;
   };
   kklib = stdenv.mkDerivation {
@@ -18,7 +45,10 @@ let
     inherit version;
     src = "${src}/kklib";
     nativeBuildInputs = [ cmake ];
-    outputs = [ "out" "dev" ];
+    outputs = [
+      "out"
+      "dev"
+    ];
     postInstall = ''
       mkdir -p ''${!outputDev}/share/koka/v${version}
       cp -a ../../kklib ''${!outputDev}/share/koka/v${version}
@@ -39,11 +69,33 @@ mkDerivation rec {
   isExecutable = true;
   libraryToolDepends = [ hpack ];
   executableHaskellDepends = [
-    array base bytestring cond containers directory isocline mtl
-    parsec process text time kklib FloatingHex aeson async
-    co-log-core hashable lens lsp network network-simple text-rope
+    aeson
+    array
+    async
+    base
+    bytestring
+    co-log-core
+    cond
+    containers
+    directory
+    FloatingHex
+    isocline
+    lens
+    lsp_2_4_0_0
+    mtl
+    network
+    network-simple
+    parsec
+    process
+    text
+    text-rope
+    time
+    kklib
   ];
-  executableToolDepends = [ alex makeWrapper ];
+  executableToolDepends = [
+    alex
+    makeWrapper
+  ];
   postInstall = ''
     mkdir -p $out/share/koka/v${version}
     cp -a lib $out/share/koka/v${version}
@@ -54,16 +106,12 @@ mkDerivation rec {
   '';
   doCheck = false;
   prePatch = "hpack";
-
-  patches = [ 
-    (fetchurl {
-      url = "https://patch-diff.githubusercontent.com/raw/koka-lang/koka/pull/560.patch";
-      sha256 = "sha256-kf+lfGqXjiREeDTe2iFCxQ9h2PFbN0JCbCNO/6aSaXc=";
-    })
-   ];
   description = "Koka language compiler and interpreter";
   homepage = "https://github.com/koka-lang/koka";
   changelog = "${homepage}/blob/master/doc/spec/news.mdk";
   license = lib.licenses.asl20;
-  maintainers = with lib.maintainers; [ siraben sternenseemann ];
+  maintainers = with lib.maintainers; [
+    siraben
+    sternenseemann
+  ];
 }

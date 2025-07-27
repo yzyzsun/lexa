@@ -33,7 +33,9 @@
 
         
       in {
-        packages.koka_3_1_1 = pkgs-unstable.haskellPackages.callPackage ./nix/koka.nix { };
+        packages.koka_latest = pkgs-unstable.haskellPackages.callPackage ./nix/koka_latest.nix { 
+          lsp_2_4_0_0 = pkgs-unstable.haskellPackages.lsp;
+        };
         packages.clang_18_preserve_none = pkgs.callPackage ./nix/clang18.nix { };
         packages.effect_latest = pkgs.callPackage ./nix/effekt_latest.nix { mkSbtDerivation = sbt.mkSbtDerivation;};
         packages.bdwgc = pkgs.callPackage ./nix/bdwgc.nix { };
@@ -64,7 +66,7 @@
             nodejs-slim_21
             racket
             self.packages.${system}.effect_latest
-            self.packages.${system}.koka_3_1_1
+            self.packages.${system}.koka_latest
 
             (python3.withPackages (ps: with ps; [
               psutil
