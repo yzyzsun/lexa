@@ -5,7 +5,7 @@ import ref
 
 effect Abort[A](): A
 
-def partition(s: String): Int / Abort = {
+def partition(s: String): Int / Abort[Int] = {
   var res = ref(0);
   backtrack(0, s, res)
   res.get
@@ -23,9 +23,9 @@ def is_palindrome(s: String, start: Int, end: Int): Bool = {
 }
 
 
-def backtrack(index: Int, s: String, res: Ref[Int]): Unit / Abort = {
+def backtrack(index: Int, s: String, res: Ref[Int]): Unit / Abort[Int] = {
 
-  def backtrack_loop(i: Int, s: String, index: Int, res: Ref[Int]): Unit / Abort = 
+  def backtrack_loop(i: Int, s: String, index: Int, res: Ref[Int]): Unit / Abort[Int] = 
     if (i >= s.length) {
       ()
     } else {
@@ -36,7 +36,7 @@ def backtrack(index: Int, s: String, res: Ref[Int]): Unit / Abort = {
     }
 
   if (index < 0 || index > s.length) {
-    do Abort()
+    do Abort[Int](); ()
   } else if (index == s.length) {
     res.set(res.get + 1)
   } else {
@@ -46,24 +46,28 @@ def backtrack(index: Int, s: String, res: Ref[Int]): Unit / Abort = {
 }
 
 
-def run() = {
+def run(n: Int) = {
   try {
     partition("aababbaaaaabababaaabbabaaaababbaabaaaa")
-  } with Abort {
+  } with Abort[Int] {
     () => println("invalid argument"); -1
   }
 }
 
 
 def main() = ignore[WrongFormat] {commandLineArgs() match {
-  case Nil() => 
-    val r = run();
-    println(r)
-  case Cons(x, Nil()) =>
+  case Nil() => println("Expects one argument")
+  case Cons(x, Cons(y, Nil())) => 
     println("Measuring internal running time")
-    var r = 0; val t = timed{ r = run(); };
+    val i = x.toInt; var r = 0; val t = timed{ 
+      if (i == 0) { r = 0 }
+      else { r = run(i) }
+    };
     println("Nanosecond used: " ++ show(t))
     println(r)
-  case other => println("Expects no argument, not '" ++ show(size(other)) ++ "'")
+  case Cons(x, Nil()) =>
+    val i = x.toInt; val r = run(i);
+    println(r)
+  case other => println("Expects one argument, not '" ++ show(size(other)) ++ "'")
 }
 }

@@ -4,7 +4,7 @@ import bench
 
 effect Abort[A](): A
 
-def golomb(n: Int): Int / Abort = 
+def golomb(n: Int): Int / Abort[Int] = 
   if (n <= 0) {
     do Abort()
   } else if (n == 1) {
@@ -17,7 +17,7 @@ def golomb(n: Int): Int / Abort =
 def run(n: Int) = {
   try {
     golomb(n)
-  } with Abort {
+  } with Abort[Int] {
     () => println("invalid argument"); 1
   }
 }

@@ -4,7 +4,7 @@ import bench
 
 effect Abort[A](): A
 
-def latticepaths(x1: Int, y1: Int, x2: Int, y2: Int, xbad: Int, ybad: Int): Int / Abort = 
+def latticepaths(x1: Int, y1: Int, x2: Int, y2: Int, xbad: Int, ybad: Int): Int / Abort[Int] = 
   if (x2 < x1 || y2 < y1) {
     do Abort()
   } else if (x1 == x2 || y1 == y2) {
@@ -19,7 +19,7 @@ def latticepaths(x1: Int, y1: Int, x2: Int, y2: Int, xbad: Int, ybad: Int): Int 
 def run(n: Int) = {
   try {
     latticepaths(0, 0, n, n, n/2, n/2)
-  } with Abort {
+  } with Abort[Int] {
     () => println("invalid argument"); 1
   }
 }

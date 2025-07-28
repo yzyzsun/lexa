@@ -4,7 +4,7 @@ import bench
 
 effect Abort[A](i: Int): A
 
-def product(xs: List[Int]): Int / Abort =
+def product(xs: List[Int]): Int / Abort[Int] =
   xs match {
     case Nil() => 0
     case Cons(y, ys) => if (y == 0) { do Abort(0) } else { y * product(ys) }
@@ -20,8 +20,8 @@ def enumerate(i: Int): List[Int] =
 def runProduct(xs: List[Int]) =
   try {
     product(xs)
-  } with Abort {
-    def Abort[A](r) = r
+  } with Abort[Int] {
+    def Abort(r) = r
   }
 
 def run(n: Int) = {
