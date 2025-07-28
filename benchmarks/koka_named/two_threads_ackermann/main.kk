@@ -22,13 +22,13 @@ fun ackermann(m: int, n: int, quota: ref<_, int>, r)
 fun run(quota_each: int)
   val acc = ref(0)
   val storage = ref(Nil)
-  val total = ref(400000000)
+  val total = ref(100000000)
 
   fun work()
     with r <- named handler
-      raw ctl yield() resume
+      raw ctl yield()
         acc := !acc + 1
-        val node = Cons(rcontext, Nil)
+        val node = Cons(fn(quota: int) rcontext.resume(quota), Nil)
         val peer = !storage
         storage := node
         if peer.is-empty()
@@ -37,7 +37,7 @@ fun run(quota_each: int)
             if !total > 0
               then 
                 total := !total - quota_each
-                (peer.head()).resume()
+                (peer.head().unjust())(quota_each)
               else 0
     val local_quota = ref(quota_each)
     ackermann(4, 1, local_quota, r)
@@ -48,4 +48,4 @@ fun run(quota_each: int)
 pub fun main()
   val quota_each = get-args().head("").parse-int().default(5)
   val res = run(quota_each)
-  0
+  println(res)

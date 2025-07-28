@@ -4,7 +4,7 @@ import bench
 
 effect Abort[A](): A
 
-def hofstadterq(n: Int): Int / Abort = 
+def hofstadterq(n: Int): Int / Abort[Int] = 
   if (n < 1) {
     do Abort()
   } else if (n < 3) {
@@ -17,7 +17,7 @@ def hofstadterq(n: Int): Int / Abort =
 def run(n: Int) = {
   try {
     hofstadterq(n)
-  } with Abort {
+  } with Abort[Int] {
     () => println("invalid argument"); 1
   }
 }

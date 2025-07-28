@@ -4,7 +4,7 @@ import bench
 
 effect Abort[A](): A
 
-def ackermann(m: Int, n: Int): Int / Abort = 
+def ackermann(m: Int, n: Int): Int / Abort[Int] = 
   if (m < 0 || n < 0) {
     do Abort()
   } else if (m == 0) {
@@ -19,7 +19,7 @@ def ackermann(m: Int, n: Int): Int / Abort =
 def run(m: Int) = {
   try {
     ackermann(m, 1)
-  } with Abort {
+  } with Abort[Int] {
     () => println("invalid argument"); 1
   }
 }

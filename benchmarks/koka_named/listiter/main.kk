@@ -23,9 +23,7 @@ fun runIter(l: list<int>)
   val res = ref(0)
   with r <- named handler
     fun emit(x) res := !res + x
-  fun f(x: int)
-    r.emit(x)
-  iter(f, l)
+  iter(fn (x: int) r.emit(x), l)
   !res
 
 

@@ -37,8 +37,5 @@ pub fun main()
       console_log := !console_log + s
       0
   
-  fun plugginFun(x: int)
-    plugin(x, consoleLogger)
- 
-  framework(plugginFun, n)
+  framework(fn(x: int) plugin(x, consoleLogger), n)
   println(!console_log)

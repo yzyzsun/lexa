@@ -5,21 +5,21 @@ import ref
 
 effect Abort[A](): A
 
-def mod_safe(a: Int, b: Int): Int / Abort = 
+def mod_safe(a: Int, b: Int): Int / Abort[Int] = 
   if (b <= 0) {
     do Abort()
   } else {
     mod(a, b)
   }
 
-def divide(a: Int, b: Int): Int / Abort = 
+def divide(a: Int, b: Int): Int / Abort[Int] = 
   if (b == 0) {
     do Abort()
   } else {
     a / b
   }
 
-def extendedEuclid(a: Int, b: Int, x: Ref[Int], y: Ref[Int], gcd: Ref[Int]): Unit / Abort =
+def extendedEuclid(a: Int, b: Int, x: Ref[Int], y: Ref[Int], gcd: Ref[Int]): Unit / Abort[Int] =
   if (b == 0) { 
     x.set(1);
     y.set(0);
@@ -35,7 +35,7 @@ def extendedEuclid(a: Int, b: Int, x: Ref[Int], y: Ref[Int], gcd: Ref[Int]): Uni
 def runExtendedEuclid(a: Int, b: Int, x: Ref[Int], y: Ref[Int], gcd: Ref[Int]): Unit = {
   try {
     extendedEuclid(a, b, x, y, gcd)
-  } with Abort {
+  } with Abort[Int] {
     () => println("invalid denominator")
   }
 }

@@ -69,33 +69,25 @@ for benchmark in benchmarks:
         "build": KOKA_NAMED_BUILD_COMMAND, "run": KOKA_NAMED_RUN_COMMAND,
     }
 
-    EFFEKT_BUILD_COMMAND = "effekt_latest.sh --backend ml --compile main.effekt  && mlton -default-type int64 -output main out/main.sml"
-    EFFEKT_RUN_COMMAND = "./main {IN}"
+    EFFEKT_BUILD_COMMAND = "nix shell nixpkgs#clang -c effekt_latest.sh --backend llvm --build main.effekt"
+    EFFEKT_RUN_COMMAND = "./out/main {IN} 0"
     config[("effekt", benchmark)] = {
         "build": EFFEKT_BUILD_COMMAND, "run": EFFEKT_RUN_COMMAND,
     }
 
 # Adjustments
-config[("effekt", "handler_sieve")]["build"] = "effekt_latest.sh --backend chez-lift --compile main.effekt"
-config[("effekt", "handler_sieve")]["run"] = "scheme --script out/main.ss {IN} 0"
-config[("effekt", "handler_sieve")]["adjust_warmup"] = True
-config[("effekt", "generator")]["build"] = "effekt_latest.sh --backend chez-lift --compile main.effekt"
+for benchmark in ["fibonacci_recursive", "golomb", "hofstadterq", "palindrome_partition", "two_threads_ackermann"]:
+    config[("effekt", benchmark)]["build"] = "effekt_latest.sh --backend chez-callcc --compile main.effekt"
+    config[("effekt", benchmark)]["run"] = "scheme --script out/main.ss {IN} 0"
+    config[("effekt", benchmark)]["adjust_warmup"] = True
+
+config[("effekt", "generator")]["build"] = "effekt_latest.sh --backend chez-monadic --compile main.effekt"
 config[("effekt", "generator")]["run"] = "scheme --script out/main.ss {IN} 0"
 config[("effekt", "generator")]["adjust_warmup"] = True
-config[("effekt", "scheduler")]["build"] = "effekt_latest.sh --backend js --compile main.effekt"
-config[("effekt", "scheduler")]["run"] = "node --eval \"require(\'\"\'./out/main.js\'\"\').main()\" -- _ {IN} 0"
-config[("effekt", "scheduler")]["adjust_warmup"] = True
-config[("effekt", "interruptible_iterator")]["build"] = "effekt_latest.sh --backend js --compile main.effekt"
-config[("effekt", "interruptible_iterator")]["run"] = "node --eval \"require(\'\"\'./out/main.js\'\"\').main()\" -- _ {IN} 0"
-config[("effekt", "interruptible_iterator")]["adjust_warmup"] = True
-config[("effekt", "two_threads_ackermann")]["build"] = "effekt_latest.sh --backend chez-lift --compile main.effekt"
-config[("effekt", "two_threads_ackermann")]["run"] = "scheme --script out/main.ss {IN} 0"
 
 # Known Failures
 config[("koka", "interruptible_iterator")]["fail_reason"] = "Koka type system limitation"
 config[("koka_named", "scheduler")]["fail_reason"] = "Koka internal compiler error"
-config[("koka_named", "two_threads_ackermann")]["fail_reason"] = "Koka internal compiler error"
-config[("effekt", "bezout")]["fail_reason"] = "Stack Overflow"
 config[("lexaz", "scheduler")]["fail_reason"] = "Not implemented"
 config[("lexaz", "interruptible_iterator")]["fail_reason"] = "Not implemented"
 config[("lexaz", "resume_nontail_2")]["fail_reason"] = "Not implemented"
@@ -136,6 +128,6 @@ for platform in platforms:
     config[(platform, "hofstadterq")]["bench_input"] = 38
     config[(platform, "karatsuba")]["bench_input"] = 32767
     config[(platform, "ackermann")]["bench_input"] = 4
-    config[(platform, "palindrome_partition")]["bench_input"] = None
+    config[(platform, "palindrome_partition")]["bench_input"] = ""
     config[(platform, "latticepath")]["bench_input"] = 16
     config[(platform, "two_threads_ackermann")]["bench_input"] = 1000000

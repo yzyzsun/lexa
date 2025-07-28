@@ -4,14 +4,14 @@ import bench
 
 effect Abort[A](): A
 
-def mod_safe(a: Int, b: Int): Int / Abort = 
+def mod_safe(a: Int, b: Int): Int / Abort[Int] = 
   if (b <= 0) {
     do Abort()
   } else {
     mod(a, b)
   }
 
-def divide(a: Int, b: Int): Int / Abort = 
+def divide(a: Int, b: Int): Int / Abort[Int] = 
   if (b == 0) {
     do Abort()
   } else {
@@ -33,7 +33,7 @@ def pow2(n: Int): Int =
   } 
 
 
-def karatsuba(num1: Int, num2: Int, threshold: Int): Int / Abort = 
+def karatsuba(num1: Int, num2: Int, threshold: Int): Int / Abort[Int] = 
   if (num1 < threshold || num2 < threshold) {
     num1 * num2
   } else {
@@ -54,7 +54,7 @@ def karatsuba(num1: Int, num2: Int, threshold: Int): Int / Abort =
   }
 
 
-def loop (n: Int, i: Int, acc: Int): Int / Abort = 
+def loop (n: Int, i: Int, acc: Int): Int / Abort[Int] = 
   if (i == 0) {
     acc
   } else {
@@ -65,7 +65,7 @@ def loop (n: Int, i: Int, acc: Int): Int / Abort =
 def run(n: Int): Int = {
   try {
     loop(n, 1000000, 0)
-  } with Abort {
+  } with Abort[Int] {
     () => println("invalid denominator"); 1
   }
 }

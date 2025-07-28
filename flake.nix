@@ -64,6 +64,7 @@
             mlton
             chez
             nodejs-slim_21
+            libuv
             racket
             self.packages.${system}.effect_latest
             self.packages.${system}.koka_latest
