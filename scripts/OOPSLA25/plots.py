@@ -53,18 +53,24 @@ def plot_df(df, dirname):
     fig, ax = plt.subplots(figsize=(6, 3))
 
     markers = {'lexa': 'o', 'lexaz': '^'}
-    colors = {'lexa': 'blue', 'lexaz': 'green'}
+    colors = {'lexa': 'black', 'lexaz': 'gold'}
 
-    platform_mappper = {'lexa': 'Stock Lexa', 'lexaz': 'Zero-cost Lexa'}
+    platform_mappper = {'lexa': 'Direct Lexa', 'lexaz': 'Zero Lexa'}
 
     for platform in ['lexa', 'lexaz']:
         platform_data = df[df['platform'] == platform]
-        ax.plot(platform_data['n'], platform_data['time_mili'], label=platform_mappper[platform])
+        ax.plot(platform_data['n'], 
+                platform_data['time_mili'], 
+                label=platform_mappper[platform],
+                color=colors[platform],
+                marker=markers[platform],
+                markersize=3)
 
     ax.set_xlabel('Scheduling Time Slice')
     ax.set_ylabel('Time (milliseconds)')
-    ax.set_title('Two-threads Running with Stock Lexa and Zero-cost Lexa')
+    ax.set_title('Two-threads Running with Direct Lexa and Zero Lexa')
     ax.legend(title='Platform')
+
 
     # plt.ticklabel_format(axis='y', style='plain')
     ax.grid(True)
