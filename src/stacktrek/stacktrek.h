@@ -473,13 +473,13 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
             i64 env = (i64)stub->env; \
             i64 func = (i64)stub->defs[index].func; \
             __asm__ __volatile__ ( \
-                "pushq $0x100\n\t" \
+                "subq $24, %%rsp\n\t" \
                 "pushq %[sig]\n\t" \
                 "pushq %[typ]\n\t" \
                 "pushq %[idx]\n\t" \
                 "__callsite_metadata_RAISE%=___1_0_0_0:\n\t" \
                 "callq *%[body_]\n\t" \
-                "addq $32, %%rsp\n\t" \
+                "addq $48, %%rsp\n\t" \
                 : "=a"(out), "+D"(env), [body_]"+r"(func) \
                 :  [sig]"i"((i64)clue_sig), [typ]"i"((i64)clue_type), [idx]"i"((i64)clue_index) \
                 : "rcx", "rdx", "r8", "r9", "r10", "r11", \
@@ -493,13 +493,13 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
             i64 arg = args[0]; \
             i64 func = (i64)stub->defs[index].func; \
             __asm__ __volatile__ ( \
-                "pushq $0x100\n\t" \
+                "subq $24, %%rsp\n\t" \
                 "pushq %[sig]\n\t" \
                 "pushq %[typ]\n\t" \
                 "pushq %[idx]\n\t" \
                 "__callsite_metadata_RAISE%=___1_0_0_0:\n\t" \
                 "callq *%[body_]\n\t" \
-                "addq $32, %%rsp\n\t" \
+                "addq $48, %%rsp\n\t" \
                 : "=a"(out), "+D"(env), "+S"(arg), [body_]"+r"(func) \
                 :  [sig]"i"((i64)clue_sig), [typ]"i"((i64)clue_type), [idx]"i"((i64)clue_index) \
                 : "rcx", "rdx", "r8", "r9", "r10", "r11", \
@@ -514,13 +514,13 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
             i64 arg1 = args[1]; \
             i64 func = (i64)stub->defs[index].func; \
             __asm__ __volatile__ ( \
-                "pushq $0x100\n\t" \
+                "subq $24, %%rsp\n\t" \
                 "pushq %[sig]\n\t" \
                 "pushq %[typ]\n\t" \
                 "pushq %[idx]\n\t" \
                 "__callsite_metadata_RAISE%=___1_0_0_0:\n\t" \
                 "callq *%[body_]\n\t" \
-                "addq $32, %%rsp\n\t" \
+                "addq $48, %%rsp\n\t" \
                 : "=a"(out), "+D"(env), "+S"(arg0), "+d"(arg1), [body_]"+r"(func) \
                 :  [sig]"i"((i64)clue_sig), [typ]"i"((i64)clue_type), [idx]"i"((i64)clue_index) \
                 : "rcx", "r8", "r9", "r10", "r11", \
@@ -536,13 +536,13 @@ static i64 (FAST_SWITCH_DECORATOR* raise_table_0[3])(i64 env, i64 exc, i64 func)
             i64 arg2 = args[1]; \
             i64 func = (i64)stub->defs[index].func; \
             __asm__ __volatile__ ( \
-                "pushq $0x100\n\t" \
+                "subq $24, %%rsp\n\t" \
                 "pushq %[sig]\n\t" \
                 "pushq %[typ]\n\t" \
                 "pushq %[idx]\n\t" \
                 "__callsite_metadata_RAISE%=___1_0_0_0:\n\t" \
                 "callq *%[body_]\n\t" \
-                "addq $32, %%rsp\n\t" \
+                "addq $48, %%rsp\n\t" \
                 : "=a"(out), "+D"(env), "+S"(arg0), "+d"(arg1), "+c"(arg2), [body_]"+r"(func) \
                 :  [sig]"i"((i64)clue_sig), [typ]"i"((i64)clue_type), [idx]"i"((i64)clue_index) \
                 : "r8", "r9", "r10", "r11", \

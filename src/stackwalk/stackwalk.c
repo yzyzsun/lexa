@@ -118,7 +118,7 @@ header_t* stackwalk(int clue_sig, int clue_type, int clue_index) {
         // If we're inside a tail-resumptive handler, we need to jump over the clue 
         // that was pushed onto the stack.
         if (to_jump) {
-            stack_iter += 32;
+            stack_iter += 48;
             to_jump = false;
         }
 
@@ -176,7 +176,7 @@ header_t* stackwalk(int clue_sig, int clue_type, int clue_index) {
                 #endif
 
                 // push the old clue into the clue stack
-                struct clue_frame *old_clue = xmalloc(sizeof(struct clue_frame));
+                struct clue_frame *old_clue = (struct clue_frame*)((intptr_t*)stack_iter + 5);
                 old_clue->sig = clue_sig;
                 old_clue->type = clue_type;
                 old_clue->index = clue_index;
