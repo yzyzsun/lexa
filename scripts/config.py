@@ -4,18 +4,25 @@ import pwd
 
 def get_smt_groups():
     import subprocess
+    import platform
     from collections import defaultdict
-    result = subprocess.run(["lscpu", "-e=CPU,Core,Socket"], capture_output=True, text=True)
-    lines = result.stdout.strip().splitlines()[1:]  # skip header
 
-    core_map = defaultdict(list)
-    for line in lines:
-        cpu_id, core_id, socket_id = map(int, line.strip().split())
-        key = (socket_id, core_id)
-        core_map[key].append(cpu_id)
+    if platform.system() == "Linux":
+        result = subprocess.run(["lscpu", "-e=CPU,Core,Socket"], capture_output=True, text=True)
+        lines = result.stdout.strip().splitlines()[1:]  # skip header
+        core_map = defaultdict(list)
+        for line in lines:
+            cpu_id, core_id, socket_id = map(int, line.strip().split())
+            key = (socket_id, core_id)
+            core_map[key].append(cpu_id)
+        return [min(cpus) for cpus in core_map.values()]
+    elif platform.system() == "Darwin":
+        logical = int(subprocess.check_output(["sysctl", "-n", "hw.logicalcpu"]).strip())
+        return list(range(logical))
+    else:
+        raise RuntimeError("Unsupported OS")
 
     # pick one core from each SMT group
-    return [min(cpus) for cpus in core_map.values()]
 
 # Get NUM_CPUS from the environment or set a default
 try:

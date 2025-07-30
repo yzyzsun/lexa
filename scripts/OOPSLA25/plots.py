@@ -22,7 +22,7 @@ plt.rcParams['ps.fonttype'] = 42
 pd.options.mode.copy_on_write = True
 
 matplotlib.use("pgf")
-preamble = r'\usepackage{fontspec}\setmainfont{Linux Libertine O}\setmonofont[Scale=MatchLowercase]{JetBrains Mono}\usepackage{xcolor}'
+preamble = r'\usepackage{fontspec}\usepackage{libertine}\setmonofont[Scale=MatchLowercase]{JetBrains Mono}\usepackage{xcolor}'
 params = {
     'font.family': 'serif',
     'text.usetex': True,
@@ -45,12 +45,12 @@ chemin_actuel = os.path.dirname(os.path.abspath(__file__))
 chemin_parent = os.path.dirname(chemin_actuel)
 sys.path.append(chemin_parent)
 
-from utils import *
+# from utils import *
 
 plt.style.use(['science'])#, "no-latex"])
 
 def plot_df(df, dirname):
-    fig, ax = plt.subplots(figsize=(6, 3))
+    fig, ax = plt.subplots(figsize=(6, 4))
 
     markers = {'lexa': 'o', 'lexaz': '^'}
     colors = {'lexa': 'black', 'lexaz': 'gold'}
@@ -66,14 +66,14 @@ def plot_df(df, dirname):
                 marker=markers[platform],
                 markersize=3)
 
-    ax.set_xlabel('Scheduling Time Slice')
-    ax.set_ylabel('Time (milliseconds)')
-    ax.set_title('Two-threads Running with Direct Lexa and Zero Lexa')
-    ax.legend(title='Platform')
+    ax.set_xlabel('scheduling time slice')
+    ax.set_ylabel('time (ms)')
+    # ax.set_title('Two-threads Running with Direct Lexa and Zero Lexa')
+    ax.legend()
 
 
     # plt.ticklabel_format(axis='y', style='plain')
-    ax.grid(True)
+    ax.grid(True, linestyle='--', linewidth=0.3, alpha=0.5)
 
     filename = "two-threads.pdf"
     plt.savefig(dirname + filename, dpi=600)
