@@ -94,10 +94,14 @@ config[("effekt", "generator")]["adjust_warmup"] = True
 
 # Known Failures
 config[("koka", "interruptible_iterator")]["fail_reason"] = "Koka type system limitation"
+config[("koka", "scheduler")]["fail_reason"] = "Type error" # broken after upgrading koka; no incentive to fix this
+config[("koka_named", "interruptible_iterator")]["fail_reason"] = "Type error" # broken after upgrading koka; no incentive to fix this
 config[("koka_named", "scheduler")]["fail_reason"] = "Koka internal compiler error"
 config[("lexaz", "scheduler")]["fail_reason"] = "Not implemented"
 config[("lexaz", "interruptible_iterator")]["fail_reason"] = "Not implemented"
 config[("lexaz", "resume_nontail_2")]["fail_reason"] = "Not implemented"
+config[("effekt", "scheduler")]["fail_reason"] = "Segfault for unknown reason" # broken after upgrading effekt; no incentive to fix this
+
 for benchmark in zero_cost_benchmarks + higher_order_benchmarks:
     for platform in ["koka", "ocaml"]:
         config[(platform, benchmark)]["fail_reason"] = "Not implemented"
