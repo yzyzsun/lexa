@@ -2,7 +2,7 @@ effect E {
     op: () -> int
 }
 
-effectz Ez {
+exceptional effect Ez {
     opz: () -> int
 }
 

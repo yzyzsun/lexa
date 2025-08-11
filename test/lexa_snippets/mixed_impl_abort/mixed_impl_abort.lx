@@ -6,7 +6,7 @@ effect E2 {
     op2: () -> int
 }
 
-effectz Ez {
+exceptional effect Ez {
     opz: () -> int
 }
 

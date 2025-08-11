@@ -1,12 +1,12 @@
-effectz Read {
+exceptional effect Read {
     read: () -> int
 }
 
-effectz Emit {
+exceptional effect Emit {
     emit: (int) -> unit
 }
 
-effectz Stop {
+exceptional effect Stop {
     stop: () -> int
 }
 

@@ -1,4 +1,4 @@
-effectz Search {
+exceptional effect Search {
     pick: (int) -> int
     fail: () -> int
 }

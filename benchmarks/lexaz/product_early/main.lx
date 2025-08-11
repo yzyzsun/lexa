@@ -1,5 +1,5 @@
 
-effectz Abort {
+exceptional effect Abort {
   done: (int) -> int
 }
 

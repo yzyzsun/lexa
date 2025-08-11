@@ -84,7 +84,7 @@
 %token TARRAY
 %token FORALL
 
-%token EFFECTZ
+%token EXCEPTION
 
 %start <SLsyntax.top_level list> prog
 
@@ -183,7 +183,7 @@ top_level:
         TLPolyAbs (name, type_params, cap_params, label_params, params, return_ty, e) 
       }
   | EFFECT name = CAPITALIZED_VAR LCB l = list(effect_sig) RCB { TLEffSig (name, l) }
-  | EFFECTZ name = CAPITALIZED_VAR LCB ops = list(effect_sig) RCB { TLEffZSig (name, ops) }
+  | EXCEPTION name = CAPITALIZED_VAR LCB ops = list(effect_sig) RCB { TLEffZSig (name, ops) }
   | TYPE l = separated_nonempty_list(AND, type_def) { TLType l }
   | OPEN filename = STRING { TLOpen filename }
   | OPEN_C_HEADER filename = STRING { TLOpenC filename }

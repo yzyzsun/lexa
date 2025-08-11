@@ -1,20 +1,20 @@
-effectz E1 {
+exceptional effect E1 {
     op1: () -> int
 }
 
-effectz E2 {
+exceptional effect E2 {
     op2: () -> int
 }
 
-effectz E3 {
+exceptional effect E3 {
     op3: () -> int
 }
 
-effectz E4 {
+exceptional effect E4 {
     op4: () -> int
 }
 
-effectz E5 {
+exceptional effect E5 {
     op5: () -> int
 }
 

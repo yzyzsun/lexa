@@ -97,7 +97,7 @@ rule read =
   | "array_t" { TARRAY }
   | "forall" { FORALL }
 
-  | "effectz" { EFFECTZ }
+  | "exceptional effect" { EXCEPTION }
   | '"' { read_string (Buffer.create 17) lexbuf }
   | '\'' { read_char (Buffer.create 17) lexbuf }
   | float { FLOAT (float_of_string (Lexing.lexeme lexbuf)) }
