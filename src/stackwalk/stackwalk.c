@@ -5,7 +5,8 @@
 #include <stdbool.h>
 #include "../stacktrek/common.h"
 
-static const intptr_t CODE_START = 0x555555554000;
+extern __attribute__((weak)) char __executable_start;
+static const intptr_t CODE_START = (intptr_t)&__executable_start;
 
 long __attribute__((section("clue_table"), used)) CLUE_TABLE[4096];
 extern __attribute__((weak)) intptr_t __start_clue_table;
