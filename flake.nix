@@ -42,7 +42,9 @@
         packages.libmprompt = pkgs.callPackage ./nix/libmprompt.nix { bdwgc = self.packages.${system}.bdwgc; };
         packages.jetbrains-mono = pkgs.callPackage ./nix/jetbrains-mono.nix { };
         packages.science = pkgs.callPackage ./nix/SciencePlots.nix { };
-        devShell = with pkgs; mkShell {
+        
+        devShells = {
+          default = with pkgs; mkShell {
           shellHook = ''
             export PATH=$PWD:$PATH
           '';
@@ -53,6 +55,7 @@
             self.packages.${system}.clang_18_preserve_none
           ];
           buildInputs = [
+            util-linux
             texliveSmall
             self.packages.${system}.science
 
@@ -113,6 +116,42 @@
               ppx_inline_test
               earlybird
           ]);
+          };
+
+          # User shell with minimal tools, for external Lexa users
+          userShell = with pkgs; mkShell {
+            shellHook = ''
+              export PATH=$PWD:$PATH
+            '';
+            nativeBuildInputs = [
+              self.packages.${system}.clang_18_preserve_none
+            ];
+            buildInputs = [
+              util-linux
+              vim
+
+              (python3.withPackages (ps: with ps; [
+                psutil
+                numpy
+                pandas
+                pyelftools
+                pip
+                capstone
+              ]))
+              
+              hyperfine
+              self.packages.${system}.bdwgc
+              self.packages.${system}.libmprompt
+            ]  ++ 
+          (with ocaml-ng.ocamlPackages_5_1; [
+              opam
+              ocaml
+              dune_3
+              utop
+              menhir
+              ppx_inline_test
+            ]);
+          };
         };
       });
 }
