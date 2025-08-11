@@ -1,4 +1,4 @@
-effectz Thread {
+exceptional effect Thread {
     yield: () -> int
 }
 

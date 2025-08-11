@@ -57,7 +57,7 @@ catalan,319.0,309.0,0.0,2.0
     - Due to the hardware differences, you may not see two lines crossing with the range of x-axis we used in the paper. You can adjust the x-axis range, via `vim ./plots.py`(line 99).
 
 # Reusability Guide
-Reusing this artifact means that you can use the Lexa compiler to compile code that you write. The surface syntax of Lexa should be familiar to programmers who have experience with functional programming languages like OCaml or Koka. Zero-cost and stock implementations of effect is distinguished using the keyword `effectz` and `effect` at the effect definition, respectively. To get familiar with Lexa, we recommend studying the following short programs, which are ordered from simple to complex. For each example, we highlight the relevant syntax.
+Reusing this artifact means that you can use the Lexa compiler to compile code that you write. The surface syntax of Lexa should be familiar to programmers who have experience with functional programming languages like OCaml or Koka. Zero-cost and stock implementations of effect is distinguished using the keyword `exceptional effect` and `effect` at the effect definition, respectively. To get familiar with Lexa, we recommend studying the following short programs, which are ordered from simple to complex. For each example, we highlight the relevant syntax.
 - `./benchmarks/lexa/countdown/main.lx`: A benchmark program that uses *stock Lexa* to implement a countdown.
    - Line 1: the effect is declared using `effect` keyword, signifying that it uses the stock Lexa implementation.
    - Line 21, 25: the handler is defined using `def` keyword, signifying that it is a tail-resumptive handler.

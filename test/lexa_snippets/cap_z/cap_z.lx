@@ -1,8 +1,8 @@
-effectz F {
+exceptional effect F {
     eff: () -> unit
 }
 
-effectz F2 {
+exceptional effect F2 {
     eff2: () -> unit
 }
 

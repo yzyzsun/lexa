@@ -1,4 +1,4 @@
-effectz E {
+exceptional effect E {
     op: () -> int
 }
 

@@ -1,4 +1,4 @@
-effectz Abort {
+exceptional effect Abort {
   invalid_denominator: () -> int
 }
 

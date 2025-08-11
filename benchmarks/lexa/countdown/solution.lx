@@ -3,7 +3,7 @@ effect State {
     set: (int) -> unit
 }
 
-effectz End {
+exceptional effect End {
   end: (int) -> int
 }
 

@@ -1,4 +1,4 @@
-effectz State {
+exceptional effect State {
     get: () -> int
     set: (int) -> unit
 }
