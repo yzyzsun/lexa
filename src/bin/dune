@@ -1,5 +1,5 @@
 (executable
  (public_name lexac)
  (name main)
- (libraries syntax IRParser SLParser translation codegen unix)
+ (libraries SLsyntax SLParser translation)
  (modes byte exe))

@@ -1,55 +1,19 @@
-open Arg
 open Translation
-open Codegen
 
-module StringSet = Syntax__Varset
-
-let usage_msg = "lexa <file1> -o <output> -r "
+let usage_msg = "lexa <file1>"
 
 let input_file = ref ""
-let output_file = ref ""
 
-let flag_no_format = ref false
-let tl = ref false
-
-let speclist = [
-  ("-o", Set_string output_file, "Set the output file name");
-  ("--no-format", Set flag_no_format, "do not format the output");
-  ("--tl", Set tl, "Compile with TL syntax");
-]
-
-let clang_format code =
-  let temp_file, oc = Filename.open_temp_file "temp" ".c" in
-  output_string oc code;
-  close_out oc;
-
-  let _ = Unix.system ("clang-format -i " ^ temp_file) in
-
-  let ic = open_in temp_file in
-  let result = really_input_string ic (in_channel_length ic) in
-  close_in ic;
-
-  Sys.remove temp_file;
-  result
+let speclist = []
 
 let rec get_open_filenames filename =
-  let cur_opens = 
-    if !tl then 
-      let toplevels = IRParser.Main.parseFile filename in
-      (* Get the list of filenames opened from a toplevel list *)
-      let get_cur_open_filenames = function
-        | Syntax.TLOpen x -> Some ((Filename.dirname filename) ^ "/" ^ x)
-        | _ -> None
-      in
-      List.filter_map get_cur_open_filenames toplevels 
-    else
-      let toplevels = SLParser.Main.parseFile filename in
-      (* Get the list of filenames opened from a toplevel list *)
-      let get_cur_open_filenames = function
-        | SLsyntax.TLOpen x -> Some ((Filename.dirname filename) ^ "/" ^ x)
-        | _ -> None
-      in
-      List.filter_map get_cur_open_filenames toplevels
+  let toplevels = SLParser.Main.parseFile filename in
+  let cur_opens =
+    let get_cur_open_filenames = function
+      | SLsyntax.TLOpen x -> Some ((Filename.dirname filename) ^ "/" ^ x)
+      | _ -> None
+    in
+    List.filter_map get_cur_open_filenames toplevels
   in
     
   let all_open_filenames = List.concat_map get_open_filenames cur_opens in
@@ -64,28 +28,15 @@ let rec dedup l acc =
       h :: (dedup t (h :: acc))
   | [] -> []
 
-let compile_file filename =
+let typecheck_file filename =
   let open_filenames = dedup (get_open_filenames filename) [] in
-  let all_toplevels = 
-    if !tl then
-      List.concat_map (fun fn -> IRParser.Main.parseFile fn) open_filenames
-    else
-      let sl_toplevels = List.concat_map
-        (fun fn -> SLParser.Main.parseFile fn)
-        open_filenames
-      in
-      translate_toplevels sl_toplevels
+  let sl_toplevels = List.concat_map
+    (fun fn -> SLParser.Main.parseFile fn)
+    open_filenames
   in
-  
-  let toplevels_closure = Codegen__Closure.closure_convert_toplevels all_toplevels in
-  let compiled_str = gen_top_level_s toplevels_closure in
-  let compiled_str = if !flag_no_format then compiled_str else clang_format compiled_str in
-  
-  compiled_str
-  
+  typecheck_toplevels sl_toplevels
+
 let () = 
-  Arg.parse speclist (fun file -> input_file := file) usage_msg;  
-  let compiled_str = compile_file !input_file in
-  let oc = open_out (!output_file) in
-  Printf.fprintf oc "%s\n" compiled_str;
-  ();
+  Arg.parse speclist (fun file -> input_file := file) usage_msg;
+  typecheck_file !input_file;
+  Printf.printf "Typechecking passed!\n"
