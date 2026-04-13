@@ -1,0 +1,46 @@
+effect State {
+    get: () -> int
+    set: (int) -> int
+}
+
+def main(): int {
+    val f = handle <> {
+        val g = handle <s1> {
+            raise s1.set(1);
+            raise s2.set(2);
+            val a = raise s2.get();
+            val b = raise s1.get();
+            fun <s1> (s2_st: int): int { a + b }  // return clause
+        } with s2: State {
+            hdl_1 get(k) {
+                fun <s1> (s2_st: int): int {
+                    val r = resume_final k s2_st;
+                    r(s2_st)
+                }
+            }
+            hdl_1 set(v, k) {
+                fun <s1> (s2_st: int): int {
+                    val r = resume_final k 0;
+                    r(v)
+                }
+            }
+        };
+        val res = g(0);
+        fun <> (s1_st: int): int { res }
+    } with s1: State {
+        hdl_1 get(k) {
+            fun <> (s1_st: int): int {
+                val r = resume_final k s1_st;
+                r(s1_st)
+            }
+        }
+        hdl_1 set(v, k) {
+            fun <> (s1_st: int): int {
+                val r = resume_final k 0;
+                r(v)
+            }
+        }
+    };
+    ~printInt(f(0));
+    0
+}
