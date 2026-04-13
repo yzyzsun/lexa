@@ -55,7 +55,7 @@ let rec type_to_str (ty: ty) =
   | TFun { captured_set; cap_params; label_params; params_ty; return_ty } ->
     let captured_set_str = capability_to_str captured_set in
     let cap_params_str = String.concat ", " cap_params in
-    let label_vars_str = String.concat ", " (List.map (fun (label, effect) -> Printf.sprintf "%s: %s" label effect) label_params) in
+    let label_vars_str = String.concat ", " (List.map (fun (label, eff) -> Printf.sprintf "%s: %s" label eff) label_params) in
     let params_ty_str = String.concat ", " (List.map type_to_str params_ty) in
     let return_ty_str = type_to_str return_ty in
     Printf.sprintf "{ %s } [%s; %s] (%s) -> %s" captured_set_str cap_params_str label_vars_str params_ty_str return_ty_str
@@ -69,7 +69,7 @@ let rec type_to_str (ty: ty) =
   | TQueue t -> Printf.sprintf "queue_t::[%s]" (type_to_str t)
   | TArray t -> Printf.sprintf "array_t::[%s]" (type_to_str t)
   | TCon (t, t_args) -> 
-    if (List.is_empty t_args)
+    if (t_args = [])
       then t else Printf.sprintf "%s::[%s]" t (String.concat ", " (List.map type_to_str t_args))
   | TVar v -> v
   | TForall (tvar, ty') -> Printf.sprintf "∀%s. %s" tvar (type_to_str ty')

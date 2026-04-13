@@ -117,7 +117,7 @@ type_def:
     EQ option(VBAR) type_cons = separated_nonempty_list(VBAR, type_con) { {type_name; type_params; type_cons}: SLsyntax.typedef }
 
 label_effect_pair:
-  | label = VAR COLON effect = CAPITALIZED_VAR { (label, effect) }
+  | label = VAR COLON eff = CAPITALIZED_VAR { (label, eff) }
 
 capability: 
   | cap_var = VAR SEMICOLON inst_vars = separated_list(COMMA, VAR) { (Some cap_var, (Varset.of_list inst_vars)) }
