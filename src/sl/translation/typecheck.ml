@@ -264,16 +264,25 @@ and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (stri
         | _ -> typing_error "App: Function type expected\n\tActual: %s" (type_to_str fun_type)
       )
 
-    | Handle { captured_set; handle_body; handler_label; sig_name; handler_defs } ->
+    | Handle { captured_set; handle_body; handler_label; sig_name; return_clause; handler_defs } ->
       let captured_vars' = check_capture_set_as_unamb captured_set captured_vars cap_vars label_vars in
       let handle_body' = type_expr captured_vars' [] [(handler_label, sig_name)] term_vars handle_body in
-      let return_ty = type_of handle_body' in
+      let body_ty = type_of handle_body' in
+      (* If there's a return clause, type-check it to get the answer type;
+         otherwise the answer type equals the body type. *)
+      let answer_ty, typed_return_clause = match return_clause with
+        | None -> body_ty, None
+        | Some { return_var; return_body } ->
+          let return_body' = type_expr captured_vars cap_vars label_vars ((return_var, body_ty)::term_vars) return_body in
+          let ans_ty = type_of return_body' in
+          ans_ty, Some ({ return_var; return_body = return_body' }: Typed_ast.typed_return_clause)
+      in
       let handler_defs' = List.map (fun ({ op_anno; op_name; op_params; op_body }: SLsyntax.hdl) ->
         let (effect_inputs_ty, effect_return_ty) = get_effect_sig sig_name op_name in
         let cont_type = TCont {
           captured_set;
           effect_return_ty;
-          return_ty
+          return_ty = answer_ty
         } in
         let effect_inputs_ty = if (op_anno = HHdl1) || (op_anno = HHdls) then effect_inputs_ty@[cont_type] else effect_inputs_ty in
         if (List.length op_params) != (List.length effect_inputs_ty) 
@@ -281,12 +290,12 @@ and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (stri
           else
             let handler_params = List.map2 (fun x y -> (x, y)) op_params effect_inputs_ty in
             let op_body' = if op_anno == HDef 
-              then type_expr captured_vars' [] [] (handler_params@term_vars) op_body (* For tail-resumptive handler, the effect body type doesn't have to match return type *)
-              else check_ty captured_vars' [] [] (handler_params@term_vars) op_body return_ty ~msg:"Handle: Effect return types doesn't match body's return type"
+              then type_expr captured_vars' [] [] (handler_params@term_vars) op_body
+              else check_ty captured_vars' [] [] (handler_params@term_vars) op_body answer_ty ~msg:"Handle: Effect body type doesn't match answer type"
             in
             { op_anno; op_name; op_params; op_body = op_body' }
       ) handler_defs in
-      Handle { captured_set; handle_body = handle_body'; handler_label; sig_name; handler_defs = handler_defs' }, return_ty
+      Handle { captured_set; handle_body = handle_body'; handler_label; sig_name; return_clause = typed_return_clause; handler_defs = handler_defs' }, answer_ty
 
     | Raise { raise_label; raise_op; raise_args } ->
       let effect_name = find_effect_name raise_label captured_vars label_vars in

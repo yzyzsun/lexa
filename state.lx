@@ -10,8 +10,11 @@ def main(): int {
             raise s2.set(2);
             val a = raise s2.get();
             val b = raise s1.get();
-            fun <s1> (s2_st: int): int { a + b }  // return clause
+            a + b
         } with s2: State {
+            return x {
+                fun <s1> (s2_st: int): int { x }
+            }
             hdl_1 get(k) {
                 fun <s1> (s2_st: int): int {
                     val r = resume_final k s2_st;
@@ -25,9 +28,11 @@ def main(): int {
                 }
             }
         };
-        val res = g(0);
-        fun <> (s1_st: int): int { res }
+        g(0)
     } with s1: State {
+        return x {
+            fun <> (s1_st: int): int { x }
+        }
         hdl_1 get(k) {
             fun <> (s1_st: int): int {
                 val r = resume_final k s1_st;

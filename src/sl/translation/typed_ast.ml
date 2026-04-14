@@ -23,6 +23,11 @@ and hdl = { op_anno : hdl_anno;
             op_params : var list;
             op_body : typed_expr }
 
+and typed_return_clause = {
+  return_var : var;
+  return_body : typed_expr;
+}
+
 and typed_expr_desc = 
   | Unit
   | Var of var
@@ -57,6 +62,7 @@ and typed_expr_desc =
     handle_body : typed_expr;
     handler_label : var;
     sig_name : var;
+    return_clause : typed_return_clause option;
     handler_defs : hdl list;
   }
   | Recdef of (fundef list * typed_expr)

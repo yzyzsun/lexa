@@ -29,6 +29,11 @@ and hdl = { op_anno : hdl_anno;
             op_params : var list;
             op_body : expr }
 
+and return_clause = {
+  return_var : var;
+  return_body : expr;
+}
+
 and capability = var option * Varset.t
 
 and capture_set = 
@@ -69,6 +74,7 @@ and expr =
     handle_body : expr;
     handler_label : var;
     sig_name : var;
+    return_clause : return_clause option;
     handler_defs : hdl list
   }
   | Recdef of fundef list * expr

@@ -71,6 +71,7 @@ rule read =
   | "fun" { FUN }
   | "rec" { REC }
   | "and" { AND }
+  | "return" { RETURN }
   
   | "|" { VBAR }
   | "type" { TYPE }

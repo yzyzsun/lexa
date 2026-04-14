@@ -56,6 +56,7 @@
 %token FUN
 %token REC
 %token AND
+%token RETURN
 %token TYPE
 %token VBAR
 %token OF
@@ -198,6 +199,9 @@ hdl_anno:
   | HDL1 { HHdl1 }
   | HDLS { HHdls }
 
+return_clause:
+  | RETURN return_var = VAR LCB return_body = expr RCB { ({return_var; return_body}: SLsyntax.return_clause) }
+
 hdl_def:
   | op_anno = hdl_anno op_name = VAR LPAREN op_params = separated_list(COMMA, VAR) RPAREN LCB op_body = expr RCB
     { {op_anno; op_name; op_params; op_body} }
@@ -258,8 +262,8 @@ expr:
     LTS captured_set = capability GTS
     LCB handle_body = expr RCB 
     WITH handler_label = VAR COLON sig_name = CAPITALIZED_VAR 
-    LCB handler_defs = list(hdl_def) RCB 
-    { Handle {captured_set; handle_body; handler_label; sig_name; handler_defs} }
+    LCB return_clause = option(return_clause) handler_defs = list(hdl_def) RCB 
+    { Handle {captured_set; handle_body; handler_label; sig_name; return_clause; handler_defs} }
   | FUN LTS captured_set = capability GTS
       opt_params = opt_params
       LPAREN params = separated_list(COMMA, parameter) RPAREN 
