@@ -1,3 +1,4 @@
 (library
  (name SLsyntax)
- (libraries syntax))
+ (libraries syntax)
+ (flags (:standard -w -30)))

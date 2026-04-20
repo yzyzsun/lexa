@@ -2,8 +2,8 @@ open Syntax__Common
 open Syntax__Varset
 
 type top_level =
-  | TLPolyAbs of var * (var list) * (var list) * (var * var) list * parameter list * ty * expr (* name ; type params; cap vars ; labels ; params ; body *)
-  | TLAbs of var * (var list) * (var * var) list * parameter list * ty * expr (* name ; cap vars ; labels ; params ; body *)
+  | TLPolyAbs of var * (var list) * (var list) * (var * var) list * parameter list * cty * expr (* name ; type params; cap vars ; labels ; params ; body *)
+  | TLAbs of var * (var list) * (var * var) list * parameter list * cty * expr (* name ; cap vars ; labels ; params ; body *)
   | TLEffSig of var * (var * (ty list * ty)) list
   | TLEffZSig of var * (var * (ty list * ty)) list
   | TLType of typedef list
@@ -22,7 +22,7 @@ and fundef = { name : var;
                label_params : (var * var) list;
                params : parameter list;
                body : expr;
-               return_ty : ty}
+               return_cty : cty}
 
 and hdl = { op_anno : hdl_anno;
             op_name : var;
@@ -31,14 +31,30 @@ and hdl = { op_anno : hdl_anno;
 
 and return_clause = {
   return_var : var;
+  return_var_ty : ty;
   return_body : expr;
 }
 
 and capability = var option * Varset.t
 
-and capture_set = 
+and capture_set =
   | Capability of string
-  | Labels of (string * string) list
+  | Labels of (string * label_binding) list
+
+(* A label_binding records what a handler introduced for a label:
+   the effect name it handles and, for each operation, the type the operation
+   has under this handler (including the inferred ATM C1 => C2). *)
+and label_binding = {
+  lb_effect_name : var;
+  lb_op_ctys : (var * op_cty) list;
+}
+
+and op_cty = {
+  op_params_ty : ty list;
+  op_return_ty : ty;
+  op_c1 : cty;
+  op_c2 : cty;
+}
 
 and expr =
   | Unit
@@ -88,7 +104,7 @@ and expr =
     label_params: (var * var) list;
     params: parameter list;
     body: expr;
-    return_ty: ty
+    return_cty: cty
   }
   | Let of var * expr * expr
   | If of expr * expr * expr
@@ -113,12 +129,12 @@ and ty = (* Lexaz SL types *)
     cap_params : var list;
     label_params : (var * var) list;
     params_ty : ty list;
-    return_ty : ty
+    return_cty : cty
   }
   | TCont of {
     captured_set : capability;
     effect_return_ty : ty;
-    return_ty : ty
+    return_cty : cty
   }
   | TNode of ty (* node_t* *)
   | TTree of ty (* tree_t* *)
@@ -182,7 +198,7 @@ and atc =
 
 and eff =
   | EPure
-  | EAns of var * cty * cty
+  | EAns of cty * cty
   | EEffVar of var
 
 and cty =

@@ -1,3 +1,4 @@
 (library
  (name translation)
- (libraries SLsyntax))
+ (libraries SLsyntax)
+ (flags (:standard -w -30)))

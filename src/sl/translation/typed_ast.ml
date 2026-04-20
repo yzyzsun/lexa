@@ -1,13 +1,13 @@
 open SLsyntax
 open Syntax__Common
 
-type typed_expr = 
-{ 
+type typed_expr =
+{
   expr_desc: typed_expr_desc;
-  expr_ty: ty;
+  expr_cty: cty;
   captured_vars: capture_set;
   cap_vars: var list;
-  label_vars: (var * var) list;
+  label_vars: (var * label_binding) list;
 }
 
 and fundef = { name : var;
@@ -16,7 +16,7 @@ and fundef = { name : var;
                label_params : (var * var) list;
                params : parameter list;
                body : typed_expr;
-               return_ty : ty}
+               return_cty : cty}
 
 and hdl = { op_anno : hdl_anno;
             op_name : var;
@@ -25,6 +25,9 @@ and hdl = { op_anno : hdl_anno;
 
 and typed_return_clause = {
   return_var : var;
+  return_var_ty : ty;
+  (* The inferred output cty of the return-clause body (C1). *)
+  return_cty : cty;
   return_body : typed_expr;
 }
 
@@ -76,7 +79,7 @@ and typed_expr_desc =
     label_params: (var * var) list;
     params: parameter list;
     body: typed_expr;
-    return_ty: ty
+    return_cty: cty
   }
   | Let of (var * typed_expr * typed_expr)
   | If of (typed_expr * typed_expr * typed_expr)

@@ -100,6 +100,7 @@
 %right NEG
 %nonassoc NEQ CMPEQ LTS GTS
 %left ADD SUB
+%nonassoc CTY_PURE
 %left MULT DIV PERC
 %%
 
@@ -146,13 +147,13 @@ type_exp:
   | TSTRING { TStr }
   | TCHAR { TChar }
   | TREF ty = type_exp { TRef ty }
-  | LTS captured_set = capability GTS 
+  | LTS captured_set = capability GTS
     opt_params = opt_params
-    LPAREN params_ty = separated_list(COMMA, type_exp) RPAREN RARROW return_ty = type_exp
+    LPAREN params_ty = separated_list(COMMA, type_exp) RPAREN RARROW return_cty = cty_exp
     { let (cap_params, label_params) = opt_params in
-      TFun { captured_set; cap_params; label_params; params_ty; return_ty } }
-  | TCONT LTS captured_set = capability GTS effect_return_ty = type_exp RARROW return_ty = type_exp
-    { TCont { captured_set; effect_return_ty; return_ty } }
+      TFun { captured_set; cap_params; label_params; params_ty; return_cty } }
+  | TCONT LTS captured_set = capability GTS effect_return_ty = type_exp RARROW return_cty = cty_exp
+    { TCont { captured_set; effect_return_ty; return_cty } }
   | TNODE COLON COLON LSB ty = type_exp RSB { TNode ty }
   | TTREE COLON COLON LSB ty = type_exp RSB { TTree ty }
   | TQUEUE COLON COLON LSB ty = type_exp RSB { TQueue ty }
@@ -163,26 +164,35 @@ type_exp:
   | tv = TYPE_VAR { TVar tv }
   | FORALL tv = TYPE_VAR DOT ty = type_exp { TForall (tv, KTy, ty) }
 
+cty_exp:
+  // Prefer parsing `... -> t / e` as `... -> (t / e)`.
+  // Use parentheses when you mean `(... -> t) / e`.
+  | t = type_exp %prec CTY_PURE { CCty (t, EPure) }
+  | t = type_exp DIV e = eff_exp { CCty (t, e) }
+
+eff_exp:
+  | c1 = cty_exp FATARROW c2 = cty_exp { EAns (c1, c2) }
+
 parameter:
   | name = VAR COLON param_type = type_exp { (name, param_type) }
 
 top_level:
   | DEF name = VAR
       opt_params = opt_params
-      LPAREN params = separated_list(COMMA, parameter) RPAREN 
-      COLON return_ty = type_exp
-      LCB e = expr RCB { 
+      LPAREN params = separated_list(COMMA, parameter) RPAREN
+      COLON return_cty = cty_exp
+      LCB e = expr RCB {
         let (cap_params, label_params) = opt_params in
-        TLAbs (name, cap_params, label_params, params, return_ty, e) 
+        TLAbs (name, cap_params, label_params, params, return_cty, e)
       }
   | DEF name = VAR
       COLON COLON LSB type_params = separated_list(COMMA, TYPE_VAR) RSB
       opt_params = opt_params
-      LPAREN params = separated_list(COMMA, parameter) RPAREN 
-      COLON return_ty = type_exp
-      LCB e = expr RCB { 
+      LPAREN params = separated_list(COMMA, parameter) RPAREN
+      COLON return_cty = cty_exp
+      LCB e = expr RCB {
         let (cap_params, label_params) = opt_params in
-        TLPolyAbs (name, type_params, cap_params, label_params, params, return_ty, e) 
+        TLPolyAbs (name, type_params, cap_params, label_params, params, return_cty, e)
       }
   | EFFECT name = CAPITALIZED_VAR LCB l = list(effect_sig) RCB { TLEffSig (name, l) }
   | EXCEPTION name = CAPITALIZED_VAR LCB ops = list(effect_sig) RCB { TLEffZSig (name, ops) }
@@ -201,7 +211,8 @@ hdl_anno:
   | HDLS { HHdls }
 
 return_clause:
-  | RETURN return_var = VAR LCB return_body = expr RCB { ({return_var; return_body}: SLsyntax.return_clause) }
+  | RETURN return_var = VAR COLON return_var_ty = type_exp LCB return_body = expr RCB
+    { ({return_var; return_var_ty; return_body}: SLsyntax.return_clause) }
 
 hdl_def:
   | op_anno = hdl_anno op_name = VAR LPAREN op_params = separated_list(COMMA, VAR) RPAREN LCB op_body = expr RCB
@@ -213,11 +224,11 @@ heap_value:
 recfun:
   | name = VAR LTS captured_set = capability GTS
     opt_params = opt_params
-    LPAREN params = separated_list(COMMA, parameter) RPAREN 
-    COLON return_ty = type_exp
+    LPAREN params = separated_list(COMMA, parameter) RPAREN
+    COLON return_cty = cty_exp
     LCB e = expr RCB
     { let (cap_params, label_params) = opt_params in
-      ({name; captured_set; cap_params; label_params; params; body = e; return_ty} : SLsyntax.fundef) }
+      ({name; captured_set; cap_params; label_params; params; body = e; return_cty} : SLsyntax.fundef) }
 
 match_clause:
   | con_name = CAPITALIZED_VAR RARROW LCB e = expr RCB { ( PTypecon (con_name, []), e) }
@@ -282,11 +293,11 @@ expr:
     { Handle {captured_set; region_binder; evidence_binder; handle_body; handler_label; sig_name; return_clause; handler_defs} }
   | FUN LTS captured_set = capability GTS
       opt_params = opt_params
-      LPAREN params = separated_list(COMMA, parameter) RPAREN 
-      COLON return_ty = type_exp
-      LCB e = expr RCB { 
+      LPAREN params = separated_list(COMMA, parameter) RPAREN
+      COLON return_cty = cty_exp
+      LCB e = expr RCB {
         let (cap_params, label_params) = opt_params in
-        Fun {captured_set; cap_params; label_params; params; body = e; return_ty} 
+        Fun {captured_set; cap_params; label_params; params; body = e; return_cty}
       }
   | REC DEF fs = separated_list(AND, recfun) SEMICOLON e = expr { Recdef (fs, e) }
   | e1 = expr SEMICOLON e2 = expr %prec STMT { Stmt (e1, e2) }

@@ -12,7 +12,7 @@ def main(): int {
             val b = do s1.get[r2]();
             a + b
         } with s2: State {
-            return x {
+            return x: int {
                 fun <s1> (s2_st: int): int { x }
             }
             hdl_1 get(k) {
@@ -30,7 +30,7 @@ def main(): int {
         };
         g(0)
     } with s1: State {
-        return x {
+        return x: int {
             fun <> (s1_st: int): int { x }
         }
         hdl_1 get(k) {

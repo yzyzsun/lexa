@@ -17,15 +17,15 @@ let rec gen_top_level_types (tls : top_level list) =
         effectz_names := !effectz_names@[name];
         gen_top_level_types rest
 
-      | TLPolyAbs (name, type_params, cap_params, label_params, params, return_ty, _) ->
+      | TLPolyAbs (name, type_params, cap_params, label_params, params, return_cty, _) ->
         let params_ty = List.map snd params in
-        let fun_ty = TFun { captured_set=None, Varset.empty; cap_params; label_params; params_ty; return_ty } in
+        let fun_ty = TFun { captured_set=None, Varset.empty; cap_params; label_params; params_ty; return_cty } in
         let ty = List.fold_right (fun tv ty -> TForall (tv, KTy, ty)) type_params fun_ty in
         (name, ty)::gen_top_level_types rest
 
-      | TLAbs (name, cap_params, label_params, params, return_ty, _) ->
+      | TLAbs (name, cap_params, label_params, params, return_cty, _) ->
         let params_ty = List.map snd params in
-        (name, TFun { captured_set=None, Varset.empty; cap_params; label_params; params_ty; return_ty })::gen_top_level_types rest
+        (name, TFun { captured_set=None, Varset.empty; cap_params; label_params; params_ty; return_cty })::gen_top_level_types rest
 
       | TLType type_defs ->
         check_type_defs type_defs;
@@ -42,9 +42,9 @@ let typecheck_toplevels (tls : top_level list) : unit =
   let top_level_fun_types = gen_top_level_types tls in
   List.iter (fun tl ->
       match tl with
-      | TLPolyAbs (_, _, cap_params, label_params, params, return_ty, body)
-      | TLAbs (_, cap_params, label_params, params, return_ty, body) ->
-        let fun_expr = SLsyntax.Fun { captured_set = None, Varset.empty; cap_params; label_params; params; return_ty; body } in
+      | TLPolyAbs (_, _, cap_params, label_params, params, return_cty, body)
+      | TLAbs (_, cap_params, label_params, params, return_cty, body) ->
+        let fun_expr = SLsyntax.Fun { captured_set = None, Varset.empty; cap_params; label_params; params; return_cty; body } in
         ignore (type_expr empty_region_ctx (Labels []) [] [] top_level_fun_types fun_expr)
       | _ -> ()
     )
