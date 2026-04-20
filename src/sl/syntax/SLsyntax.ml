@@ -62,10 +62,12 @@ and expr =
   | New of expr list
   | Get of expr * expr
   | Set of expr * expr * expr
-  | Raise of {
-    raise_label : var;
-    raise_op : var;
-    raise_args : expr list
+  | Do of {
+    do_label : var;
+    do_op : var;
+    do_evidence : evidence;
+    do_typelike_args : typelike list;
+    do_args : expr list
   }
   | Resume of expr * expr
   | ResumeFinal of expr * expr
@@ -122,7 +124,78 @@ and ty = (* Lexaz SL types *)
   | TArray of ty (* array_t* *)
   | TCon of var * ty list
   | TVar of var
-  | TForall of var * ty
+  | TForall of var * kind * ty
+  | TCap of region * opty
+
+and opty = {
+  op_ty_bindings : (var * kind) list;
+  op_param_name  : var;
+  op_param_ty    : ty;
+  op_return_cty  : cty;
+}
+
+and region =
+  | RTop
+  | RVar of var
+  | RNull
+
+and distance =
+  | DZero
+  | DOne
+  | DVar of var
+  | DPlus of distance * distance
+
+and region_constraint = {
+  rc_left  : region;
+  rc_dist  : distance;
+  rc_right : region;
+}
+
+and evidence =
+  | EVar of var
+  | EZero
+  | EPlus of evidence * evidence
+  | ENull
+
+and kind =
+  | KTy
+  | KCty
+  | KEff
+  | KReg
+  | KDist
+  | KATC of distance
+  | KEv of region_constraint
+  | KPred of base_ty list
+
+and base_ty =
+  | BBool
+  | BUnit
+  | BInt
+
+and atc =
+  | ATCHole
+  | ATCVar of var
+  | ATCAns of ty * var * cty * atc
+  | ATCFill of var * atc
+
+and eff =
+  | EPure
+  | EAns of var * cty * cty
+  | EEffVar of var
+
+and cty =
+  | CTyVar of var
+  | CCty of ty * eff
+  | CFill of var * cty
+
+and typelike =
+  | TLTy of ty
+  | TLRegion of region
+  | TLDist of distance
+  | TLEvidence of evidence
+  | TLCty of cty
+  | TLEff of eff
+  | TLATC of atc
 
 and parameter = var * ty
 

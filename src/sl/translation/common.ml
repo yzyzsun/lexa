@@ -72,7 +72,8 @@ let rec type_to_str (ty: ty) =
     if (t_args = [])
       then t else Printf.sprintf "%s::[%s]" t (String.concat ", " (List.map type_to_str t_args))
   | TVar v -> v
-  | TForall (tvar, ty') -> Printf.sprintf "∀%s. %s" tvar (type_to_str ty')
+  | TForall (tvar, _kind, ty') -> Printf.sprintf "∀%s. %s" tvar (type_to_str ty')
+  | TCap (_region, _opty) -> "Cap"
 
 (** Type equality **)
 
@@ -141,10 +142,10 @@ let alpha_normalize ty =
       | Some tv' -> TVar tv'
       | None -> TVar tv
     )
-    | TForall (tv, ty') ->
+    | TForall (tv, kind, ty') ->
       let tv_new = fresh_var() in
       let env' = Varmap.add tv tv_new env in
-      TForall (tv_new, (normalize ty' env'))
+      TForall (tv_new, kind, (normalize ty' env'))
     | _ -> ty
   
   in 
@@ -177,8 +178,8 @@ let types_eq t1 t2 =
         && (normalized_types_eq rt rt')
     | (TCon (tv1, t1_args), TCon (tv2, t2_args)) ->
       (tv1 = tv2) && (List.equal normalized_types_eq t1_args t2_args)
-    | (TForall (v1, t1'), TForall (v2, t2')) -> 
-      v1 = v2 && (normalized_types_eq t1' t2')
+    | (TForall (v1, k1, t1'), TForall (v2, k2, t2')) -> 
+      v1 = v2 && k1 = k2 && (normalized_types_eq t1' t2')
     | (t1', t2') -> t1' = t2'
   in
 
@@ -347,10 +348,10 @@ let substitute_ty ty type_subs =
     | TCon (con, t_args) ->
       let t_args' = List.map (fun t_arg -> substitute t_arg type_subs) t_args in
       TCon (con, t_args')
-    | TForall (tv, ty') ->
+    | TForall (tv, kind, ty') ->
       let tv_new = fresh_var() in
       let type_subs' = (tv, TVar tv_new)::type_subs in
-      TForall (tv_new, substitute ty' type_subs')
+      TForall (tv_new, kind, substitute ty' type_subs')
     | _ -> ty in
   
   substitute ty type_subs

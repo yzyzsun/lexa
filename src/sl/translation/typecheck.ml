@@ -10,6 +10,69 @@ let effect_names: string list ref = ref []
 let effectz_names: string list ref = ref[]
 let type_defs_context = ref []
 
+(* Evidence checking context *)
+type region_ctx = {
+  current_region : SLsyntax.region;
+  evidence_env : (string * SLsyntax.region_constraint) list;
+  label_regions : (string * SLsyntax.region) list;
+}
+
+let fresh_region_counter = ref 0
+let fresh_region () =
+  let n = !fresh_region_counter in
+  fresh_region_counter := n + 1;
+  RVar (Printf.sprintf "__r%d" n)
+
+let empty_region_ctx = { current_region = RTop; evidence_env = []; label_regions = [] }
+
+let region_to_str r =
+  match r with
+  | RTop -> "⊤"
+  | RVar v -> v
+  | RNull -> "null"
+
+let regions_eq r1 r2 =
+  match r1, r2 with
+  | RTop, RTop -> true
+  | RVar v1, RVar v2 -> v1 = v2
+  | RNull, RNull -> true
+  | _ -> false
+
+let rec check_evidence ev_env current_r target_r ev =
+  match ev with
+  | ENull -> ()
+  | EZero ->
+    if not (regions_eq current_r target_r) then
+      typing_error "Do: Evidence 0 requires same region, but current region %s ≠ target region %s"
+        (region_to_str current_r) (region_to_str target_r)
+  | EVar v ->
+    (match List.assoc_opt v ev_env with
+    | Some { rc_left; rc_right; _ } ->
+      if not (regions_eq rc_left current_r && regions_eq rc_right target_r) then
+        typing_error "Do: Evidence variable %s has constraint %s ≤ %s, but need %s ≤ %s"
+          v (region_to_str rc_left) (region_to_str rc_right)
+          (region_to_str current_r) (region_to_str target_r)
+    | None -> typing_error "Do: Evidence variable %s not found" v)
+  | EPlus (e1, e2) ->
+    let r_mid = infer_evidence_target ev_env current_r e1 in
+    check_evidence ev_env r_mid target_r e2
+
+and infer_evidence_target ev_env current_r ev =
+  match ev with
+  | ENull -> typing_error "Do: Cannot infer intermediate region from null evidence in +"
+  | EZero -> current_r
+  | EVar v ->
+    (match List.assoc_opt v ev_env with
+    | Some { rc_left; rc_right; _ } ->
+      if not (regions_eq rc_left current_r) then
+        typing_error "Do: Evidence variable %s starts at %s, but expected %s"
+          v (region_to_str rc_left) (region_to_str current_r)
+      else rc_right
+    | None -> typing_error "Do: Evidence variable %s not found" v)
+  | EPlus (e1, e2) ->
+    let r_mid = infer_evidence_target ev_env current_r e1 in
+    infer_evidence_target ev_env r_mid e2
+
 (** Check for the presence of a capability variable. Raises an exception if not. *)
 let check_cap_var var captured_vars cap_vars = 
   if List.exists (fun cap -> var = cap) cap_vars then ()
@@ -55,8 +118,8 @@ let get_effect_sig (effect_name: string) effect_op =
   List.assoc effect_op effect_sigs_list
 
 (** Checks whether expression e has type ty. Raises an error with expected and actual types if not. *)
-let rec check_ty ?(msg = "") captured_vars cap_vars label_vars term_vars (e: expr) ty =
-  let te = type_expr captured_vars cap_vars label_vars term_vars e in
+let rec check_ty ?(msg = "") rctx captured_vars cap_vars label_vars term_vars (e: expr) ty =
+  let te = type_expr rctx captured_vars cap_vars label_vars term_vars e in
   let { expr_ty=ty'; _ } = te in
     if not (types_eq ty ty') then
       typing_error
@@ -66,7 +129,10 @@ let rec check_ty ?(msg = "") captured_vars cap_vars label_vars term_vars (e: exp
         (type_to_str ty')
     else te
 
-and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (string * ty) list) (e: expr): typed_expr =
+and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: (string * ty) list) (e: expr): typed_expr =
+  let type_expr_with = type_expr in
+  let type_expr = type_expr rctx in
+  let check_ty ?(msg="") = check_ty ~msg rctx in
   let type_of te = 
     let { expr_ty; _ } = te in expr_ty in
 
@@ -171,7 +237,7 @@ and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (stri
           (
             match List.assoc_opt name prim_polymophic_sigs with
             | Some (tv, params_ty, return_ty) ->
-              TForall (tv, 
+              TForall (tv, KTy,
                 TFun {
                   captured_set=None, Varset.empty;
                   cap_params=[];
@@ -266,7 +332,14 @@ and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (stri
 
     | Handle { captured_set; handle_body; handler_label; sig_name; return_clause; handler_defs } ->
       let captured_vars' = check_capture_set_as_unamb captured_set captured_vars cap_vars label_vars in
-      let handle_body' = type_expr captured_vars' [] [(handler_label, sig_name)] term_vars handle_body in
+      (* Introduce fresh region for this handler *)
+      let handler_region = fresh_region () in
+      let body_rctx = {
+        current_region = handler_region;
+        evidence_env = (handler_label, { rc_left = handler_region; rc_dist = DOne; rc_right = rctx.current_region }) :: rctx.evidence_env;
+        label_regions = (handler_label, handler_region) :: rctx.label_regions;
+      } in
+      let handle_body' = type_expr_with body_rctx captured_vars' [] [(handler_label, sig_name)] term_vars handle_body in
       let body_ty = type_of handle_body' in
       (* If there's a return clause, type-check it to get the answer type;
          otherwise the answer type equals the body type. *)
@@ -297,14 +370,20 @@ and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (stri
       ) handler_defs in
       Handle { captured_set; handle_body = handle_body'; handler_label; sig_name; return_clause = typed_return_clause; handler_defs = handler_defs' }, answer_ty
 
-    | Raise { raise_label; raise_op; raise_args } ->
-      let effect_name = find_effect_name raise_label captured_vars label_vars in
-      let (effect_params_ty, effect_return_ty) = get_effect_sig effect_name raise_op in
-      if (List.length raise_args) != (List.length effect_params_ty) 
-        then typing_error "Raise: Incorrect number of arguments\n\tExpected: %d\n\tActual: %d\n" (List.length effect_params_ty) (List.length raise_args)
+    | Do { do_label; do_op; do_evidence; do_typelike_args; do_args } ->
+      let effect_name = find_effect_name do_label captured_vars label_vars in
+      let (effect_params_ty, effect_return_ty) = get_effect_sig effect_name do_op in
+      (* Check evidence: need Ev(current_region <= label_region) *)
+      (match List.assoc_opt do_label rctx.label_regions with
+      | Some target_region ->
+        check_evidence rctx.evidence_env rctx.current_region target_region do_evidence
+      | None -> ()
+      );
+      if (List.length do_args) != (List.length effect_params_ty) 
+        then typing_error "Do: Incorrect number of arguments\n\tExpected: %d\n\tActual: %d\n" (List.length effect_params_ty) (List.length do_args)
         else 
-          let raise_args' = List.map2 (fun arg ty -> check_ty captured_vars cap_vars label_vars term_vars arg ty ~msg:"Raise: Parameter types don't match") raise_args effect_params_ty in
-          Raise { raise_label; raise_op; raise_args = raise_args' }, effect_return_ty
+          let do_args' = List.map2 (fun arg ty -> check_ty captured_vars cap_vars label_vars term_vars arg ty ~msg:"Do: Parameter types don't match") do_args effect_params_ty in
+          Do { do_label; do_op; do_evidence; do_typelike_args; do_args = do_args' }, effect_return_ty
 
     | Resume (cont, arg) ->
       let cont' = type_expr captured_vars cap_vars label_vars term_vars cont in
@@ -402,7 +481,7 @@ and type_expr (captured_vars: capture_set) cap_vars label_vars (term_vars: (stri
       let te = type_expr captured_vars cap_vars label_vars term_vars e in
       let te_ty = type_of te in
       let instantiated_ty = (match te_ty with 
-        | TForall (tv, t') -> 
+        | TForall (tv, _kind, t') -> 
           substitute_ty t' [(tv, t_arg)]
         | _ -> typing_error "TypeApp: A forall type expected\n\tActual: %s" (type_to_str te_ty)
       ) in
@@ -436,7 +515,7 @@ let check_type_defs (defs: typedef list) =
     | TVar tv ->
       if List.exists (fun tv' -> tv = tv') type_vars
         then () else typing_error "Type Definition: type variable %s not defined" tv
-    | TForall (tv, ty') -> check_typedef_ty type_names (tv::type_vars) ty'
+    | TForall (tv, _kind, ty') -> check_typedef_ty type_names (tv::type_vars) ty'
     | _ -> () in
 
   List.iter (fun { type_name=_; type_params; type_cons } ->

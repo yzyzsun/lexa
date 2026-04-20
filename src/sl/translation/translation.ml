@@ -20,7 +20,7 @@ let rec gen_top_level_types (tls : top_level list) =
       | TLPolyAbs (name, type_params, cap_params, label_params, params, return_ty, _) ->
         let params_ty = List.map snd params in
         let fun_ty = TFun { captured_set=None, Varset.empty; cap_params; label_params; params_ty; return_ty } in
-        let ty = List.fold_right (fun tv ty -> TForall (tv, ty)) type_params fun_ty in
+        let ty = List.fold_right (fun tv ty -> TForall (tv, KTy, ty)) type_params fun_ty in
         (name, ty)::gen_top_level_types rest
 
       | TLAbs (name, cap_params, label_params, params, return_ty, _) ->
@@ -45,7 +45,7 @@ let typecheck_toplevels (tls : top_level list) : unit =
       | TLPolyAbs (_, _, cap_params, label_params, params, return_ty, body)
       | TLAbs (_, cap_params, label_params, params, return_ty, body) ->
         let fun_expr = SLsyntax.Fun { captured_set = None, Varset.empty; cap_params; label_params; params; return_ty; body } in
-        ignore (type_expr (Labels []) [] [] top_level_fun_types fun_expr)
+        ignore (type_expr empty_region_ctx (Labels []) [] [] top_level_fun_types fun_expr)
       | _ -> ()
     )
     tls

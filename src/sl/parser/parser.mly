@@ -24,7 +24,7 @@
 %token EQ
 %token COLONEQ
 %token COLON
-%token RAISE
+%token DO
 %token HANDLE
 %token LSB
 %token RSB
@@ -160,7 +160,7 @@ type_exp:
   | pattern_name = VAR COLON COLON LSB type_args = separated_list(COMMA, type_exp) RSB { TCon (pattern_name, type_args) }
   | LPAREN ty = type_exp RPAREN { ty }
   | tv = TYPE_VAR { TVar tv }
-  | FORALL tv = TYPE_VAR DOT ty = type_exp { TForall (tv, ty) }
+  | FORALL tv = TYPE_VAR DOT ty = type_exp { TForall (tv, KTy, ty) }
 
 parameter:
   | name = VAR COLON param_type = type_exp { (name, param_type) }
@@ -223,6 +223,19 @@ match_clause:
   | con_name = CAPITALIZED_VAR LPAREN con_args = separated_nonempty_list(COMMA, VAR) RPAREN RARROW LCB e = expr RCB 
     { (PTypecon(con_name, con_args), e) }
 
+evidence_atom:
+  | INT { if $1 = 0 then EZero else failwith "evidence: only 0 is a valid integer literal" }
+  | MULT { ENull }
+  | v = VAR { EVar v }
+  | LPAREN e = evidence_exp RPAREN { e }
+
+evidence_exp:
+  | evidence_atom { $1 }
+  | e1 = evidence_exp ADD e2 = evidence_atom { EPlus (e1, e2) }
+
+typelike_exp:
+  | t = type_exp { TLTy t }
+
 app_expr:
   | simple_expr { $1 }
   | e1 = app_expr 
@@ -254,8 +267,10 @@ expr:
   | v1 = app_expr LSB v2 = expr RSB COLONEQ v3 = expr { Set (v1, v2, v3) }
   | VALDEF x = VAR EQ t1 = expr SEMICOLON t2 = expr %prec HIGHER_THAN_STMT { Let (x, t1, t2) }
   | IF v = expr THEN t1 = expr ELSE t2 = expr { If (v, t1, t2) }
-  | RAISE raise_label = VAR DOT raise_op = VAR LPAREN raise_args = separated_list(COMMA, expr) RPAREN
-    { Raise {raise_label; raise_op; raise_args} }
+  | DO do_label = VAR DOT do_op = VAR LSB do_evidence = evidence_exp RSB LPAREN do_args = separated_list(COMMA, expr) RPAREN
+    { Do {do_label; do_op; do_evidence; do_typelike_args = []; do_args} }
+  | DO do_label = VAR DOT do_op = VAR LSB do_evidence = evidence_exp SEMICOLON do_typelike_args = separated_nonempty_list(COMMA, typelike_exp) RSB LPAREN do_args = separated_list(COMMA, expr) RPAREN
+    { Do {do_label; do_op; do_evidence; do_typelike_args; do_args} }
   | RESUME k = simple_expr v = app_expr { Resume (k, v) }
   | RESUMEFINAL k = simple_expr v = app_expr { ResumeFinal (k, v) }
   | HANDLE
