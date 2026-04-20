@@ -4,12 +4,12 @@ effect State {
 }
 
 def main(): int {
-    val f = handle <> {
-        val g = handle <s1> {
-            do s1.set[s2](1);
+    val f = handle <> { [r1, e1] =>
+        val g = handle <s1> { [r2, e2] =>
+            do s1.set[r2](1);
             do s2.set[0](2);
             val a = do s2.get[0]();
-            val b = do s1.get[s2]();
+            val b = do s1.get[r2]();
             a + b
         } with s2: State {
             return x {

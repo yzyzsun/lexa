@@ -78,6 +78,7 @@ rule read =
   | "of" { OF }
   | "match" { MATCH }
   | "->" { RARROW }
+  | "=>" { FATARROW }
   | "open" { OPEN }
   | "&&" { CONJ }
   | "||" { DISJ }

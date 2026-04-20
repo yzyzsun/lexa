@@ -17,12 +17,6 @@ type region_ctx = {
   label_regions : (string * SLsyntax.region) list;
 }
 
-let fresh_region_counter = ref 0
-let fresh_region () =
-  let n = !fresh_region_counter in
-  fresh_region_counter := n + 1;
-  RVar (Printf.sprintf "__r%d" n)
-
 let empty_region_ctx = { current_region = RTop; evidence_env = []; label_regions = [] }
 
 let region_to_str r =
@@ -330,13 +324,14 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
         | _ -> typing_error "App: Function type expected\n\tActual: %s" (type_to_str fun_type)
       )
 
-    | Handle { captured_set; handle_body; handler_label; sig_name; return_clause; handler_defs } ->
+    | Handle { captured_set; region_binder; evidence_binder; handle_body; handler_label; sig_name; return_clause; handler_defs } ->
       let captured_vars' = check_capture_set_as_unamb captured_set captured_vars cap_vars label_vars in
-      (* Introduce fresh region for this handler *)
-      let handler_region = fresh_region () in
+      (* Use the explicit region binder for this handler's region. *)
+      let handler_region = RVar region_binder in
+      let handler_constraint = { rc_left = handler_region; rc_dist = DOne; rc_right = rctx.current_region } in
       let body_rctx = {
         current_region = handler_region;
-        evidence_env = (handler_label, { rc_left = handler_region; rc_dist = DOne; rc_right = rctx.current_region }) :: rctx.evidence_env;
+        evidence_env = (region_binder, handler_constraint) :: (evidence_binder, handler_constraint) :: rctx.evidence_env;
         label_regions = (handler_label, handler_region) :: rctx.label_regions;
       } in
       let handle_body' = type_expr_with body_rctx captured_vars' [] [(handler_label, sig_name)] term_vars handle_body in
@@ -368,7 +363,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
             in
             { op_anno; op_name; op_params; op_body = op_body' }
       ) handler_defs in
-      Handle { captured_set; handle_body = handle_body'; handler_label; sig_name; return_clause = typed_return_clause; handler_defs = handler_defs' }, answer_ty
+      Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; return_clause = typed_return_clause; handler_defs = handler_defs' }, answer_ty
 
     | Do { do_label; do_op; do_evidence; do_typelike_args; do_args } ->
       let effect_name = find_effect_name do_label captured_vars label_vars in
