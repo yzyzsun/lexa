@@ -53,12 +53,12 @@ and typed_expr_desc =
   | New of typed_expr list
   | Get of (typed_expr * typed_expr)
   | Set of typed_expr * typed_expr * typed_expr
-  | Do of {
-    do_label : var;
-    do_op : var;
-    do_evidence : SLsyntax.evidence;
-    do_typelike_args : SLsyntax.typelike list;
-    do_args : typed_expr list;
+  | Raise of {
+    raise_label : var;
+    raise_op : var;
+    raise_evidence : SLsyntax.evidence;
+    raise_typelike_args : SLsyntax.typelike list;
+    raise_args : typed_expr list;
   }
   | Resume of (typed_expr * typed_expr)
   | ResumeFinal of (typed_expr * typed_expr)

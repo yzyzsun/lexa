@@ -78,12 +78,12 @@ and expr =
   | New of expr list
   | Get of expr * expr
   | Set of expr * expr * expr
-  | Do of {
-    do_label : var;
-    do_op : var;
-    do_evidence : evidence;
-    do_typelike_args : typelike list;
-    do_args : expr list
+  | Raise of {
+    raise_label : var;
+    raise_op : var;
+    raise_evidence : evidence;
+    raise_typelike_args : typelike list;
+    raise_args : expr list
   }
   | Resume of expr * expr
   | ResumeFinal of expr * expr

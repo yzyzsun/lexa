@@ -40,7 +40,7 @@ rule read =
   | "(" { LPAREN }
   | ")" { RPAREN }
   | "=" { EQ }
-  | "do" { DO }
+  | "raise" { RAISE }
   | "handle" { HANDLE }
   | "with" { WITH }
   | "newref" { NEWREF }

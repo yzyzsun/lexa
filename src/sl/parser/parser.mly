@@ -24,7 +24,7 @@
 %token EQ
 %token COLONEQ
 %token COLON
-%token DO
+%token RAISE
 %token HANDLE
 %token LSB
 %token RSB
@@ -279,10 +279,10 @@ expr:
   | v1 = app_expr LSB v2 = expr RSB COLONEQ v3 = expr { Set (v1, v2, v3) }
   | VALDEF x = VAR EQ t1 = expr SEMICOLON t2 = expr %prec HIGHER_THAN_STMT { Let (x, t1, t2) }
   | IF v = expr THEN t1 = expr ELSE t2 = expr { If (v, t1, t2) }
-  | DO do_label = VAR DOT do_op = VAR LSB do_evidence = evidence_exp RSB LPAREN do_args = separated_list(COMMA, expr) RPAREN
-    { Do {do_label; do_op; do_evidence; do_typelike_args = []; do_args} }
-  | DO do_label = VAR DOT do_op = VAR LSB do_evidence = evidence_exp SEMICOLON do_typelike_args = separated_nonempty_list(COMMA, typelike_exp) RSB LPAREN do_args = separated_list(COMMA, expr) RPAREN
-    { Do {do_label; do_op; do_evidence; do_typelike_args; do_args} }
+  | RAISE raise_label = VAR DOT raise_op = VAR LSB raise_evidence = evidence_exp RSB LPAREN raise_args = separated_list(COMMA, expr) RPAREN
+    { Raise {raise_label; raise_op; raise_evidence; raise_typelike_args = []; raise_args} }
+  | RAISE raise_label = VAR DOT raise_op = VAR LSB raise_evidence = evidence_exp SEMICOLON raise_typelike_args = separated_nonempty_list(COMMA, typelike_exp) RSB LPAREN raise_args = separated_list(COMMA, expr) RPAREN
+    { Raise {raise_label; raise_op; raise_evidence; raise_typelike_args; raise_args} }
   | RESUME k = simple_expr v = app_expr { Resume (k, v) }
   | RESUMEFINAL k = simple_expr v = app_expr { ResumeFinal (k, v) }
   | HANDLE

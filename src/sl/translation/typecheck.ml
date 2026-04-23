@@ -443,7 +443,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       let handler_constraint = { rc_left = handler_region; rc_dist = DOne; rc_right = rctx.current_region } in
       let body_rctx = {
         current_region = handler_region;
-        evidence_env = (region_binder, handler_constraint) :: (evidence_binder, handler_constraint) :: rctx.evidence_env;
+        evidence_env = (evidence_binder, handler_constraint) :: rctx.evidence_env;
         label_regions = (handler_label, handler_region) :: rctx.label_regions;
       } in
       (* Answer-type modification: the handle body has cty T / C1 => C2 where
@@ -523,22 +523,22 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       in
       Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
 
-    | Do { do_label; do_op; do_evidence; do_typelike_args; do_args } ->
-      let op_cty_info = find_op_cty do_label do_op captured_vars label_vars in
+    | Raise { raise_label; raise_op; raise_evidence; raise_typelike_args; raise_args } ->
+      let op_cty_info = find_op_cty raise_label raise_op captured_vars label_vars in
       (* Check evidence: need Ev(current_region <= label_region) *)
-      (match List.assoc_opt do_label rctx.label_regions with
+      (match List.assoc_opt raise_label rctx.label_regions with
       | Some target_region ->
-        check_evidence rctx.evidence_env rctx.current_region target_region do_evidence
+        check_evidence rctx.evidence_env rctx.current_region target_region raise_evidence
       | None -> ()
       );
-      if (List.length do_args) != (List.length op_cty_info.op_params_ty)
-        then typing_error "Do: Incorrect number of arguments\n\tExpected: %d\n\tActual: %d\n" (List.length op_cty_info.op_params_ty) (List.length do_args)
+      if (List.length raise_args) != (List.length op_cty_info.op_params_ty)
+        then typing_error "Raise: Incorrect number of arguments\n\tExpected: %d\n\tActual: %d\n" (List.length op_cty_info.op_params_ty) (List.length raise_args)
         else
-          let do_args' = List.map2 (fun arg ty -> check_ty captured_vars cap_vars label_vars term_vars arg ty ~msg:"Do: Parameter types don't match") do_args op_cty_info.op_params_ty in
-          let args_eff = List.fold_left (fun acc te -> compose_effs acc (eff_of te)) EPure do_args' in
-          let do_eff = EAns (op_cty_info.op_c1, op_cty_info.op_c2) in
-          let eff = compose_effs args_eff do_eff in
-          Do { do_label; do_op; do_evidence; do_typelike_args; do_args = do_args' }, CCty (op_cty_info.op_return_ty, eff)
+          let raise_args' = List.map2 (fun arg ty -> check_ty captured_vars cap_vars label_vars term_vars arg ty ~msg:"Raise: Parameter types don't match") raise_args op_cty_info.op_params_ty in
+          let args_eff = List.fold_left (fun acc te -> compose_effs acc (eff_of te)) EPure raise_args' in
+          let raise_eff = EAns (op_cty_info.op_c1, op_cty_info.op_c2) in
+          let eff = compose_effs args_eff raise_eff in
+          Raise { raise_label; raise_op; raise_evidence; raise_typelike_args; raise_args = raise_args' }, CCty (op_cty_info.op_return_ty, eff)
 
     | Resume (cont, arg) ->
       let cont' = type_expr captured_vars cap_vars label_vars term_vars cont in

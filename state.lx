@@ -6,10 +6,10 @@ effect State {
 def main(): int {
     val f = handle <> { [r1, e1] =>
         val g = handle <s1> { [r2, e2] =>
-            do s1.set[r2](1);
-            do s2.set[0](2);
-            val a = do s2.get[0]();
-            val b = do s1.get[r2]();
+            raise s1.set[e2](1);
+            raise s2.set[0](2);
+            val a = raise s2.get[0]();
+            val b = raise s1.get[e2]();
             a + b
         } with s2: State {
             return x: int {
