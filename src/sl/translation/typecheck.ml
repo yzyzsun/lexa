@@ -469,20 +469,6 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
 
     | Handle { captured_set; region_binder; evidence_binder; handle_body; handler_label; sig_name; return_clause; handler_defs } ->
       let captured_vars' = check_capture_set_as_unamb captured_set captured_vars cap_vars label_vars in
-      let retarget_label_binding c1 c2 (lb: label_binding) =
-        { lb with
-          lb_op_ctys =
-            List.map (fun (op_name, op_cty) ->
-              (op_name, { op_cty with op_c1 = c1; op_c2 = c2 })
-            ) lb.lb_op_ctys
-        }
-      in
-      let retarget_capture_set c1 c2 captured_vars =
-        match captured_vars with
-        | Labels labels ->
-          Labels (List.map (fun (label, lb) -> (label, retarget_label_binding c1 c2 lb)) labels)
-        | Capability _ -> captured_vars
-      in
       (* Use the explicit region binder for this handler's region. *)
       let handler_region = RVar region_binder in
       let handler_constraint = { rc_inner = handler_region; rc_dist = DOne; rc_outer = rctx.current_region } in
@@ -506,8 +492,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
              type. We then re-typecheck the body against the real inferred ATM. *)
           let placeholder_cty = CTyVar ("__ans_" ^ handler_label) in
           let preview_lb = make_label_binding sig_name placeholder_cty placeholder_cty in
-          let preview_captured_vars = retarget_capture_set placeholder_cty placeholder_cty captured_vars' in
-          let hb = type_expr_with body_rctx preview_captured_vars []
+          let hb = type_expr_with body_rctx captured_vars' []
               [(handler_label, preview_lb)]
               term_vars handle_body in
           let t = ty_of hb in
@@ -558,12 +543,11 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       (* Register per-op types (including the inferred ATM) in the label binding,
          so that every `Do x.op [...]` inside the body can look up its C1, C2. *)
       let lb = make_label_binding sig_name initial_ans_cty c2 in
-      let body_captured_vars = retarget_capture_set initial_ans_cty c2 captured_vars' in
       let body_label_vars = [(handler_label, lb)] in
       let body_expected_cty = CCty (body_ty, EAns (initial_ans_cty, c2)) in
       let handle_body' =
         check_cty_with ~msg:"Handle: Body doesn't match the handler's declared ATM"
-          body_rctx body_captured_vars []
+          body_rctx captured_vars' []
           body_label_vars term_vars
           handle_body body_expected_cty
       in
