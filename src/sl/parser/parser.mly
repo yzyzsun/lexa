@@ -85,6 +85,7 @@
 %token TQUEUE
 %token TARRAY
 %token FORALL
+%token ATC
 
 %token EXCEPTION
 
@@ -176,6 +177,23 @@ eff_exp:
 parameter:
   | name = VAR COLON param_type = type_exp { (name, param_type) }
 
+dist_atom:
+  | INT { if $1 = 0 then DZero else if $1 = 1 then DOne else failwith "distance: only 0 and 1 are valid integer literals" }
+  | v = TYPE_VAR { DVar v }
+  | LPAREN d = dist_exp RPAREN { d }
+
+dist_exp:
+  | dist_atom { $1 }
+  | d1 = dist_exp ADD d2 = dist_atom { DPlus (d1, d2) }
+
+kind_anno:
+  | ATC LPAREN d = dist_exp RPAREN { KATC d }
+
+(* Type parameter with optional kind annotation (defaults to KTy). *)
+type_param_decl:
+  | tv = TYPE_VAR { (tv, KTy) }
+  | tv = TYPE_VAR COLON k = kind_anno { (tv, k) }
+
 top_level:
   | DEF name = VAR
       opt_params = opt_params
@@ -186,7 +204,7 @@ top_level:
         TLAbs (name, cap_params, label_params, params, return_cty, e)
       }
   | DEF name = VAR
-      COLON COLON LSB type_params = separated_list(COMMA, TYPE_VAR) RSB
+      COLON COLON LSB type_params = separated_list(COMMA, type_param_decl) RSB
       opt_params = opt_params
       LPAREN params = separated_list(COMMA, parameter) RPAREN
       COLON return_cty = cty_exp
@@ -245,8 +263,22 @@ evidence_exp:
   | evidence_atom { $1 }
   | e1 = evidence_exp ADD e2 = evidence_atom { EPlus (e1, e2) }
 
-typelike_exp:
-  | t = type_exp { TLTy t }
+(* Answer-type conversion (ATC) surface syntax:
+     []                identity ATC                          (ATCHole)
+     T / C => CC       impure extension                      (ATCAns)
+     X[CC]             ATC-variable X applied to an ATC      (ATCFill)
+     'X                bare ATC-kinded type variable         (ATCVar)
+   Nested C is a type_exp (pure cty). To pass an impure C, wrap in parens. *)
+atc_cty:
+  | t = type_exp { CCty (t, EPure) }
+  | LPAREN c = cty_exp RPAREN { c }
+
+atc_exp:
+  | LSB RSB { ATCHole }
+  | LSB cc = atc_exp RSB { cc }
+  | tv = TYPE_VAR LSB cc = atc_exp RSB { ATCFill (tv, cc) }
+  | tv = TYPE_VAR { ATCVar tv }
+  | t = type_exp DIV c = atc_cty FATARROW cc = atc_exp { ATCAns (t, c, cc) }
 
 app_expr:
   | simple_expr { $1 }
@@ -279,10 +311,8 @@ expr:
   | v1 = app_expr LSB v2 = expr RSB COLONEQ v3 = expr { Set (v1, v2, v3) }
   | VALDEF x = VAR EQ t1 = expr SEMICOLON t2 = expr %prec HIGHER_THAN_STMT { Let (x, t1, t2) }
   | IF v = expr THEN t1 = expr ELSE t2 = expr { If (v, t1, t2) }
-  | RAISE raise_label = VAR DOT raise_op = VAR LSB raise_evidence = evidence_exp RSB LPAREN raise_args = separated_list(COMMA, expr) RPAREN
-    { Raise {raise_label; raise_op; raise_evidence; raise_typelike_args = []; raise_args} }
-  | RAISE raise_label = VAR DOT raise_op = VAR LSB raise_evidence = evidence_exp SEMICOLON raise_typelike_args = separated_nonempty_list(COMMA, typelike_exp) RSB LPAREN raise_args = separated_list(COMMA, expr) RPAREN
-    { Raise {raise_label; raise_op; raise_evidence; raise_typelike_args; raise_args} }
+  | RAISE raise_label = VAR DOT raise_op = VAR LSB raise_evidence = evidence_exp SEMICOLON raise_atc = atc_exp RSB LPAREN raise_args = separated_list(COMMA, expr) RPAREN
+    { Raise {raise_label; raise_op; raise_evidence; raise_atc; raise_args} }
   | RESUME k = simple_expr v = app_expr { Resume (k, v) }
   | RESUMEFINAL k = simple_expr v = app_expr { ResumeFinal (k, v) }
   | HANDLE

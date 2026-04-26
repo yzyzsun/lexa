@@ -12,12 +12,28 @@ let type_defs_context = ref []
 
 (* Evidence checking context *)
 type region_ctx = {
+  (* The region the expression currently being checked sits in. Starts at
+     RTop at the top level and is replaced by the handler's region binder
+     inside a Handle body, so that Raise can form the constraint
+     current_region ≤ target_region against the evidence. *)
   current_region : SLsyntax.region;
+  (* Bindings for evidence variables in scope, keyed by the name introduced
+     by a Handle's evidence_binder. Each entry records the region_constraint
+     (inner/outer regions and distance) the variable witnesses; check_evidence
+     consults it when typing an EVar. *)
   evidence_env : (string * SLsyntax.region_constraint) list;
+  (* Maps a handler label to the region it was introduced at. Raise looks up
+     its raise_label here to recover the target region for the evidence
+     check; new entries are added as Handle expressions are entered. *)
   label_regions : (string * SLsyntax.region) list;
+  (* Kinds of in-scope type-level variables. Currently only KATC entries
+     are consulted (by check_atc); other kinds may be stored as a record
+     of what the binder declared. Populated when type abstractions are
+     introduced. *)
+  kind_env : (string * SLsyntax.kind) list;
 }
 
-let empty_region_ctx = { current_region = RTop; evidence_env = []; label_regions = [] }
+let empty_region_ctx = { current_region = RTop; evidence_env = []; label_regions = []; kind_env = [] }
 
 let region_to_str r =
   match r with
@@ -32,24 +48,30 @@ let regions_eq r1 r2 =
   | RNull, RNull -> true
   | _ -> false
 
-let rec check_evidence ev_env current_r target_r ev =
+(** Checks an evidence value against the expected region constraint
+    [current_r <= target_r] and returns its level. *)
+let rec check_evidence ev_env current_r target_r ev : distance =
   match ev with
-  | ENull -> ()
+  | ENull -> DZero
   | EZero ->
     if not (regions_eq current_r target_r) then
       typing_error "Do: Evidence 0 requires same region, but current region %s ≠ target region %s"
-        (region_to_str current_r) (region_to_str target_r)
+        (region_to_str current_r) (region_to_str target_r);
+    DZero
   | EVar v ->
     (match List.assoc_opt v ev_env with
-    | Some { rc_left; rc_right; _ } ->
-      if not (regions_eq rc_left current_r && regions_eq rc_right target_r) then
+    | Some { rc_inner; rc_dist; rc_outer } ->
+      if not (regions_eq rc_inner current_r && regions_eq rc_outer target_r) then
         typing_error "Do: Evidence variable %s has constraint %s ≤ %s, but need %s ≤ %s"
-          v (region_to_str rc_left) (region_to_str rc_right)
-          (region_to_str current_r) (region_to_str target_r)
+          v (region_to_str rc_inner) (region_to_str rc_outer)
+          (region_to_str current_r) (region_to_str target_r);
+      rc_dist
     | None -> typing_error "Do: Evidence variable %s not found" v)
   | EPlus (e1, e2) ->
     let r_mid = infer_evidence_target ev_env current_r e1 in
-    check_evidence ev_env r_mid target_r e2
+    let d1 = check_evidence ev_env current_r r_mid e1 in
+    let d2 = check_evidence ev_env r_mid target_r e2 in
+    DPlus (d1, d2)
 
 and infer_evidence_target ev_env current_r ev =
   match ev with
@@ -57,15 +79,38 @@ and infer_evidence_target ev_env current_r ev =
   | EZero -> current_r
   | EVar v ->
     (match List.assoc_opt v ev_env with
-    | Some { rc_left; rc_right; _ } ->
-      if not (regions_eq rc_left current_r) then
+    | Some { rc_inner; rc_outer; _ } ->
+      if not (regions_eq rc_inner current_r) then
         typing_error "Do: Evidence variable %s starts at %s, but expected %s"
-          v (region_to_str rc_left) (region_to_str current_r)
-      else rc_right
+          v (region_to_str rc_inner) (region_to_str current_r)
+      else rc_outer
     | None -> typing_error "Do: Evidence variable %s not found" v)
   | EPlus (e1, e2) ->
     let r_mid = infer_evidence_target ev_env current_r e1 in
     infer_evidence_target ev_env r_mid e2
+
+(** Infers the level of an ATC, checking well-formedness per the ott rules at
+    lex_algeff_atm.ott:1281-1295 (ATCHole/ATCImpure/ATCFill). Type- and
+    cty-wellformedness of sub-components is not verified today (matches how
+    other judgments in this file skip wf passes). *)
+let rec check_atc kind_env (_term_vars: (string * ty) list) (cc: atc) : distance =
+  match cc with
+  | ATCHole -> DZero
+  | ATCVar x ->
+    (match List.assoc_opt x kind_env with
+    | Some (KATC d) -> d
+    | Some _ -> typing_error "ATC: Variable %s is not ATC-kinded" x
+    | None -> typing_error "ATC: Variable %s not found in kind environment" x)
+  | ATCAns (_t, _c, cc') ->
+    let l = check_atc kind_env _term_vars cc' in
+    DPlus (DOne, l)
+  | ATCFill (x, cc') ->
+    (match List.assoc_opt x kind_env with
+    | Some (KATC l1) ->
+      let l2 = check_atc kind_env _term_vars cc' in
+      DPlus (l1, l2)
+    | Some _ -> typing_error "ATC: Variable %s in %s is not ATC-kinded" x (atc_to_str cc)
+    | None -> typing_error "ATC: Variable %s in %s not found in kind environment" x (atc_to_str cc))
 
 (** Check for the presence of a capability variable. Raises an exception if not. *)
 let check_cap_var var captured_vars cap_vars =
@@ -440,11 +485,12 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       in
       (* Use the explicit region binder for this handler's region. *)
       let handler_region = RVar region_binder in
-      let handler_constraint = { rc_left = handler_region; rc_dist = DOne; rc_right = rctx.current_region } in
+      let handler_constraint = { rc_inner = handler_region; rc_dist = DOne; rc_outer = rctx.current_region } in
       let body_rctx = {
         current_region = handler_region;
         evidence_env = (evidence_binder, handler_constraint) :: rctx.evidence_env;
         label_regions = (handler_label, handler_region) :: rctx.label_regions;
+        kind_env = rctx.kind_env;
       } in
       (* Answer-type modification: the handle body has cty T / C1 => C2 where
          - T is the body's value type (given by the return clause's annotation when present),
@@ -523,22 +569,38 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       in
       Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
 
-    | Raise { raise_label; raise_op; raise_evidence; raise_typelike_args; raise_args } ->
+    | Raise { raise_label; raise_op; raise_evidence; raise_atc; raise_args } ->
       let op_cty_info = find_op_cty raise_label raise_op captured_vars label_vars in
-      (* Check evidence: need Ev(current_region <= label_region) *)
-      (match List.assoc_opt raise_label rctx.label_regions with
-      | Some target_region ->
-        check_evidence rctx.evidence_env rctx.current_region target_region raise_evidence
-      | None -> ()
-      );
+      (* Check evidence: need Ev(current_region <= label_region) with some level l.
+         Returns the inferred level so we can match it against the ATC's level. *)
+      let ev_level_opt =
+        match List.assoc_opt raise_label rctx.label_regions with
+        | Some target_region ->
+          Some (check_evidence rctx.evidence_env rctx.current_region target_region raise_evidence)
+        | None -> None
+      in
+      (* Check CC : ATC(l_atc) and require l_atc = l_ev. *)
+      let l_atc = check_atc rctx.kind_env term_vars raise_atc in
+      (match ev_level_opt with
+      | Some l_ev ->
+        if not (distance_eq l_ev l_atc) then
+          typing_error
+            "Raise: evidence level %s does not match ATC level %s"
+            (distance_to_str l_ev) (distance_to_str l_atc)
+      | None -> ());
       if (List.length raise_args) != (List.length op_cty_info.op_params_ty)
         then typing_error "Raise: Incorrect number of arguments\n\tExpected: %d\n\tActual: %d\n" (List.length op_cty_info.op_params_ty) (List.length raise_args)
         else
           let raise_args' = List.map2 (fun arg ty -> check_ty captured_vars cap_vars label_vars term_vars arg ty ~msg:"Raise: Parameter types don't match") raise_args op_cty_info.op_params_ty in
-          let args_eff = List.fold_left (fun acc te -> compose_effs acc (eff_of te)) EPure raise_args' in
-          let raise_eff = EAns (op_cty_info.op_c1, op_cty_info.op_c2) in
-          let eff = compose_effs args_eff raise_eff in
-          Raise { raise_label; raise_op; raise_evidence; raise_typelike_args; raise_args = raise_args' }, CCty (op_cty_info.op_return_ty, eff)
+          let kind_env = rctx.kind_env in
+          let args_eff = List.fold_left (fun acc te -> compose_effs ~kind_env acc (eff_of te)) EPure raise_args' in
+          (* Fill CC with the handler's C1 and C2 per the T_Do rule:
+             result cty = T' / CC{C1} => CC{C2}. *)
+          let c1' = fill_atc raise_atc op_cty_info.op_c1 in
+          let c2' = fill_atc raise_atc op_cty_info.op_c2 in
+          let raise_eff = EAns (c1', c2') in
+          let eff = compose_effs ~kind_env args_eff raise_eff in
+          Raise { raise_label; raise_op; raise_evidence; raise_atc; raise_args = raise_args' }, CCty (op_cty_info.op_return_ty, eff)
 
     | Resume (cont, arg) ->
       let cont' = type_expr captured_vars cap_vars label_vars term_vars cont in

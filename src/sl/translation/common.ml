@@ -94,6 +94,21 @@ and eff_to_str (e: eff) =
   | EAns (c1, c2) -> Printf.sprintf "(%s) => (%s)" (cty_to_str c1) (cty_to_str c2)
   | EEffVar v -> v
 
+let rec distance_to_str (d: distance) =
+  match d with
+  | DZero -> "lzero"
+  | DOne -> "lone"
+  | DVar v -> v
+  | DPlus (d1, d2) -> Printf.sprintf "(%s + %s)" (distance_to_str d1) (distance_to_str d2)
+
+let rec atc_to_str (cc: atc) =
+  match cc with
+  | ATCHole -> "[]"
+  | ATCVar v -> v
+  | ATCAns (t, c, cc') ->
+    Printf.sprintf "%s / %s => %s" (type_to_str t) (cty_to_str c) (atc_to_str cc')
+  | ATCFill (x, cc') -> Printf.sprintf "%s[%s]" x (atc_to_str cc')
+
 (** Type equality **)
 
 (** Applies alpha-normalization to the given type. *)
@@ -263,6 +278,45 @@ let effs_eq e1 e2 =
 let cty_eq = ctys_eq
 let eff_eq = effs_eq
 
+(** Normalizes a level by treating DZero as the identity for DPlus. Right-
+    associates DPlus so the result is a flat list of non-zero atoms joined
+    by DPlus. Does not attempt commutativity — the ott's ==lv includes it
+    implicitly but this level of normalization matches existing use. *)
+let normalize_distance d =
+  let rec collect d acc =
+    match d with
+    | DZero -> acc
+    | DPlus (a, b) -> collect a (collect b acc)
+    | _ -> d :: acc
+  in
+  match collect d [] with
+  | [] -> DZero
+  | [d'] -> d'
+  | d' :: rest -> List.fold_left (fun acc x -> DPlus (acc, x)) d' rest
+
+(** Equality on levels modulo DZero identity (matches the ott's ==lv except
+    for commutativity, which no rule today relies on). *)
+let distance_eq d1 d2 =
+  let rec eq d1 d2 =
+    match d1, d2 with
+    | DZero, DZero -> true
+    | DOne, DOne -> true
+    | DVar v1, DVar v2 -> v1 = v2
+    | DPlus (a1, b1), DPlus (a2, b2) -> eq a1 a2 && eq b1 b2
+    | _ -> false
+  in
+  eq (normalize_distance d1) (normalize_distance d2)
+
+(** CC{C}: fill the hole of an ATC with the given computation type.
+    Implements the denotational semantics used in the T_Do rule of the ott. *)
+let rec fill_atc (cc: atc) (c: cty) : cty =
+  match cc with
+  | ATCHole -> c
+  | ATCVar x -> CFill (x, c)
+  | ATCAns (t, c', cc') ->
+    CCty (t, EAns (c', fill_atc cc' c))
+  | ATCFill (x, cc') -> CFill (x, fill_atc cc' c)
+
 let rec captured_set_sub cs1 cs2 =
   match cs1, cs2 with
   | (None, labels1), (None, labels2) -> Varset.subset labels1 labels2
@@ -272,8 +326,11 @@ let rec captured_set_sub cs1 cs2 =
 
 (** A lightweight subtype relation used by ATM composition.
     Today it mostly exists to treat functions/continuations with a smaller
-    captured set as subtypes of ones that mention more ambient labels. *)
-and types_sub t1 t2 =
+    captured set as subtypes of ones that mention more ambient labels.
+    [kind_env] is threaded so the S_CAbs case can verify G |- X : ATC(l)
+    when reachable variables have explicit kind bindings. Defaults to []
+    (assume-well-formed) for existing callers. *)
+and types_sub ?(kind_env=[]) t1 t2 =
   if types_eq t1 t2 then true
   else
     let t1 = alpha_normalize t1 in
@@ -285,23 +342,23 @@ and types_sub t1 t2 =
       && cp1 = cp2
       && lp1 = lp2
       && List.equal types_eq pt1 pt2
-      && cty_sub rc1 rc2
+      && cty_sub ~kind_env rc1 rc2
     | TCont { captured_set = cs1; effect_return_ty = et1; return_cty = rc1 },
       TCont { captured_set = cs2; effect_return_ty = et2; return_cty = rc2 } ->
       captured_set_sub cs1 cs2
       && types_eq et1 et2
-      && cty_sub rc1 rc2
+      && cty_sub ~kind_env rc1 rc2
     | _ -> false
 
 (** Subtyping on effects / computation types, following the simplified ott
     rules plus the lightweight capture-set subtyping above. *)
-and eff_sub e1 e2 =
+and eff_sub ?(kind_env=[]) e1 e2 =
   effs_eq e1 e2
   ||
   match e1, e2 with
   | EPure, _ -> true
   | EAns (c11, c12), EAns (c21, c22) ->
-    cty_sub c21 c11 && cty_sub c12 c22
+    cty_sub ~kind_env c21 c11 && cty_sub ~kind_env c12 c22
   | _ -> false
 
 (** Composes two effects as they appear in sequenced computations.
@@ -312,12 +369,12 @@ and eff_sub e1 e2 =
       M2 : T2 / C2 => C
       ===> M1 ; M2 : T2 / C2 => C1
     Note the cty C must match across the two effects. *)
-and compose_effs e1 e2 =
+and compose_effs ?(kind_env=[]) e1 e2 =
   match e1, e2 with
   | EPure, _ -> e2
   | _, EPure -> e1
   | EAns (c_in_1, c_out_1), EAns (c_in_2, c_out_2) ->
-    if cty_sub c_out_2 c_in_1
+    if cty_sub ~kind_env c_out_2 c_in_1
       then EAns (c_in_2, c_out_1)
       else typing_error "Effect composition: answer types disagree\n\tFirst needs input %s, second produces output %s\n"
         (cty_to_str c_in_1) (cty_to_str c_out_2)
@@ -325,11 +382,22 @@ and compose_effs e1 e2 =
     typing_error "Effect composition: cannot compose %s with %s\n"
       (eff_to_str e1) (eff_to_str e2)
 
-and cty_sub c1 c2 =
+and cty_sub ?(kind_env=[]) c1 c2 =
   if ctys_eq c1 c2 then true
   else
     match c1, c2 with
-    | CCty (t1, e1), CCty (t2, e2) -> types_sub t1 t2 && eff_sub e1 e2
+    | CCty (t1, e1), CCty (t2, e2) ->
+      types_sub ~kind_env t1 t2 && eff_sub ~kind_env e1 e2
+    (* S_CAbs: X[C1] <: X[C2] when C1 <: C2 and G |- X : ATC(l).
+       The kinding premise is checked when X is in [kind_env]; otherwise it
+       is assumed by construction (CFill nodes reach here only after the
+       typechecker has validated the binder's kind elsewhere). *)
+    | CFill (x1, c1'), CFill (x2, c2') ->
+      x1 = x2
+      && (match List.assoc_opt x1 kind_env with
+          | None | Some (KATC _) -> true
+          | Some _ -> false)
+      && cty_sub ~kind_env c1' c2'
     | _ -> false
 
 let compose_eff = compose_effs

@@ -57,7 +57,7 @@ and typed_expr_desc =
     raise_label : var;
     raise_op : var;
     raise_evidence : SLsyntax.evidence;
-    raise_typelike_args : SLsyntax.typelike list;
+    raise_atc : SLsyntax.atc;
     raise_args : typed_expr list;
   }
   | Resume of (typed_expr * typed_expr)

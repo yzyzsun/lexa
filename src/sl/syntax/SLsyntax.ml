@@ -2,7 +2,7 @@ open Syntax__Common
 open Syntax__Varset
 
 type top_level =
-  | TLPolyAbs of var * (var list) * (var list) * (var * var) list * parameter list * cty * expr (* name ; type params; cap vars ; labels ; params ; body *)
+  | TLPolyAbs of var * ((var * kind) list) * (var list) * (var * var) list * parameter list * cty * expr (* name ; type params with kinds ; cap vars ; labels ; params ; body *)
   | TLAbs of var * (var list) * (var * var) list * parameter list * cty * expr (* name ; cap vars ; labels ; params ; body *)
   | TLEffSig of var * (var * (ty list * ty)) list
   | TLEffZSig of var * (var * (ty list * ty)) list
@@ -82,7 +82,7 @@ and expr =
     raise_label : var;
     raise_op : var;
     raise_evidence : evidence;
-    raise_typelike_args : typelike list;
+    raise_atc : atc;
     raise_args : expr list
   }
   | Resume of expr * expr
@@ -164,9 +164,9 @@ and distance =
   | DPlus of distance * distance
 
 and region_constraint = {
-  rc_left  : region;
-  rc_dist  : distance;
-  rc_right : region;
+  rc_inner  : region;
+  rc_dist   : distance;
+  rc_outer  : region;
 }
 
 and evidence =
@@ -193,7 +193,7 @@ and base_ty =
 and atc =
   | ATCHole
   | ATCVar of var
-  | ATCAns of ty * var * cty * atc
+  | ATCAns of ty * cty * atc
   | ATCFill of var * atc
 
 and eff =

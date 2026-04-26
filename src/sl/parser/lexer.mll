@@ -98,6 +98,7 @@ rule read =
   | "queue_t" { TQUEUE }
   | "array_t" { TARRAY }
   | "forall" { FORALL }
+  | "ATC" { ATC }
 
   | "exceptional effect" { EXCEPTION }
   | '"' { read_string (Buffer.create 17) lexbuf }
