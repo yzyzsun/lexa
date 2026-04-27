@@ -62,6 +62,8 @@ let rec pred_expr_to_str (e: expr) =
     let s = match op with
       | CEq -> "==" | CNeq -> "!=" | CLt -> "<" | CGt -> ">" | CLe -> "<=" | CGe -> ">="
     in Printf.sprintf "(%s %s %s)" (pred_expr_to_str e1) s (pred_expr_to_str e2)
+  | PredApp (p, args) ->
+    Printf.sprintf "%s(%s)" p (String.concat ", " (List.map pred_expr_to_str args))
   | BArith (e1, op, e2) ->
     let s = match op with BConj -> "&&" | BDisj -> "||" in
     Printf.sprintf "(%s %s %s)" (pred_expr_to_str e1) s (pred_expr_to_str e2)
@@ -78,6 +80,8 @@ let rec rename_var_in_pred_expr (e: expr) (old_v: string) (new_v: string) : expr
     Arith (rename_var_in_pred_expr e1 old_v new_v, op, rename_var_in_pred_expr e2 old_v new_v)
   | Cmp (e1, op, e2) ->
     Cmp (rename_var_in_pred_expr e1 old_v new_v, op, rename_var_in_pred_expr e2 old_v new_v)
+  | PredApp (p, args) ->
+    PredApp (p, List.map (fun arg -> rename_var_in_pred_expr arg old_v new_v) args)
   | BArith (e1, op, e2) ->
     BArith (rename_var_in_pred_expr e1 old_v new_v, op, rename_var_in_pred_expr e2 old_v new_v)
   | Neg e' -> Neg (rename_var_in_pred_expr e' old_v new_v)
@@ -94,13 +98,20 @@ let rec subst_var_in_pred_expr (e: expr) (old_v: string) (witness: expr) : expr 
     Arith (subst_var_in_pred_expr e1 old_v witness, op, subst_var_in_pred_expr e2 old_v witness)
   | Cmp (e1, op, e2) ->
     Cmp (subst_var_in_pred_expr e1 old_v witness, op, subst_var_in_pred_expr e2 old_v witness)
+  | PredApp (p, args) ->
+    PredApp (p, List.map (fun arg -> subst_var_in_pred_expr arg old_v witness) args)
   | BArith (e1, op, e2) ->
     BArith (subst_var_in_pred_expr e1 old_v witness, op, subst_var_in_pred_expr e2 old_v witness)
   | Neg e' -> Neg (subst_var_in_pred_expr e' old_v witness)
   | _ -> e
 
+let rec op_parameter_to_str (name, ty) =
+  match name with
+  | Some x -> Printf.sprintf "%s: %s" x (type_to_str ty)
+  | None -> type_to_str ty
+
 (** Returns a formatted string for the given type. For debugging purpose. *)
-let rec type_to_str (ty: ty) =
+and type_to_str (ty: ty) =
   let capability_to_str (cap: capability) =
     match cap with
     | Some cap_var, labels -> Printf.sprintf "%s; %s" cap_var (String.concat ", " (Varset.to_list labels))
@@ -118,11 +129,15 @@ let rec type_to_str (ty: ty) =
     let captured_set_str = capability_to_str captured_set in
     let cap_params_str = String.concat ", " cap_params in
     let label_vars_str = String.concat ", " (List.map (fun (label, eff) -> Printf.sprintf "%s: %s" label eff) label_params) in
-    let params_ty_str = String.concat ", " (List.map type_to_str params_ty) in
+    let params_ty_str = String.concat ", " (List.map op_parameter_to_str params_ty) in
     Printf.sprintf "{ %s } [%s; %s] (%s) -> %s" captured_set_str cap_params_str label_vars_str params_ty_str (cty_to_str return_cty)
-  | TCont { captured_set; effect_return_ty; return_cty } ->
+  | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
     let captured_set_str = capability_to_str captured_set in
-    let effect_ty_str = type_to_str effect_return_ty in
+    let effect_ty_str =
+      match effect_return_var with
+      | Some x -> Printf.sprintf "%s: %s" x (type_to_str effect_return_ty)
+      | None -> type_to_str effect_return_ty
+    in
     Printf.sprintf "{ %s } cont %s -> %s" captured_set_str effect_ty_str (cty_to_str return_cty)
   | TNode t -> Printf.sprintf "node_t::[%s]" (type_to_str t)
   | TTree t -> Printf.sprintf "tree_t::[%s]" (type_to_str t)
@@ -147,7 +162,8 @@ and cty_to_str (c: cty) =
 and eff_to_str (e: eff) =
   match e with
   | EPure -> "pure"
-  | EAns (c1, c2) -> Printf.sprintf "(%s) => (%s)" (cty_to_str c1) (cty_to_str c2)
+  | EAns (None, c1, c2) -> Printf.sprintf "(%s) => (%s)" (cty_to_str c1) (cty_to_str c2)
+  | EAns (Some x, c1, c2) -> Printf.sprintf "(%s. %s) => (%s)" x (cty_to_str c1) (cty_to_str c2)
   | EEffVar v -> v
 
 let rec distance_to_str (d: distance) =
@@ -190,6 +206,13 @@ let alpha_normalize ty =
       incr counter;
       v
   in
+  let fresh_term =
+    let counter = ref 0 in
+    fun () ->
+      let v = "__x" ^ (string_of_int !counter) in
+      incr counter;
+      v
+  in
   let rename_captured_set captured_set env =
     let (cap_opt, labels) = captured_set in
     let labels' = Varset.map (fun label ->
@@ -204,6 +227,63 @@ let alpha_normalize ty =
       | None -> Some cap, labels')
     | None -> None, labels'
   in
+  let rec rename_term_in_type ty old_v new_v =
+    match ty with
+    | TRef t -> TRef (rename_term_in_type t old_v new_v)
+    | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+      let rec go_params params =
+        match params with
+        | [] -> []
+        | (Some x, t) :: rest when x = old_v ->
+          (Some x, rename_term_in_type t old_v new_v) :: rest
+        | (name, t) :: rest ->
+          (name, rename_term_in_type t old_v new_v) :: go_params rest
+      in
+      let shadows =
+        List.exists (function Some x, _ when x = old_v -> true | _ -> false) params_ty
+      in
+      TFun {
+        captured_set;
+        cap_params;
+        label_params;
+        params_ty = go_params params_ty;
+        return_cty =
+          if shadows then return_cty else rename_term_in_cty return_cty old_v new_v
+      }
+    | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
+      TCont {
+        captured_set;
+        effect_return_var;
+        effect_return_ty = rename_term_in_type effect_return_ty old_v new_v;
+        return_cty =
+          if effect_return_var = Some old_v
+            then return_cty
+            else rename_term_in_cty return_cty old_v new_v
+      }
+    | TNode t -> TNode (rename_term_in_type t old_v new_v)
+    | TTree t -> TTree (rename_term_in_type t old_v new_v)
+    | TQueue t -> TQueue (rename_term_in_type t old_v new_v)
+    | TArray t -> TArray (rename_term_in_type t old_v new_v)
+    | TCon (name, args) -> TCon (name, List.map (fun t -> rename_term_in_type t old_v new_v) args)
+    | TForall (tv, kind, t) -> TForall (tv, kind, rename_term_in_type t old_v new_v)
+    | TRefine (v, inner, p) when v = old_v ->
+      TRefine (v, rename_term_in_type inner old_v new_v, p)
+    | TRefine (v, inner, p) ->
+      TRefine (v, rename_term_in_type inner old_v new_v, rename_var_in_pred_expr p old_v new_v)
+    | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
+  and rename_term_in_cty c old_v new_v =
+    match c with
+    | CTyVar _ -> c
+    | CCty (t, e) -> CCty (rename_term_in_type t old_v new_v, rename_term_in_eff e old_v new_v)
+    | CFill (v, c') -> CFill (v, rename_term_in_cty c' old_v new_v)
+  and rename_term_in_eff e old_v new_v =
+    match e with
+    | EPure | EEffVar _ -> e
+    | EAns (Some x, c1, c2) when x = old_v ->
+      EAns (Some x, c1, rename_term_in_cty c2 old_v new_v)
+    | EAns (x, c1, c2) ->
+      EAns (x, rename_term_in_cty c1 old_v new_v, rename_term_in_cty c2 old_v new_v)
+  in
   let rec normalize ty env =
     match ty with
     | TRef ty' -> TRef (normalize ty' env)
@@ -214,16 +294,35 @@ let alpha_normalize ty =
       let env' = List.fold_right2 (fun label label_new env ->
         Varmap.add label label_new env
       ) (cap_params@(List.map fst label_params)) (new_caps@(List.map fst new_labels)) env in
+      let rec normalize_params params return_cty =
+        match params with
+        | [] -> [], normalize_cty return_cty env'
+        | (None, ty) :: rest ->
+          let rest', return_cty' = normalize_params rest return_cty in
+          (None, normalize ty env') :: rest', return_cty'
+        | (Some x, ty) :: rest ->
+          let x_new = fresh_term () in
+          let rest' =
+            List.map
+              (fun (name, t) -> (name, rename_term_in_type t x x_new))
+              rest
+          in
+          let return_cty' = rename_term_in_cty return_cty x x_new in
+          let rest'', return_cty'' = normalize_params rest' return_cty' in
+          (Some x_new, normalize ty env') :: rest'', return_cty''
+      in
+      let params_ty', return_cty' = normalize_params params_ty return_cty in
       TFun {
         captured_set = captured_set';
         cap_params = new_caps;
         label_params = new_labels;
-        params_ty = List.map (fun ty -> normalize ty env') params_ty;
-        return_cty = normalize_cty return_cty env'
+        params_ty = params_ty';
+        return_cty = return_cty'
       }
-    | TCont { captured_set; effect_return_ty; return_cty } ->
+    | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
       TCont {
         captured_set = rename_captured_set captured_set env;
+        effect_return_var;
         effect_return_ty = normalize effect_return_ty env;
         return_cty = normalize_cty return_cty env
       }
@@ -255,7 +354,7 @@ let alpha_normalize ty =
   and normalize_eff e env =
     match e with
     | EPure -> EPure
-    | EAns (c1, c2) -> EAns (normalize_cty c1 env, normalize_cty c2 env)
+    | EAns (x, c1, c2) -> EAns (x, normalize_cty c1 env, normalize_cty c2 env)
     | EEffVar v -> EEffVar v
   in
   normalize ty Varmap.empty
@@ -272,7 +371,7 @@ let alpha_normalize_cty (c: cty) =
       | CFill (v, c') -> CFill (v, go c')
     and go_eff e = match e with
       | EPure -> EPure
-      | EAns (c1, c2) -> EAns (go c1, go c2)
+      | EAns (x, c1, c2) -> EAns (x, go c1, go c2)
       | EEffVar _ -> e
     in go c
 
@@ -292,11 +391,14 @@ let types_eq t1 t2 =
         (captured_sets_eq cs cs')
         && (cp = cp')
         && (lp = lp')
-        && (List.equal normalized_types_eq pt pt')
+        && (List.equal
+              (fun (name1, t1) (name2, t2) -> name1 = name2 && normalized_types_eq t1 t2)
+              pt pt')
         && (normalized_ctys_eq rc rc')
-    | (TCont { captured_set = cs; effect_return_ty = et; return_cty = rc },
-      TCont { captured_set = cs'; effect_return_ty = et'; return_cty = rc' }) ->
+    | (TCont { captured_set = cs; effect_return_var = erv; effect_return_ty = et; return_cty = rc },
+      TCont { captured_set = cs'; effect_return_var = erv'; effect_return_ty = et'; return_cty = rc' }) ->
         (captured_sets_eq cs cs')
+        && erv = erv'
         && (normalized_types_eq et et')
         && (normalized_ctys_eq rc rc')
     | (TCon (tv1, t1_args), TCon (tv2, t2_args)) ->
@@ -319,7 +421,8 @@ let types_eq t1 t2 =
   and normalized_effs_eq e1 e2 =
     match e1, e2 with
     | EPure, EPure -> true
-    | EAns (c1a, c2a), EAns (c1b, c2b) ->
+    | EAns (x1, c1a, c2a), EAns (x2, c1b, c2b) ->
+      x1 = x2 &&
       normalized_ctys_eq c1a c1b && normalized_ctys_eq c2a c2b
     | EEffVar v1, EEffVar v2 -> v1 = v2
     | _ -> false
@@ -339,7 +442,7 @@ let ctys_eq c1 c2 =
   and eff_go e1 e2 =
     match e1, e2 with
     | EPure, EPure -> true
-    | EAns (a1, b1), EAns (a2, b2) -> go a1 a2 && go b1 b2
+    | EAns (x1, a1, b1), EAns (x2, a2, b2) -> x1 = x2 && go a1 a2 && go b1 b2
     | EEffVar v1, EEffVar v2 -> v1 = v2
     | _ -> false
   in go c1 c2
@@ -347,7 +450,7 @@ let ctys_eq c1 c2 =
 let effs_eq e1 e2 =
   match e1, e2 with
   | EPure, EPure -> true
-  | EAns (a1, b1), EAns (a2, b2) -> ctys_eq a1 a2 && ctys_eq b1 b2
+  | EAns (x1, a1, b1), EAns (x2, a2, b2) -> x1 = x2 && ctys_eq a1 a2 && ctys_eq b1 b2
   | EEffVar v1, EEffVar v2 -> v1 = v2
   | _ -> false
 
@@ -390,7 +493,7 @@ let rec fill_atc (cc: atc) (c: cty) : cty =
   | ATCHole -> c
   | ATCVar x -> CFill (x, c)
   | ATCAns (t, c', cc') ->
-    CCty (t, EAns (c', fill_atc cc' c))
+    CCty (t, EAns (None, c', fill_atc cc' c))
   | ATCFill (x, cc') -> CFill (x, fill_atc cc' c)
 
 let rec captured_set_sub cs1 cs2 =
@@ -417,11 +520,16 @@ and types_sub ?(kind_env=[]) t1 t2 =
       captured_set_sub cs1 cs2
       && cp1 = cp2
       && lp1 = lp2
-      && List.equal types_eq pt1 pt2
+      && List.length pt1 = List.length pt2
+      && List.for_all2 (fun (actual_name, actual_param) (expected_name, expected_param) ->
+           actual_name = expected_name
+           && types_sub ~kind_env expected_param actual_param
+         ) pt1 pt2
       && cty_sub ~kind_env rc1 rc2
-    | TCont { captured_set = cs1; effect_return_ty = et1; return_cty = rc1 },
-      TCont { captured_set = cs2; effect_return_ty = et2; return_cty = rc2 } ->
+    | TCont { captured_set = cs1; effect_return_var = erv1; effect_return_ty = et1; return_cty = rc1 },
+      TCont { captured_set = cs2; effect_return_var = erv2; effect_return_ty = et2; return_cty = rc2 } ->
       captured_set_sub cs1 cs2
+      && erv1 = erv2
       && types_eq et1 et2
       && cty_sub ~kind_env rc1 rc2
     (* Refinement: dropping a refinement is always sound, [{v:T|P} <: T]. *)
@@ -439,7 +547,8 @@ and eff_sub ?(kind_env=[]) e1 e2 =
   ||
   match e1, e2 with
   | EPure, _ -> true
-  | EAns (c11, c12), EAns (c21, c22) ->
+  | EAns (x1, c11, c12), EAns (x2, c21, c22) ->
+    x1 = x2 &&
     cty_sub ~kind_env c21 c11 && cty_sub ~kind_env c12 c22
   | _ -> false
 
@@ -455,9 +564,9 @@ and compose_effs ?(kind_env=[]) e1 e2 =
   match e1, e2 with
   | EPure, _ -> e2
   | _, EPure -> e1
-  | EAns (c_in_1, c_out_1), EAns (c_in_2, c_out_2) ->
+  | EAns (_x1, c_in_1, c_out_1), EAns (x2, c_in_2, c_out_2) ->
     if cty_sub ~kind_env c_out_2 c_in_1
-      then EAns (c_in_2, c_out_1)
+      then EAns (x2, c_in_2, c_out_1)
       else typing_error "Effect composition: answer types disagree\n\tFirst needs input %s, second produces output %s\n"
         (cty_to_str c_in_1) (cty_to_str c_out_2)
   | _ ->
@@ -524,12 +633,13 @@ let rec rename_type_var ty var_old var_new =
       captured_set = rename_captured_set captured_set var_old var_new;
       cap_params = List.map (fun a -> if a = var_old then var_new else a) cap_params;
       label_params = List.map (fun (l, eff) -> if l = var_old then (var_new, eff) else (l, eff)) label_params;
-      params_ty = List.map (fun ty -> rename_type_var ty var_old var_new) params_ty;
+      params_ty = List.map (fun (name, ty) -> (name, rename_type_var ty var_old var_new)) params_ty;
       return_cty = rename_type_var_cty return_cty var_old var_new
     }
-  | TCont { captured_set; effect_return_ty; return_cty } ->
+  | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
     TCont {
       captured_set = rename_captured_set captured_set var_old var_new;
+      effect_return_var;
       effect_return_ty = rename_type_var effect_return_ty var_old var_new;
       return_cty = rename_type_var_cty return_cty var_old var_new
     }
@@ -548,8 +658,8 @@ and rename_type_var_cty c var_old var_new =
 and rename_type_var_eff e var_old var_new =
   match e with
   | EPure -> EPure
-  | EAns (c1, c2) ->
-    EAns (rename_type_var_cty c1 var_old var_new, rename_type_var_cty c2 var_old var_new)
+  | EAns (x, c1, c2) ->
+    EAns (x, rename_type_var_cty c1 var_old var_new, rename_type_var_cty c2 var_old var_new)
   | EEffVar _ -> e
 
 (** Makes a single label substitution to the capture set. *)
@@ -579,20 +689,21 @@ let rec substitute_label_to_type ty label label_new =
         if List.exists (fun (l, _) -> l = label_new) label_params
           then let fresh_label = (fresh_label_var()) in
             List.map (fun (l, eff) -> if l = label_new then (fresh_label, eff) else (l, eff)) label_params,
-            List.map (fun param_ty -> rename_type_var param_ty label_new fresh_label) params_ty,
+            List.map (fun (name, param_ty) -> (name, rename_type_var param_ty label_new fresh_label)) params_ty,
             rename_type_var_cty return_cty label_new fresh_label
           else label_params, params_ty, return_cty in
         TFun {
           captured_set = captured_set';
           cap_params;
           label_params = label_params';
-          params_ty = List.map (fun ty -> substitute_label_to_type ty label label_new) params_ty';
+          params_ty = List.map (fun (name, ty) -> (name, substitute_label_to_type ty label label_new)) params_ty';
           return_cty = substitute_label_to_cty return_cty' label label_new
         })
-  | TCont { captured_set; effect_return_ty; return_cty } ->
+  | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
     let captured_set' = substitute_label_to_captured_set captured_set label label_new in
     TCont {
       captured_set = captured_set';
+      effect_return_var;
       effect_return_ty = substitute_label_to_type effect_return_ty label label_new;
       return_cty = substitute_label_to_cty return_cty label label_new
     }
@@ -610,7 +721,7 @@ and substitute_label_to_cty c label label_new =
 and substitute_label_to_eff e label label_new =
   match e with
   | EPure -> EPure
-  | EAns (c1, c2) -> EAns (substitute_label_to_cty c1 label label_new, substitute_label_to_cty c2 label label_new)
+  | EAns (x, c1, c2) -> EAns (x, substitute_label_to_cty c1 label label_new, substitute_label_to_cty c2 label label_new)
   | EEffVar _ -> e
 
 (** Makes a single capability subsitution on the given type. *)
@@ -629,7 +740,7 @@ let rec substitute_capability_to_type ty cap_var capability =
             if List.exists (fun (l, _) -> l = label) label_vars
               then let fresh_label = (fresh_label_var()) in
                 (List.map (fun (l, eff) -> if l = label then (fresh_label, eff) else (l, eff)) label_vars,
-                List.map (fun param_ty -> rename_type_var param_ty label fresh_label) params_ty,
+                List.map (fun (name, param_ty) -> (name, rename_type_var param_ty label fresh_label)) params_ty,
                 rename_type_var_cty return_cty label fresh_label)
               else (label_vars, params_ty, return_cty)
           ) free_vars (label_params, params_ty, return_cty) in
@@ -637,13 +748,14 @@ let rec substitute_capability_to_type ty cap_var capability =
             captured_set = captured_set';
             cap_params;
             label_params = label_params';
-            params_ty = List.map (fun ty -> substitute_capability_to_type ty cap_var capability) params_ty';
+            params_ty = List.map (fun (name, ty) -> (name, substitute_capability_to_type ty cap_var capability)) params_ty';
             return_cty = substitute_capability_to_cty return_cty' cap_var capability
           }
-  | TCont { captured_set; effect_return_ty; return_cty } ->
+  | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
     let captured_set' = substitute_cap_to_captured_set captured_set cap_var capability in
     TCont {
       captured_set = captured_set';
+      effect_return_var;
       effect_return_ty = substitute_capability_to_type effect_return_ty cap_var capability;
       return_cty = substitute_capability_to_cty return_cty cap_var capability
     }
@@ -661,7 +773,7 @@ and substitute_capability_to_cty c cap_var capability =
 and substitute_capability_to_eff e cap_var capability =
   match e with
   | EPure -> EPure
-  | EAns (c1, c2) -> EAns (substitute_capability_to_cty c1 cap_var capability, substitute_capability_to_cty c2 cap_var capability)
+  | EAns (x, c1, c2) -> EAns (x, substitute_capability_to_cty c1 cap_var capability, substitute_capability_to_cty c2 cap_var capability)
   | EEffVar _ -> e
 
 (** Returns the result of applying the label and capability subsitutions to a given type. *)
@@ -686,13 +798,13 @@ let substitute_ty ty type_subs =
     match ty with
     | TRef ty' -> TRef (substitute ty' type_subs)
     | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
-      let params_ty' = List.map (fun ty -> substitute ty type_subs) params_ty in
+      let params_ty' = List.map (fun (name, ty) -> (name, substitute ty type_subs)) params_ty in
       let return_cty' = substitute_cty return_cty type_subs in
       TFun { captured_set; cap_params; label_params; params_ty=params_ty'; return_cty=return_cty' }
-    | TCont { captured_set; effect_return_ty; return_cty } ->
+    | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
       let effect_return_ty' = substitute effect_return_ty type_subs in
       let return_cty' = substitute_cty return_cty type_subs in
-      TCont { captured_set; effect_return_ty=effect_return_ty'; return_cty=return_cty' }
+      TCont { captured_set; effect_return_var; effect_return_ty=effect_return_ty'; return_cty=return_cty' }
     | TNode ty' -> TNode (substitute ty' type_subs)
     | TTree ty' -> TTree (substitute ty' type_subs)
     | TQueue ty' -> TQueue (substitute ty' type_subs)
@@ -720,7 +832,283 @@ let substitute_ty ty type_subs =
   and substitute_eff e type_subs =
     match e with
     | EPure -> EPure
-    | EAns (c1, c2) -> EAns (substitute_cty c1 type_subs, substitute_cty c2 type_subs)
+    | EAns (x, c1, c2) -> EAns (x, substitute_cty c1 type_subs, substitute_cty c2 type_subs)
     | EEffVar _ -> e
   in
   substitute ty type_subs
+
+(** Substitute a term variable inside refinements nested in types/ctys. This
+    is the value-level substitution needed by the Do rule's [{V/x}] premise. *)
+let rec substitute_term_to_type ty var witness =
+  match ty with
+  | TRef ty' -> TRef (substitute_term_to_type ty' var witness)
+  | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+    let rec subst_params params =
+      match params with
+      | [] -> [], true
+      | (name, t) :: rest ->
+        let t' = substitute_term_to_type t var witness in
+        (match name with
+         | Some x when x = var ->
+           (name, t') :: rest, false
+         | _ ->
+           let rest', subst_return = subst_params rest in
+           (name, t') :: rest', subst_return)
+    in
+    let params_ty', subst_return = subst_params params_ty in
+    TFun {
+      captured_set; cap_params; label_params;
+      params_ty = params_ty';
+      return_cty =
+        if subst_return then substitute_term_to_cty return_cty var witness
+        else return_cty
+    }
+  | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
+    TCont {
+      captured_set;
+      effect_return_var;
+      effect_return_ty = substitute_term_to_type effect_return_ty var witness;
+      return_cty =
+        if effect_return_var = Some var
+          then return_cty
+          else substitute_term_to_cty return_cty var witness
+    }
+  | TNode t -> TNode (substitute_term_to_type t var witness)
+  | TTree t -> TTree (substitute_term_to_type t var witness)
+  | TQueue t -> TQueue (substitute_term_to_type t var witness)
+  | TArray t -> TArray (substitute_term_to_type t var witness)
+  | TCon (name, args) -> TCon (name, List.map (fun t -> substitute_term_to_type t var witness) args)
+  | TForall (tv, kind, t) -> TForall (tv, kind, substitute_term_to_type t var witness)
+  | TRefine (v, inner, p) when v = var ->
+    TRefine (v, substitute_term_to_type inner var witness, p)
+  | TRefine (v, inner, p) ->
+    TRefine (v, substitute_term_to_type inner var witness, subst_var_in_pred_expr p var witness)
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
+
+and substitute_term_to_cty c var witness =
+  match c with
+  | CTyVar _ -> c
+  | CCty (t, e) -> CCty (substitute_term_to_type t var witness, substitute_term_to_eff e var witness)
+  | CFill (x, c') -> CFill (x, substitute_term_to_cty c' var witness)
+
+and substitute_term_to_eff e var witness =
+  match e with
+  | EPure | EEffVar _ -> e
+  | EAns (Some x, c1, c2) when x = var ->
+    EAns (Some x, c1, substitute_term_to_cty c2 var witness)
+  | EAns (x, c1, c2) ->
+    EAns (x, substitute_term_to_cty c1 var witness, substitute_term_to_cty c2 var witness)
+
+let pred_of_tylike = function
+  | TLTy (TRefine (v, inner, p)) -> Some (v, inner, p)
+  | _ -> None
+
+let rec substitute_pred_in_expr pred_name pred_binder pred_body e =
+  match e with
+  | Int _ | Bool _ | Var _ -> e
+  | Arith (e1, op, e2) ->
+    Arith (substitute_pred_in_expr pred_name pred_binder pred_body e1, op,
+           substitute_pred_in_expr pred_name pred_binder pred_body e2)
+  | Cmp (e1, op, e2) ->
+    Cmp (substitute_pred_in_expr pred_name pred_binder pred_body e1, op,
+         substitute_pred_in_expr pred_name pred_binder pred_body e2)
+  | BArith (e1, op, e2) ->
+    BArith (substitute_pred_in_expr pred_name pred_binder pred_body e1, op,
+            substitute_pred_in_expr pred_name pred_binder pred_body e2)
+  | Neg e' -> Neg (substitute_pred_in_expr pred_name pred_binder pred_body e')
+  | PredApp (p, [arg]) when p = pred_name ->
+    let arg' = substitute_pred_in_expr pred_name pred_binder pred_body arg in
+    subst_var_in_pred_expr pred_body pred_binder arg'
+  | PredApp (p, args) ->
+    PredApp (p, List.map (substitute_pred_in_expr pred_name pred_binder pred_body) args)
+  | _ -> e
+
+let rec substitute_pred_to_type ty pred_name pred_binder pred_body =
+  match ty with
+  | TRef ty' -> TRef (substitute_pred_to_type ty' pred_name pred_binder pred_body)
+  | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+    TFun {
+      captured_set; cap_params; label_params;
+      params_ty = List.map (fun (name, t) -> (name, substitute_pred_to_type t pred_name pred_binder pred_body)) params_ty;
+      return_cty = substitute_pred_to_cty return_cty pred_name pred_binder pred_body
+    }
+  | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
+    TCont {
+      captured_set;
+      effect_return_var;
+      effect_return_ty = substitute_pred_to_type effect_return_ty pred_name pred_binder pred_body;
+      return_cty = substitute_pred_to_cty return_cty pred_name pred_binder pred_body
+    }
+  | TNode t -> TNode (substitute_pred_to_type t pred_name pred_binder pred_body)
+  | TTree t -> TTree (substitute_pred_to_type t pred_name pred_binder pred_body)
+  | TQueue t -> TQueue (substitute_pred_to_type t pred_name pred_binder pred_body)
+  | TArray t -> TArray (substitute_pred_to_type t pred_name pred_binder pred_body)
+  | TCon (name, args) ->
+    TCon (name, List.map (fun t -> substitute_pred_to_type t pred_name pred_binder pred_body) args)
+  | TForall (tv, kind, body) when tv = pred_name -> TForall (tv, kind, body)
+  | TForall (tv, kind, body) ->
+    TForall (tv, kind, substitute_pred_to_type body pred_name pred_binder pred_body)
+  | TRefine (v, inner, p) ->
+    TRefine (v,
+             substitute_pred_to_type inner pred_name pred_binder pred_body,
+             substitute_pred_in_expr pred_name pred_binder pred_body p)
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
+
+and substitute_pred_to_cty c pred_name pred_binder pred_body =
+  match c with
+  | CTyVar _ -> c
+  | CCty (t, e) ->
+    CCty (substitute_pred_to_type t pred_name pred_binder pred_body,
+          substitute_pred_to_eff e pred_name pred_binder pred_body)
+  | CFill (v, c') -> CFill (v, substitute_pred_to_cty c' pred_name pred_binder pred_body)
+
+and substitute_pred_to_eff e pred_name pred_binder pred_body =
+  match e with
+  | EPure | EEffVar _ -> e
+  | EAns (x, c1, c2) ->
+    EAns (x,
+          substitute_pred_to_cty c1 pred_name pred_binder pred_body,
+          substitute_pred_to_cty c2 pred_name pred_binder pred_body)
+
+let rec substitute_cty_var_to_type ty cty_var replacement =
+  match ty with
+  | TRef t -> TRef (substitute_cty_var_to_type t cty_var replacement)
+  | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+    TFun {
+      captured_set; cap_params; label_params;
+      params_ty = List.map (fun (name, t) -> (name, substitute_cty_var_to_type t cty_var replacement)) params_ty;
+      return_cty = substitute_cty_var_to_cty return_cty cty_var replacement
+    }
+  | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
+    TCont {
+      captured_set;
+      effect_return_var;
+      effect_return_ty = substitute_cty_var_to_type effect_return_ty cty_var replacement;
+      return_cty = substitute_cty_var_to_cty return_cty cty_var replacement
+    }
+  | TNode t -> TNode (substitute_cty_var_to_type t cty_var replacement)
+  | TTree t -> TTree (substitute_cty_var_to_type t cty_var replacement)
+  | TQueue t -> TQueue (substitute_cty_var_to_type t cty_var replacement)
+  | TArray t -> TArray (substitute_cty_var_to_type t cty_var replacement)
+  | TCon (name, args) ->
+    TCon (name, List.map (fun t -> substitute_cty_var_to_type t cty_var replacement) args)
+  | TForall (tv, kind, body) when tv = cty_var -> TForall (tv, kind, body)
+  | TForall (tv, kind, body) ->
+    TForall (tv, kind, substitute_cty_var_to_type body cty_var replacement)
+  | TRefine (v, inner, p) ->
+    TRefine (v, substitute_cty_var_to_type inner cty_var replacement, p)
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
+
+and substitute_cty_var_to_cty c cty_var replacement =
+  match c with
+  | CTyVar v when v = cty_var -> replacement
+  | CTyVar _ -> c
+  | CCty (t, e) ->
+    CCty (substitute_cty_var_to_type t cty_var replacement,
+          substitute_cty_var_to_eff e cty_var replacement)
+  | CFill (v, c') -> CFill (v, substitute_cty_var_to_cty c' cty_var replacement)
+
+and substitute_cty_var_to_eff e cty_var replacement =
+  match e with
+  | EPure | EEffVar _ -> e
+  | EAns (x, c1, c2) ->
+    EAns (x,
+          substitute_cty_var_to_cty c1 cty_var replacement,
+          substitute_cty_var_to_cty c2 cty_var replacement)
+
+let substitute_tylike_to_type ty var kind arg =
+  match kind, arg with
+  | KTy, TLTy replacement -> substitute_ty ty [(var, replacement)]
+  | KPred _, _ ->
+    (match pred_of_tylike arg with
+     | Some (binder, _inner, body) -> substitute_pred_to_type ty var binder body
+     | None -> ty)
+  | KCty, TLCty c -> substitute_cty_var_to_type ty var c
+  | KCty, TLTy t -> substitute_cty_var_to_type ty var (CCty (t, EPure))
+  | _ -> ty
+
+let substitute_tylike_to_cty c var kind arg =
+  match kind, arg with
+  | KTy, TLTy replacement ->
+    let rec subst_c c = match c with
+      | CTyVar _ -> c
+      | CCty (t, e) -> CCty (substitute_ty t [(var, replacement)], subst_e e)
+      | CFill (x, c') -> CFill (x, subst_c c')
+    and subst_e e = match e with
+      | EPure | EEffVar _ -> e
+      | EAns (x, c1, c2) -> EAns (x, subst_c c1, subst_c c2)
+    in subst_c c
+  | KPred _, _ ->
+    (match pred_of_tylike arg with
+     | Some (binder, _inner, body) -> substitute_pred_to_cty c var binder body
+     | None -> c)
+  | KCty, TLCty replacement -> substitute_cty_var_to_cty c var replacement
+  | KCty, TLTy t -> substitute_cty_var_to_cty c var (CCty (t, EPure))
+  | _ -> c
+
+let substitute_tylikes_to_type ty bindings args =
+  List.fold_left2
+    (fun acc (var, kind) arg -> substitute_tylike_to_type acc var kind arg)
+    ty bindings args
+
+let substitute_tylikes_to_cty c bindings args =
+  List.fold_left2
+    (fun acc (var, kind) arg -> substitute_tylike_to_cty acc var kind arg)
+    c bindings args
+
+let promote_cty_vars_in_type kind_env ty =
+  let is_cty_var v =
+    match List.assoc_opt v kind_env with
+    | Some KCty -> true
+    | _ -> false
+  in
+  let rec go_ty ty =
+    match ty with
+    | TRef t -> TRef (go_ty t)
+    | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+      TFun {
+        captured_set;
+        cap_params;
+        label_params;
+        params_ty = List.map (fun (name, t) -> (name, go_ty t)) params_ty;
+        return_cty = go_cty return_cty
+      }
+    | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
+      TCont {
+        captured_set;
+        effect_return_var;
+        effect_return_ty = go_ty effect_return_ty;
+        return_cty = go_cty return_cty
+      }
+    | TNode t -> TNode (go_ty t)
+    | TTree t -> TTree (go_ty t)
+    | TQueue t -> TQueue (go_ty t)
+    | TArray t -> TArray (go_ty t)
+    | TCon (name, args) -> TCon (name, List.map go_ty args)
+    | TForall (tv, kind, body) ->
+      TForall (tv, kind, go_ty body)
+    | TRefine (v, inner, p) -> TRefine (v, go_ty inner, p)
+    | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
+  and go_cty c =
+    match c with
+    | CCty (TVar v, EPure) when is_cty_var v -> CTyVar v
+    | CTyVar _ -> c
+    | CCty (t, e) -> CCty (go_ty t, go_eff e)
+    | CFill (v, c') -> CFill (v, go_cty c')
+  and go_eff e =
+    match e with
+    | EPure | EEffVar _ -> e
+    | EAns (x, c1, c2) -> EAns (x, go_cty c1, go_cty c2)
+  in
+  go_ty ty
+
+let promote_cty_vars_in_cty kind_env c =
+  match promote_cty_vars_in_type kind_env (TFun {
+    captured_set = None, Varset.empty;
+    cap_params = [];
+    label_params = [];
+    params_ty = [];
+    return_cty = c;
+  }) with
+  | TFun { return_cty; _ } -> return_cty
+  | _ -> c

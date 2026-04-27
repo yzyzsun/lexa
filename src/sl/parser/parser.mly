@@ -88,6 +88,8 @@
 %token TARRAY
 %token FORALL
 %token ATC
+%token CTY
+%token PRED
 
 %token EXCEPTION
 
@@ -152,11 +154,11 @@ type_exp:
   | TREF ty = type_exp { TRef ty }
   | LTS captured_set = capability GTS
     opt_params = opt_params
-    LPAREN params_ty = separated_list(COMMA, type_exp) RPAREN RARROW return_cty = cty_exp
+    LPAREN params_ty = separated_list(COMMA, op_parameter) RPAREN RARROW return_cty = cty_exp
     { let (cap_params, label_params) = opt_params in
       TFun { captured_set; cap_params; label_params; params_ty; return_cty } }
   | TCONT LTS captured_set = capability GTS effect_return_ty = type_exp RARROW return_cty = cty_exp
-    { TCont { captured_set; effect_return_ty; return_cty } }
+    { TCont { captured_set; effect_return_var = None; effect_return_ty; return_cty } }
   | TNODE COLON COLON LSB ty = type_exp RSB { TNode ty }
   | TTREE COLON COLON LSB ty = type_exp RSB { TTree ty }
   | TQUEUE COLON COLON LSB ty = type_exp RSB { TQueue ty }
@@ -165,7 +167,8 @@ type_exp:
   | pattern_name = VAR COLON COLON LSB type_args = separated_list(COMMA, type_exp) RSB { TCon (pattern_name, type_args) }
   | LPAREN ty = type_exp RPAREN { ty }
   | tv = TYPE_VAR { TVar tv }
-  | FORALL tv = TYPE_VAR DOT ty = type_exp { TForall (tv, KTy, ty) }
+  | FORALL bindings = separated_nonempty_list(COMMA, type_param_decl) DOT ty = type_exp
+    { List.fold_right (fun (tv, k) acc -> TForall (tv, k, acc)) bindings ty }
   | LCB v = VAR COLON inner = refine_base_ty VBAR p = pred_expr RCB
     { TRefine (v, inner, p) }
 
@@ -198,6 +201,7 @@ pred_expr:
 
 pred_simple:
   | VAR { Var $1 }
+  | p = TYPE_VAR LPAREN args = separated_list(COMMA, pred_expr) RPAREN { PredApp (p, args) }
   | INT { Int $1 }
   | SUB INT { Int (Int.neg $2) }
   | TRUE { Bool true }
@@ -207,11 +211,14 @@ pred_simple:
 cty_exp:
   // Prefer parsing `... -> t / e` as `... -> (t / e)`.
   // Use parentheses when you mean `(... -> t) / e`.
+  | LPAREN c = cty_exp RPAREN { c }
   | t = type_exp %prec CTY_PURE { CCty (t, EPure) }
   | t = type_exp DIV e = eff_exp { CCty (t, e) }
 
 eff_exp:
-  | c1 = cty_exp FATARROW c2 = cty_exp { EAns (c1, c2) }
+  | c1 = cty_exp FATARROW c2 = cty_exp { EAns (None, c1, c2) }
+  | LPAREN x = VAR DOT c1 = cty_exp RPAREN FATARROW c2 = cty_exp
+    { EAns (Some x, c1, c2) }
 
 parameter:
   | name = VAR COLON param_type = type_exp { (name, param_type) }
@@ -227,6 +234,13 @@ dist_exp:
 
 kind_anno:
   | ATC LPAREN d = dist_exp RPAREN { KATC d }
+  | CTY { KCty }
+  | PRED LSB tys = separated_nonempty_list(COMMA, pred_base_ty) RSB { KPred tys }
+
+pred_base_ty:
+  | TINT { BInt }
+  | TBOOL { BBool }
+  | TUNIT { BUnit }
 
 (* Type parameter with optional kind annotation (defaults to KTy). *)
 type_param_decl:
@@ -259,7 +273,14 @@ top_level:
       
 effect_sig:
   | v = VAR COLON LPAREN inputs_ty = separated_list(COMMA, type_exp) RPAREN RARROW return_ty = type_exp 
-    { (v, (inputs_ty, return_ty)) }
+    { (v, EffectSimple (inputs_ty, return_ty)) }
+  | v = VAR COLON FORALL bindings = separated_nonempty_list(COMMA, type_param_decl) DOT
+    LPAREN inputs = separated_list(COMMA, op_parameter) RPAREN RARROW out_cty = cty_exp
+    { (v, EffectFull (bindings, inputs, out_cty)) }
+
+op_parameter:
+  | name = VAR COLON ty = type_exp { (Some name, ty) }
+  | ty = type_exp { (None, ty) }
 
 hdl_anno:
   | DEF { HDef }
@@ -319,6 +340,10 @@ atc_exp:
   | tv = TYPE_VAR { ATCVar tv }
   | t = type_exp DIV c = atc_cty FATARROW cc = atc_exp { ATCAns (t, c, cc) }
 
+typelike_arg:
+  | ty = type_exp { TLTy ty }
+  | LPAREN c = cty_exp RPAREN { TLCty c }
+
 app_expr:
   | simple_expr { $1 }
   | e1 = app_expr 
@@ -353,7 +378,11 @@ expr:
   | VALDEF x = VAR EQ t1 = expr SEMICOLON t2 = expr %prec HIGHER_THAN_STMT { Let (x, t1, t2) }
   | IF v = expr THEN t1 = expr ELSE t2 = expr { If (v, t1, t2) }
   | RAISE raise_label = VAR DOT raise_op = VAR LSB raise_evidence = evidence_exp SEMICOLON raise_atc = atc_exp RSB LPAREN raise_args = separated_list(COMMA, expr) RPAREN
-    { Raise {raise_label; raise_op; raise_evidence; raise_atc; raise_args} }
+    { Raise {raise_label; raise_op; raise_evidence; raise_tylikes = []; raise_atc; raise_args} }
+  | RAISE raise_label = VAR DOT raise_op = VAR LSB raise_evidence = evidence_exp SEMICOLON
+    raise_atc = atc_exp SEMICOLON raise_tylikes = separated_nonempty_list(COMMA, typelike_arg) RSB
+    LPAREN raise_args = separated_list(COMMA, expr) RPAREN
+    { Raise {raise_label; raise_op; raise_evidence; raise_tylikes; raise_atc; raise_args} }
   | RESUME k = simple_expr v = app_expr { Resume (k, v) }
   | RESUMEFINAL k = simple_expr v = app_expr { ResumeFinal (k, v) }
   | HANDLE

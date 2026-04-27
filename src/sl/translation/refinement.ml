@@ -52,6 +52,9 @@ let rec expr_to_smt (e: expr) : string =
   | BArith (e1, op, e2) ->
     let s = match op with BConj -> "and" | BDisj -> "or" in
     Printf.sprintf "(%s %s %s)" s (expr_to_smt e1) (expr_to_smt e2)
+  | PredApp _ ->
+    failwith
+      (Printf.sprintf "expr_to_smt: unsubstituted predicate variable: %s" (pred_expr_to_str e))
   | Neg e' -> Printf.sprintf "(not %s)" (expr_to_smt e')
   | _ ->
     failwith
@@ -86,6 +89,7 @@ let rec expr_to_smt_opt (e: expr) : string option =
        let s = match op with BConj -> "and" | BDisj -> "or" in
        Some (Printf.sprintf "(%s %s %s)" s s1 s2)
      | _ -> None)
+  | PredApp _ -> None
   | Neg e' ->
     (match expr_to_smt_opt e' with
      | Some s -> Some (Printf.sprintf "(not %s)" s)

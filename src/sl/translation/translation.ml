@@ -18,13 +18,13 @@ let rec gen_top_level_types (tls : top_level list) =
         gen_top_level_types rest
 
       | TLPolyAbs (name, type_params, cap_params, label_params, params, return_cty, _) ->
-        let params_ty = List.map snd params in
+        let params_ty = List.map (fun (x, ty) -> (Some x, ty)) params in
         let fun_ty = TFun { captured_set=None, Varset.empty; cap_params; label_params; params_ty; return_cty } in
         let ty = List.fold_right (fun (tv, k) ty -> TForall (tv, k, ty)) type_params fun_ty in
         (name, ty)::gen_top_level_types rest
 
       | TLAbs (name, cap_params, label_params, params, return_cty, _) ->
-        let params_ty = List.map snd params in
+        let params_ty = List.map (fun (x, ty) -> (Some x, ty)) params in
         (name, TFun { captured_set=None, Varset.empty; cap_params; label_params; params_ty; return_cty })::gen_top_level_types rest
 
       | TLType type_defs ->

@@ -165,6 +165,105 @@ let get_effect_sig (effect_name: string) effect_op =
   let effect_sigs_list = List.assoc effect_name !effect_sigs_context in
   List.assoc effect_op effect_sigs_list
 
+let op_param_tys params = List.map snd params
+
+let split_op_cty op_name (cty: cty) =
+  match cty with
+  | CCty (return_ty, EAns (ans_binder, c1, c2)) -> return_ty, ans_binder, c1, c2
+  | CCty (_return_ty, EPure) ->
+    typing_error
+      "Effect operation %s: full operation signatures must return an impure cty T / C1 => C2\n"
+      op_name
+  | _ ->
+    typing_error
+      "Effect operation %s: unsupported operation cty %s\n"
+      op_name (cty_to_str cty)
+
+let rec erase_refinements_ty ty =
+  match ty with
+  | TRefine (_, inner, _) -> erase_refinements_ty inner
+  | TRef t -> TRef (erase_refinements_ty t)
+  | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+    TFun {
+      captured_set; cap_params; label_params;
+      params_ty = List.map (fun (name, ty) -> (name, erase_refinements_ty ty)) params_ty;
+      return_cty = erase_refinements_cty return_cty
+    }
+  | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
+    TCont {
+      captured_set;
+      effect_return_var;
+      effect_return_ty = erase_refinements_ty effect_return_ty;
+      return_cty = erase_refinements_cty return_cty
+    }
+  | TNode t -> TNode (erase_refinements_ty t)
+  | TTree t -> TTree (erase_refinements_ty t)
+  | TQueue t -> TQueue (erase_refinements_ty t)
+  | TArray t -> TArray (erase_refinements_ty t)
+  | TCon (name, args) -> TCon (name, List.map erase_refinements_ty args)
+  | TForall (v, k, t) -> TForall (v, k, erase_refinements_ty t)
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
+
+and erase_refinements_cty c =
+  match c with
+  | CTyVar _ -> c
+  | CCty (t, e) -> CCty (erase_refinements_ty t, erase_refinements_eff e)
+  | CFill (v, c') -> CFill (v, erase_refinements_cty c')
+
+and erase_refinements_eff e =
+  match e with
+  | EPure | EEffVar _ -> e
+  | EAns (x, c1, c2) -> EAns (x, erase_refinements_cty c1, erase_refinements_cty c2)
+
+let empty_capability = (None, Varset.empty)
+
+let is_empty_capability cap =
+  match cap with
+  | None, labels -> Varset.is_empty labels
+  | Some _, _ -> false
+
+let rec replace_empty_fun_capture replacement ty =
+  match ty with
+  | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+    let captured_set =
+      if is_empty_capability captured_set then replacement else captured_set
+    in
+    TFun {
+      captured_set; cap_params; label_params;
+      params_ty = List.map (fun (name, ty) -> (name, replace_empty_fun_capture replacement ty)) params_ty;
+      return_cty = replace_empty_fun_capture_cty replacement return_cty
+    }
+  | TRef t -> TRef (replace_empty_fun_capture replacement t)
+  | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
+    TCont {
+      captured_set;
+      effect_return_var;
+      effect_return_ty = replace_empty_fun_capture replacement effect_return_ty;
+      return_cty = replace_empty_fun_capture_cty replacement return_cty
+    }
+  | TNode t -> TNode (replace_empty_fun_capture replacement t)
+  | TTree t -> TTree (replace_empty_fun_capture replacement t)
+  | TQueue t -> TQueue (replace_empty_fun_capture replacement t)
+  | TArray t -> TArray (replace_empty_fun_capture replacement t)
+  | TCon (name, args) -> TCon (name, List.map (replace_empty_fun_capture replacement) args)
+  | TForall (v, k, t) -> TForall (v, k, replace_empty_fun_capture replacement t)
+  | TRefine (v, inner, p) -> TRefine (v, replace_empty_fun_capture replacement inner, p)
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
+
+and replace_empty_fun_capture_cty replacement c =
+  match c with
+  | CTyVar _ -> c
+  | CCty (t, e) -> CCty (replace_empty_fun_capture replacement t, replace_empty_fun_capture_eff replacement e)
+  | CFill (v, c') -> CFill (v, replace_empty_fun_capture_cty replacement c')
+
+and replace_empty_fun_capture_eff replacement e =
+  match e with
+  | EPure | EEffVar _ -> e
+  | EAns (x, c1, c2) ->
+    EAns (x,
+          replace_empty_fun_capture_cty replacement c1,
+          replace_empty_fun_capture_cty replacement c2)
+
 (** Look up the op_cty a handler associates with the given (label, op) pair. *)
 let find_op_cty label op captured_vars label_vars : op_cty =
   let lb = find_label_binding label captured_vars label_vars in
@@ -174,12 +273,38 @@ let find_op_cty label op captured_vars label_vars : op_cty =
     typing_error "Do: Operation %s.%s not defined by the binding handler\n" label op
 
 (** Builds a label_binding from a handler's signature + inferred ATM (C1, C2). *)
-let make_label_binding sig_name c1 c2 : label_binding =
+let make_label_binding ?(op_captured_set=empty_capability) sig_name c1 c2 : label_binding =
   let op_ctys =
     match List.assoc_opt sig_name !effect_sigs_context with
     | Some ops ->
-      List.map (fun (op_name, (params_ty, return_ty)) ->
-        (op_name, { op_params_ty = params_ty; op_return_ty = return_ty; op_c1 = c1; op_c2 = c2 })
+      List.map (fun (op_name, sig_) ->
+        match sig_ with
+        | EffectSimple (params_ty, return_ty) ->
+          (op_name, {
+            op_ty_bindings = [];
+            op_params = List.map (fun ty -> (None, ty)) params_ty;
+            op_params_ty = params_ty;
+            op_return_ty = return_ty;
+            op_ans_binder = None;
+            op_c1 = c1;
+            op_c2 = c2
+          })
+        | EffectFull (bindings, params, op_cty) ->
+          let op_cty =
+            op_cty
+            |> promote_cty_vars_in_cty bindings
+            |> replace_empty_fun_capture_cty op_captured_set
+          in
+          let return_ty, op_ans_binder, op_c1, op_c2 = split_op_cty op_name op_cty in
+          (op_name, {
+            op_ty_bindings = bindings;
+            op_params = params;
+            op_params_ty = op_param_tys params;
+            op_return_ty = return_ty;
+            op_ans_binder;
+            op_c1;
+            op_c2
+          })
       ) ops
     | None -> []
   in
@@ -254,9 +379,14 @@ and check_refined_subtype _rctx term_vars witness actual expected =
         | Some w -> subst_var_in_pred_expr qe ve w
         | None -> qe
       in
-      Refinement.entails
-        ~term_vars:(extra_term_vars @ term_vars)
-        actual_extra_hyps goal
+      match Refinement.expr_to_smt_opt goal with
+      | None -> false
+      | Some _ ->
+        if List.exists (fun h -> Refinement.expr_to_smt_opt h = None) actual_extra_hyps then false
+        else
+          Refinement.entails
+            ~term_vars:(extra_term_vars @ term_vars)
+            actual_extra_hyps goal
     end
   | _ -> false
 
@@ -277,6 +407,7 @@ and validate_pred (p: SLsyntax.expr) =
            (pred_expr_to_str e))
     | Arith (e1, _, e2) -> go e1; go e2
     | Cmp (e1, _, e2) -> go e1; go e2
+    | PredApp (_, args) -> List.iter go args
     | BArith (e1, _, e2) -> go e1; go e2
     | Neg e' -> go e'
     | _ ->
@@ -301,7 +432,7 @@ and check_refinement_wellformed rctx term_vars (ty: ty) =
     | TArray t -> contains_refinement t
     | TCon (_, t_args) -> List.exists contains_refinement t_args
     | TFun { params_ty; return_cty; _ } ->
-      List.exists contains_refinement params_ty || cty_contains_refinement return_cty
+      List.exists (fun (_, ty) -> contains_refinement ty) params_ty || cty_contains_refinement return_cty
     | TCont { effect_return_ty; return_cty; _ } ->
       contains_refinement effect_return_ty || cty_contains_refinement return_cty
     | TForall (_, _, t) -> contains_refinement t
@@ -314,7 +445,7 @@ and check_refinement_wellformed rctx term_vars (ty: ty) =
   and eff_contains_refinement eff =
     match eff with
     | EPure | EEffVar _ -> false
-    | EAns (c1, c2) -> cty_contains_refinement c1 || cty_contains_refinement c2
+    | EAns (_, c1, c2) -> cty_contains_refinement c1 || cty_contains_refinement c2
   in
   let rec go term_vars ty = match ty with
     | TRefine (v, inner, p) ->
@@ -335,11 +466,24 @@ and check_refinement_wellformed rctx term_vars (ty: ty) =
           (type_to_str inner);
       go term_vars inner
     | TFun { params_ty; return_cty; _ } ->
-      List.iter (go term_vars) params_ty;
-      go_cty term_vars return_cty
-    | TCont { effect_return_ty; return_cty; _ } ->
+      let term_vars' =
+        List.fold_left
+          (fun acc (name, param_ty) ->
+            go acc param_ty;
+            match name with
+            | Some x -> (x, param_ty) :: acc
+            | None -> acc)
+          term_vars params_ty
+      in
+      go_cty term_vars' return_cty
+    | TCont { effect_return_var; effect_return_ty; return_cty; _ } ->
       go term_vars effect_return_ty;
-      go_cty term_vars return_cty
+      let term_vars' =
+        match effect_return_var with
+        | Some x -> (x, effect_return_ty) :: term_vars
+        | None -> term_vars
+      in
+      go_cty term_vars' return_cty
     | TNode t | TTree t | TQueue t | TArray t ->
       if contains_refinement t then
         typing_error
@@ -355,18 +499,26 @@ and check_refinement_wellformed rctx term_vars (ty: ty) =
     | TForall (_, _, t) -> go term_vars t
     | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ()
   and go_cty term_vars c = match c with
+    | CCty (t, EAns (Some x, c1, c2)) ->
+      go term_vars t;
+      go_cty ((x, t) :: term_vars) c1;
+      go_cty term_vars c2
     | CCty (t, eff) ->
       go term_vars t;
-      go_eff eff
+      go_eff term_vars eff
     | CTyVar _ -> ()
     | CFill (_, c') -> go_cty term_vars c'
-  and go_eff eff =
+  and go_eff term_vars eff =
     match eff with
     | EPure | EEffVar _ -> ()
-    | EAns (c1, c2) ->
-      if cty_contains_refinement c1 || cty_contains_refinement c2 then
-        typing_error
-          "Refinement inside answer types is out of scope in this iteration\n"
+    | EAns (None, c1, c2) ->
+      go_cty term_vars c1;
+      go_cty term_vars c2
+    | EAns (Some _, c1, c2) ->
+      (* Answer-effect binders are checked with their value type in [go_cty],
+         where the enclosing [T / (x.C1)=>C2] exposes that type. *)
+      go_cty term_vars c1;
+      go_cty term_vars c2
   in go term_vars ty
 
 (** Checks an expression against an expected computation type, allowing the
@@ -469,6 +621,29 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
         let e2' = check_ty captured_vars cap_vars label_vars term_vars e2 TInt in
         let eff = compose_effs (eff_of e1') (eff_of e2') in
         Cmp (e1', op, e2'), CCty (TBool, eff)
+    | PredApp (p, args) ->
+      let expected_args =
+        match List.assoc_opt p rctx.kind_env with
+        | Some (KPred args) -> args
+        | Some _ -> typing_error "Predicate application: %s is not predicate-kinded\n" p
+        | None -> typing_error "Predicate application: predicate variable %s not found\n" p
+      in
+      if List.length expected_args <> List.length args then
+        typing_error
+          "Predicate application: %s expected %d arguments but got %d\n"
+          p (List.length expected_args) (List.length args);
+      let ty_of_base = function
+        | BInt -> TInt
+        | BBool -> TBool
+        | BUnit -> TUnit
+      in
+      let args' =
+        List.map2
+          (fun arg bty -> check_ty captured_vars cap_vars label_vars term_vars arg (ty_of_base bty))
+          args expected_args
+      in
+      let eff = List.fold_left (fun acc te -> compose_effs acc (eff_of te)) EPure args' in
+      PredApp (p, args'), CCty (TBool, eff)
     | Neg e ->
       let e' = check_ty captured_vars cap_vars label_vars term_vars e TBool in
       Neg e', CCty (TBool, eff_of e')
@@ -560,7 +735,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
                   captured_set=None, Varset.empty;
                   cap_params=[];
                   label_params=[];
-                  params_ty=params_ty;
+                  params_ty=List.map (fun ty -> (None, ty)) params_ty;
                   return_cty = make_pure_cty return_ty
                 })
             | None ->
@@ -573,7 +748,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
                 captured_set=None, Varset.empty;
                 cap_params=[];
                 label_params=[];
-                params_ty;
+                params_ty=List.map (fun ty -> (None, ty)) params_ty;
                 return_cty = make_pure_cty return_ty
               }
           )
@@ -581,7 +756,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
 
     | Fun { captured_set; cap_params; label_params; params; body; return_cty } ->
       let captured_vars' = check_capture_set_as_unamb captured_set captured_vars cap_vars label_vars in
-      let params_ty = List.map snd params in
+      let params_ty = List.map (fun (x, ty) -> (Some x, ty)) params in
       (* Validate any refinement type written in this function's signature. The
          walk threads earlier params left-to-right so a later param's predicate
          can reference earlier ones. *)
@@ -632,7 +807,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
                 | None ->
                   if List.exists (fun (prim_name, _) -> prim_name = name) prim_sigs
                     || List.exists (fun (prim_name, _) -> prim_name = name) prim_polymophic_sigs then
-                    let app_args' = List.map2 (fun var ty -> check_ty captured_vars cap_vars label_vars term_vars var ty ~msg:"App: Argument types don't match") app_args params_ty in
+                    let app_args' = List.map2 (fun var (_, ty) -> check_ty captured_vars cap_vars label_vars term_vars var ty ~msg:"App: Argument types don't match") app_args params_ty in
                     let eff = List.fold_left (fun acc te -> compose_effs acc (eff_of te)) (eff_of func') app_args' in
                     let return_ty = ty_of_cty return_cty in
                     App { func = func'; cap_insts; label_args; args = app_args' }, CCty (return_ty, eff)
@@ -654,12 +829,20 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
               else
                 let label_subs = List.map2 (fun x y -> (x, y)) (List.map fst label_params) label_args in
                 let cap_subs = List.map2 (fun x y -> (x, y)) cap_params cap_insts in
-                let args_ty_expected = List.map (fun ty -> substitute_to_type ty label_subs cap_subs) params_ty in
+                let args_ty_expected = List.map (fun (name, ty) -> (name, substitute_to_type ty label_subs cap_subs)) params_ty in
                 if not ((List.length app_args) = (List.length args_ty_expected)) then
                   typing_error "App: Incorrect number of arguments\n\tExpected: %d\n\tActual:%d" (List.length app_args) (List.length args_ty_expected)
                 else
-                  let app_args' = List.map2 (fun var ty -> check_ty captured_vars cap_vars label_vars term_vars var ty ~msg:"App: Argument types don't match") app_args args_ty_expected in
+                  let app_args' = List.map2 (fun var (_, ty) -> check_ty captured_vars cap_vars label_vars term_vars var ty ~msg:"App: Argument types don't match") app_args args_ty_expected in
                   let substituted_cty = substitute_to_cty return_cty label_subs cap_subs in
+                  let substituted_cty =
+                    List.fold_left2
+                      (fun acc (name, _) arg ->
+                        match name with
+                        | Some x -> substitute_term_to_cty acc x arg
+                        | None -> acc)
+                      substituted_cty args_ty_expected app_args
+                  in
                   let substituted_ty = ty_of_cty substituted_cty in
                   let substituted_eff = eff_of_cty substituted_cty in
                   let call_eff = List.fold_left (fun acc te -> compose_effs acc (eff_of te)) (eff_of func') app_args' in
@@ -686,19 +869,19 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
          - C2 is the final answer cty (non-HDef op bodies' cty; also the handle expression's cty).
          Typecheck the handler first so that per-op ATMs are registered in the label
          binding before the body is checked. *)
-      let body_ty, initial_ans_cty, typed_return_clause =
+      let body_ty, initial_ans_binder, initial_ans_cty, typed_return_clause =
         match return_clause with
         | None ->
           (* No return clause. Preview the body using a placeholder ATM so that
              `Do` nodes can still be checked while we recover the body's value
              type. We then re-typecheck the body against the real inferred ATM. *)
           let placeholder_cty = CTyVar ("__ans_" ^ handler_label) in
-          let preview_lb = make_label_binding sig_name placeholder_cty placeholder_cty in
+          let preview_lb = make_label_binding ~op_captured_set:captured_set sig_name placeholder_cty placeholder_cty in
           let hb = type_expr_with body_rctx captured_vars' []
               [(handler_label, preview_lb)]
               term_vars handle_body in
           let t = ty_of hb in
-          t, make_pure_cty t, None
+          t, None, make_pure_cty t, None
         | Some { return_var; return_var_ty; return_body } ->
           let return_body' =
             type_expr_with body_rctx captured_vars' [] []
@@ -706,35 +889,68 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
           in
           let c1 = return_body'.expr_cty in
           ( return_var_ty,
+            Some return_var,
             c1,
             Some ({ return_var; return_var_ty; return_cty = c1; return_body = return_body' }
               : Typed_ast.typed_return_clause) )
       in
+      let has_full_ops =
+        match List.assoc_opt sig_name !effect_sigs_context with
+        | Some ops ->
+          List.exists (function _, EffectFull _ -> true | _ -> false) ops
+        | None -> false
+      in
       let final_ans_cty = ref None in
       let handler_defs' = List.map (fun ({ op_anno; op_name; op_params; op_body }: SLsyntax.hdl) ->
-        let (effect_inputs_ty, effect_return_ty) = get_effect_sig sig_name op_name in
+        let effect_sig = get_effect_sig sig_name op_name in
+        let op_bindings, effect_inputs_ty, effect_return_ty, op_c1, op_c2 =
+          match effect_sig with
+          | EffectSimple (effect_inputs_ty, effect_return_ty) ->
+            [], effect_inputs_ty, effect_return_ty, initial_ans_cty, None
+          | EffectFull (_bindings, params, op_cty) ->
+            let op_cty =
+              op_cty
+              |> promote_cty_vars_in_cty _bindings
+              |> replace_empty_fun_capture_cty captured_set
+            in
+            let return_ty, _ans_binder, _c1, _c2 = split_op_cty op_name op_cty in
+            (* Full operation signatures describe the capability introduced
+               for the handled body. Handler clauses are still checked through
+               the implementation view used by the existing surface language:
+               operation arguments plus a continuation into the handler's
+               initial answer type. *)
+            [], List.map erase_refinements_ty (op_param_tys params),
+            erase_refinements_ty return_ty, initial_ans_cty, None
+        in
         let cont_type = TCont {
           captured_set;
+          effect_return_var = None;
           effect_return_ty;
-          return_cty = initial_ans_cty
+          return_cty = op_c1
         } in
         let effect_inputs_ty = if (op_anno = HHdl1) || (op_anno = HHdls) then effect_inputs_ty@[cont_type] else effect_inputs_ty in
         if (List.length op_params) != (List.length effect_inputs_ty)
           then typing_error "Handle: Incorrect numbers of handler arguments\n\tExpected: %d\n\tActual: %d" (List.length effect_inputs_ty) (List.length op_params)
           else
             let handler_params = List.map2 (fun x y -> (x, y)) op_params effect_inputs_ty in
+            let body_rctx = { body_rctx with kind_env = op_bindings @ body_rctx.kind_env } in
             let op_body' =
               if op_anno == HDef then
                 type_expr_with body_rctx captured_vars' [] [] (handler_params@term_vars) op_body
               else
-                match !final_ans_cty with
-                | None ->
-                  let te = type_expr_with body_rctx captured_vars' [] [] (handler_params@term_vars) op_body in
-                  final_ans_cty := Some te.expr_cty;
-                  te
+                match op_c2 with
                 | Some c2 ->
-                  check_cty_with ~msg:"Handle: Effect body cty doesn't agree on the final answer type"
+                  check_cty_with ~msg:"Handle: Effect body cty doesn't match the polymorphic operation signature"
                     body_rctx captured_vars' [] [] (handler_params@term_vars) op_body c2
+                | None ->
+                  match !final_ans_cty with
+                  | None ->
+                    let te = type_expr_with body_rctx captured_vars' [] [] (handler_params@term_vars) op_body in
+                    final_ans_cty := Some te.expr_cty;
+                    te
+                  | Some c2 ->
+                    check_cty_with ~msg:"Handle: Effect body cty doesn't agree on the final answer type"
+                      body_rctx captured_vars' [] [] (handler_params@term_vars) op_body c2
             in
             { op_anno; op_name; op_params; op_body = op_body' }
       ) handler_defs in
@@ -744,19 +960,71 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       in
       (* Register per-op types (including the inferred ATM) in the label binding,
          so that every `Do x.op [...]` inside the body can look up its C1, C2. *)
-      let lb = make_label_binding sig_name initial_ans_cty c2 in
+      let lb = make_label_binding ~op_captured_set:captured_set sig_name initial_ans_cty c2 in
       let body_label_vars = [(handler_label, lb)] in
-      let body_expected_cty = CCty (body_ty, EAns (initial_ans_cty, c2)) in
-      let handle_body' =
-        check_cty_with ~msg:"Handle: Body doesn't match the handler's declared ATM"
-          body_rctx captured_vars' []
-          body_label_vars term_vars
-          handle_body body_expected_cty
-      in
-      Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
+      if has_full_ops then begin
+        let handle_body' =
+          type_expr_with body_rctx captured_vars' []
+            body_label_vars term_vars handle_body
+        in
+        let body_actual_ty = ty_of handle_body' in
+        if not (types_sub body_actual_ty body_ty
+                || check_refined_subtype body_rctx term_vars (Some handle_body) body_actual_ty body_ty)
+        then
+          typing_error "Handle: Body value type doesn't match return clause\n\tExpected: %s\n\tActual: %s\n"
+            (type_to_str body_ty) (type_to_str body_actual_ty);
+        let c2 =
+          match handle_body'.expr_cty with
+          | CCty (_, EPure) -> initial_ans_cty
+          | CCty (_, EAns (_ans_binder, c1_actual, c2_actual)) ->
+            if cty_sub initial_ans_cty c1_actual then c2_actual
+            else
+              typing_error
+                "Handle: Body initial answer type doesn't match return clause\n\tExpected input: %s\n\tActual input: %s\n"
+                (cty_to_str initial_ans_cty) (cty_to_str c1_actual)
+          | _ -> typing_error "Handle: Unexpected body cty %s\n" (cty_to_str handle_body'.expr_cty)
+        in
+        Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
+      end else begin
+        let body_expected_cty = CCty (body_ty, EAns (initial_ans_binder, initial_ans_cty, c2)) in
+        let handle_body' =
+          check_cty_with ~msg:"Handle: Body doesn't match the handler's declared ATM"
+            body_rctx captured_vars' []
+            body_label_vars term_vars
+            handle_body body_expected_cty
+        in
+        Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
+      end
 
-    | Raise { raise_label; raise_op; raise_evidence; raise_atc; raise_args } ->
+    | Raise { raise_label; raise_op; raise_evidence; raise_tylikes; raise_atc; raise_args } ->
       let op_cty_info = find_op_cty raise_label raise_op captured_vars label_vars in
+      if List.length raise_tylikes <> List.length op_cty_info.op_ty_bindings then
+        typing_error
+          "Raise: Incorrect number of type/predicate/cty instantiations for %s.%s\n\tExpected: %d\n\tActual: %d\n"
+          raise_label raise_op
+          (List.length op_cty_info.op_ty_bindings)
+          (List.length raise_tylikes);
+      List.iter2 (fun (_name, kind) arg ->
+        match kind, arg with
+        | KTy, TLTy _ -> ()
+        | KCty, TLCty _ -> ()
+        | KCty, TLTy _ -> ()
+        | KPred _, TLTy (TRefine _) -> ()
+        | _ ->
+          typing_error
+            "Raise: Type-like instantiation has wrong kind for %s.%s\n"
+            raise_label raise_op
+      ) op_cty_info.op_ty_bindings raise_tylikes;
+      let instantiate_type ty =
+        substitute_tylikes_to_type ty op_cty_info.op_ty_bindings raise_tylikes
+      in
+      let instantiate_cty c =
+        substitute_tylikes_to_cty c op_cty_info.op_ty_bindings raise_tylikes
+      in
+      let op_params_ty = List.map instantiate_type op_cty_info.op_params_ty in
+      let op_return_ty = instantiate_type op_cty_info.op_return_ty in
+      let op_c1 = instantiate_cty op_cty_info.op_c1 in
+      let op_c2 = instantiate_cty op_cty_info.op_c2 in
       (* Check evidence: need Ev(current_region <= label_region) with some level l.
          Returns the inferred level so we can match it against the ATC's level. *)
       let ev_level_opt =
@@ -774,27 +1042,44 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
             "Raise: evidence level %s does not match ATC level %s"
             (distance_to_str l_ev) (distance_to_str l_atc)
       | None -> ());
-      if (List.length raise_args) != (List.length op_cty_info.op_params_ty)
-        then typing_error "Raise: Incorrect number of arguments\n\tExpected: %d\n\tActual: %d\n" (List.length op_cty_info.op_params_ty) (List.length raise_args)
+      if (List.length raise_args) != (List.length op_params_ty)
+        then typing_error "Raise: Incorrect number of arguments\n\tExpected: %d\n\tActual: %d\n" (List.length op_params_ty) (List.length raise_args)
         else
-          let raise_args' = List.map2 (fun arg ty -> check_ty captured_vars cap_vars label_vars term_vars arg ty ~msg:"Raise: Parameter types don't match") raise_args op_cty_info.op_params_ty in
+          let raise_args' = List.map2 (fun arg ty -> check_ty captured_vars cap_vars label_vars term_vars arg ty ~msg:"Raise: Parameter types don't match") raise_args op_params_ty in
+          let op_return_ty, op_c1, op_c2 =
+            List.fold_left2
+              (fun (return_ty, c1, c2) (param_name, _) arg ->
+                match param_name with
+                | None -> return_ty, c1, c2
+                | Some x ->
+                  ( substitute_term_to_type return_ty x arg,
+                    substitute_term_to_cty c1 x arg,
+                    substitute_term_to_cty c2 x arg ))
+              (op_return_ty, op_c1, op_c2)
+              op_cty_info.op_params raise_args
+          in
           let kind_env = rctx.kind_env in
           let args_eff = List.fold_left (fun acc te -> compose_effs ~kind_env acc (eff_of te)) EPure raise_args' in
           (* Fill CC with the handler's C1 and C2 per the T_Do rule:
              result cty = T' / CC{C1} => CC{C2}. *)
-          let c1' = fill_atc raise_atc op_cty_info.op_c1 in
-          let c2' = fill_atc raise_atc op_cty_info.op_c2 in
-          let raise_eff = EAns (c1', c2') in
+          let c1' = fill_atc raise_atc op_c1 in
+          let c2' = fill_atc raise_atc op_c2 in
+          let raise_eff = EAns (op_cty_info.op_ans_binder, c1', c2') in
           let eff = compose_effs ~kind_env args_eff raise_eff in
-          Raise { raise_label; raise_op; raise_evidence; raise_atc; raise_args = raise_args' }, CCty (op_cty_info.op_return_ty, eff)
+          Raise { raise_label; raise_op; raise_evidence; raise_tylikes; raise_atc; raise_args = raise_args' }, CCty (op_return_ty, eff)
 
     | Resume (cont, arg) ->
       let cont' = type_expr captured_vars cap_vars label_vars term_vars cont in
       let type_cont = ty_of cont' in
       (match type_cont with
-      | TCont { effect_return_ty; return_cty; captured_set } ->
+      | TCont { effect_return_var; effect_return_ty; return_cty; captured_set } ->
         check_capability captured_set captured_vars cap_vars label_vars;
         let arg' = check_ty captured_vars cap_vars label_vars term_vars arg effect_return_ty ~msg:"Resume: Argument doesn't match expected effect return type" in
+        let return_cty =
+          match effect_return_var with
+          | Some x -> substitute_term_to_cty return_cty x arg
+          | None -> return_cty
+        in
         let eff = compose_effs (compose_effs (eff_of cont') (eff_of arg')) (eff_of_cty return_cty) in
         Resume (cont', arg'), CCty (ty_of_cty return_cty, eff)
       | _ -> typing_error "Resume: Continuation type expected\n"
@@ -804,9 +1089,14 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       let cont' = type_expr captured_vars cap_vars label_vars term_vars cont in
       let type_cont = ty_of cont' in
       (match type_cont with
-      | TCont { effect_return_ty; return_cty; captured_set } ->
+      | TCont { effect_return_var; effect_return_ty; return_cty; captured_set } ->
         check_capability captured_set captured_vars cap_vars label_vars;
         let arg' = check_ty captured_vars cap_vars label_vars term_vars arg effect_return_ty ~msg:"Resume: Argument doesn't match expected effect return type" in
+        let return_cty =
+          match effect_return_var with
+          | Some x -> substitute_term_to_cty return_cty x arg
+          | None -> return_cty
+        in
         let eff = compose_effs (compose_effs (eff_of cont') (eff_of arg')) (eff_of_cty return_cty) in
         ResumeFinal (cont', arg'), CCty (ty_of_cty return_cty, eff)
       | _ -> typing_error "Resume: Continuation type expected\n"
@@ -818,7 +1108,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
           captured_set;
           cap_params;
           label_params;
-          params_ty = List.map snd params;
+          params_ty = List.map (fun (x, ty) -> (Some x, ty)) params;
           return_cty
         } in
         (name, fun_ty)) fundefs) in
@@ -905,7 +1195,7 @@ let check_type_defs (defs: typedef list) =
     match ty with
     | TRef ty' -> check_typedef_ty type_names type_vars ty'
     | TFun { params_ty; return_cty; _ } ->
-      List.iter (check_typedef_ty type_names type_vars) params_ty;
+      List.iter (fun (_, ty) -> check_typedef_ty type_names type_vars ty) params_ty;
       check_typedef_cty type_names type_vars return_cty
     | TCont { effect_return_ty; return_cty; _ } ->
       check_typedef_ty type_names type_vars effect_return_ty;
@@ -934,7 +1224,7 @@ let check_type_defs (defs: typedef list) =
   and check_typedef_eff type_names type_vars eff =
     match eff with
     | EPure -> ()
-    | EAns (c1, c2) ->
+    | EAns (_, c1, c2) ->
       check_typedef_cty type_names type_vars c1;
       check_typedef_cty type_names type_vars c2
     | EEffVar _ -> ()

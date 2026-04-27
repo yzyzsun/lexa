@@ -4,8 +4,8 @@ open Syntax__Varset
 type top_level =
   | TLPolyAbs of var * ((var * kind) list) * (var list) * (var * var) list * parameter list * cty * expr (* name ; type params with kinds ; cap vars ; labels ; params ; body *)
   | TLAbs of var * (var list) * (var * var) list * parameter list * cty * expr (* name ; cap vars ; labels ; params ; body *)
-  | TLEffSig of var * (var * (ty list * ty)) list
-  | TLEffZSig of var * (var * (ty list * ty)) list
+  | TLEffSig of var * (var * effect_sig) list
+  | TLEffZSig of var * (var * effect_sig) list
   | TLType of typedef list
   | TLOpen of var
   | TLOpenC of var
@@ -29,6 +29,12 @@ and hdl = { op_anno : hdl_anno;
             op_params : var list;
             op_body : expr }
 
+and effect_sig =
+  | EffectSimple of ty list * ty
+  | EffectFull of (var * kind) list * op_parameter list * cty
+
+and op_parameter = var option * ty
+
 and return_clause = {
   return_var : var;
   return_var_ty : ty;
@@ -50,8 +56,11 @@ and label_binding = {
 }
 
 and op_cty = {
+  op_ty_bindings : (var * kind) list;
+  op_params : op_parameter list;
   op_params_ty : ty list;
   op_return_ty : ty;
+  op_ans_binder : var option;
   op_c1 : cty;
   op_c2 : cty;
 }
@@ -67,6 +76,7 @@ and expr =
   | Prim of string
   | Arith of expr * arith * expr
   | Cmp of expr * cmp * expr 
+  | PredApp of var * expr list
   | Neg of expr
   | BArith of expr * barith * expr
   | App of {
@@ -82,6 +92,7 @@ and expr =
     raise_label : var;
     raise_op : var;
     raise_evidence : evidence;
+    raise_tylikes : typelike list;
     raise_atc : atc;
     raise_args : expr list
   }
@@ -128,11 +139,12 @@ and ty = (* Lexaz SL types *)
     captured_set : capability;
     cap_params : var list;
     label_params : (var * var) list;
-    params_ty : ty list;
+    params_ty : op_parameter list;
     return_cty : cty
   }
   | TCont of {
     captured_set : capability;
+    effect_return_var : var option;
     effect_return_ty : ty;
     return_cty : cty
   }
@@ -199,7 +211,7 @@ and atc =
 
 and eff =
   | EPure
-  | EAns of cty * cty
+  | EAns of var option * cty * cty
   | EEffVar of var
 
 and cty =
@@ -217,4 +229,3 @@ and typelike =
   | TLATC of atc
 
 and parameter = var * ty
-

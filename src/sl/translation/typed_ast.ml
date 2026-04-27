@@ -42,6 +42,7 @@ and typed_expr_desc =
   | Prim of string
   | Arith of typed_expr * arith * typed_expr
   | Cmp of typed_expr * cmp * typed_expr
+  | PredApp of var * typed_expr list
   | Neg of typed_expr
   | BArith of typed_expr * barith * typed_expr
   | App of {
@@ -57,6 +58,7 @@ and typed_expr_desc =
     raise_label : var;
     raise_op : var;
     raise_evidence : SLsyntax.evidence;
+    raise_tylikes : SLsyntax.typelike list;
     raise_atc : SLsyntax.atc;
     raise_args : typed_expr list;
   }

@@ -1,43 +1,40 @@
 effect State {
-    get: () -> int
-    set: (int) -> int
+    get: forall 'alpha: Pred[int], 'gamma: Cty. () ->
+        { z: int | 'alpha(z) } / (x. 'gamma) => 'gamma
+
+    set: forall 'gamma: Cty. (v: int) ->
+        int / (x. 'gamma) => 'gamma
 }
 
 def main(): int {
     val f = handle <> { [r1, e1] =>
         val g = handle <s1> { [r2, e2] =>
-            raise s1.set[e2; (<s1>(int) -> int / <>(int) -> int => <>(int) -> int) / <>(int) -> int => []](1);
-            raise s2.set[0; []](2);
-            val a = raise s2.get[0; []]();
-            val b = raise s1.get[e2; (<s1>(int) -> int / <>(int) -> int => <>(int) -> int) / <>(int) -> int => []]();
-            a + b
+            raise s1.set[e2; (<s1>(s2_st: int) -> int / <>(s1_st: int) -> int => <>(s1_st: int) -> int) / <>(s1_st: int) -> int => []; <>(s1_st: int) -> int](1);
+            raise s2.set[0; []; ((<s1>(s2_st: int) -> int / <>(s1_st: int) -> int => <>(s1_st: int) -> int) / <>(s1_st: int) -> int => <>(s1_st: int) -> int)](2);
+            val a = raise s2.get[0; []; { z: int | z == 2 }, ((<s1>(s2_st: int) -> int / <>(s1_st: int) -> int => <>(s1_st: int) -> int) / <>(s1_st: int) -> int => <>(s1_st: int) -> int)]();
+            val b = raise s1.get[e2; (<s1>(s2_st: int) -> int / <>(s1_st: int) -> int => <>(s1_st: int) -> int) / <>(s1_st: int) -> int => []; { z: int | z == 1 }, <>(s1_st: int) -> int]();
+            (fun <> (): { x: int | x == 3 } { a + b })()
         } with s2: State {
             return x: int {
-                (fun <s1> (): (<s1>(int) -> int / <>(int) -> int => <>(int) -> int) / <>(int) -> int => <>(int) -> int {
-                    fun <s1> (s2_st: int): int / <>(int) -> int => <>(int) -> int { x }
-                })()
+                fun <s1> (s2_st: int): { z: int | z == x } / <>(s1_st: int) -> int => <>(s1_st: int) -> int { x }
             }
             hdl_1 get(k) {
-                (fun <s1> (): (<s1>(int) -> int / <>(int) -> int => <>(int) -> int) / <>(int) -> int => <>(int) -> int {
-                    fun <s1> (s2_st: int): int / <>(int) -> int => <>(int) -> int {
-                        val r = resume_final k s2_st;
-                        r(s2_st)
-                    }
-                })()
+                fun <s1> (s2_st: int): int / <>(s1_st: int) -> int => <>(s1_st: int) -> int {
+                    val r = resume_final k s2_st;
+                    r(s2_st)
+                }
             }
             hdl_1 set(v, k) {
-                (fun <s1> (): (<s1>(int) -> int / <>(int) -> int => <>(int) -> int) / <>(int) -> int => <>(int) -> int {
-                    fun <s1> (s2_st: int): int / <>(int) -> int => <>(int) -> int {
-                        val r = resume_final k 0;
-                        r(v)
-                    }
-                })()
+                fun <s1> (s2_st: int): int / <>(s1_st: int) -> int => <>(s1_st: int) -> int {
+                    val r = resume_final k 0;
+                    r(v)
+                }
             }
         };
         g(0)
     } with s1: State {
         return x: int {
-            fun <> (s1_st: int): int { x }
+            fun <> (s1_st: int): { z: int | z == x } { x }
         }
         hdl_1 get(k) {
             fun <> (s1_st: int): int {

@@ -101,6 +101,8 @@ rule read =
   | "array_t" { TARRAY }
   | "forall" { FORALL }
   | "ATC" { ATC }
+  | "Cty" { CTY }
+  | "Pred" { PRED }
 
   | "exceptional effect" { EXCEPTION }
   | '"' { read_string (Buffer.create 17) lexbuf }
