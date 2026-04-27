@@ -1,0 +1,7 @@
+def f(x: { v: int | v >= 0 }): int {
+    x
+}
+
+def g(): int {
+    f(- 1)
+}

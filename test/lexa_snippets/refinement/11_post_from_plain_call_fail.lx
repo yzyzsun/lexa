@@ -1,0 +1,7 @@
+def h(): int {
+    1
+}
+
+def g(): { v: int | v > 0 } {
+    h()
+}

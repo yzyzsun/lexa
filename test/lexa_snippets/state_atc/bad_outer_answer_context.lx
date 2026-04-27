@@ -1,0 +1,57 @@
+effect State {
+    get: () -> int
+    set: (int) -> int
+}
+
+def main(): int {
+    val f = handle <> { [r1, e1] =>
+        val g = handle <s1> { [r2, e2] =>
+            raise s1.set[e2; (<s1>(int) -> int / <>(int) -> int => <>(int) -> int) / <>(int) -> int => []](1);
+            raise s2.set[0; []](2);
+            val a = raise s2.get[0; []]();
+            val b = raise s1.get[e2; (<s1>(int) -> int / <>(int) -> int => <>(int) -> int) / <>(int) -> int => []]();
+            a + b
+        } with s2: State {
+            return x: int {
+                (fun <s1> (): (<s1>(int) -> int / <>(int) -> int => <>(int) -> int) / <>(int) -> int => <>(int) -> int {
+                    fun <s1> (s2_st: int): int / <>(int) -> int => <>(int) -> int { x }
+                })()
+            }
+            hdl_1 get(k) {
+                (fun <s1> (): (<s1>(int) -> int / <>(int) -> int => <>(int) -> int) / <>(int) -> int => <>(int) -> int {
+                    fun <s1> (s2_st: int): int / <>(int) -> int => <>(int) -> int {
+                        val r = resume_final k s2_st;
+                        r(s2_st)
+                    }
+                })()
+            }
+            hdl_1 set(v, k) {
+                (fun <s1> (): (<s1>(int) -> int / <>(int) -> int => <>(int) -> int) / <>(int) -> int => <>(int) -> int {
+                    fun <s1> (s2_st: int): int / <>(int) -> int => <>(int) -> int {
+                        val r = resume_final k 0;
+                        r(v)
+                    }
+                })()
+            }
+        };
+        g(0)
+    } with s1: State {
+        return x: int {
+            // Bad outer answer context: the nested handler still assumes int state.
+            fun <> (s1_st: bool): int { x }
+        }
+        hdl_1 get(k) {
+            fun <> (s1_st: bool): int {
+                val r = resume_final k 0;
+                r(s1_st)
+            }
+        }
+        hdl_1 set(v, k) {
+            fun <> (s1_st: bool): int {
+                val r = resume_final k 0;
+                r(s1_st)
+            }
+        }
+    };
+    f(true)
+}
