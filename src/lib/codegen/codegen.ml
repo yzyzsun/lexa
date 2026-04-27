@@ -79,6 +79,8 @@ let gen_cmp = function
 | CNeq -> "!="
 | CLt -> "<"
 | CGt -> ">"
+| CLe -> "<="
+| CGe -> ">="
 
 type c_type =
   | CTI64 (* i64 *)

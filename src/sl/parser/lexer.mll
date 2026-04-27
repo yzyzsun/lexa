@@ -55,6 +55,8 @@ rule read =
   | '/' { DIV }
   | "!=" { NEQ }
   | "==" { CMPEQ }
+  | "<=" { LEQ }
+  | ">=" { GEQ }
   | "if" { IF }
   | "then" { THEN }
   | "else" { ELSE }

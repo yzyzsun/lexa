@@ -1,4 +1,4 @@
 (library
  (name translation)
- (libraries SLsyntax)
+ (libraries SLsyntax unix)
  (flags (:standard -w -30)))

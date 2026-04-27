@@ -144,6 +144,7 @@ and ty = (* Lexaz SL types *)
   | TVar of var
   | TForall of var * kind * ty
   | TCap of region * opty
+  | TRefine of var * ty * expr  (* {v: ty | pred}; pred is an expr of bool over the predicate subset. v is the value binder. *)
 
 and opty = {
   op_ty_bindings : (var * kind) list;

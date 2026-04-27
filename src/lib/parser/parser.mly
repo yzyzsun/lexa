@@ -39,6 +39,8 @@
 %token DIV
 %token NEQ
 %token CMPEQ
+%token LEQ
+%token GEQ
 %token IF
 %token THEN
 %token ELSE
@@ -79,7 +81,7 @@
 %left CONJ
 %left DISJ 
 %right NEG
-%nonassoc NEQ CMPEQ LTS GTS
+%nonassoc NEQ CMPEQ LTS GTS LEQ GEQ
 %left ADD SUB
 %left MULT DIV PERC
 %%
@@ -147,6 +149,8 @@ expr:
 	| e1 = expr NEQ e2 = expr { Cmp(e1, CNeq, e2) }
 	| e1 = expr GTS e2 = expr { Cmp(e1, CGt, e2) }
 	| e1 = expr LTS e2 = expr { Cmp(e1, CLt, e2) }
+	| e1 = expr LEQ e2 = expr { Cmp(e1, CLe, e2) }
+	| e1 = expr GEQ e2 = expr { Cmp(e1, CGe, e2) }
 	
   | NEG e = expr { Neg(e) }
   | e1 = expr CONJ e2 = expr { BArith (e1, BConj, e2) }

@@ -14,6 +14,8 @@ type cmp =
   | CNeq
   | CLt
   | CGt
+  | CLe
+  | CGe
 
 type barith =
   | BConj

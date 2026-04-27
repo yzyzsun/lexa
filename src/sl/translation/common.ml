@@ -45,6 +45,60 @@ let find_effect_name label captured_vars label_vars =
   | Some eff_name -> eff_name
   | None -> typing_error "Label %s not found\n" label
 
+(** Pretty-prints an expression in the refinement-predicate subset. Outside the
+    subset, falls back to a placeholder so callers (error messages, debug
+    dumps) don't crash on unexpected nodes. *)
+let rec pred_expr_to_str (e: expr) =
+  match e with
+  | Int n -> string_of_int n
+  | Bool true -> "true"
+  | Bool false -> "false"
+  | Var x -> x
+  | Arith (e1, op, e2) ->
+    let s = match op with
+      | AAdd -> "+" | ASub -> "-" | AMult -> "*" | ADiv -> "/" | AMod -> "%"
+    in Printf.sprintf "(%s %s %s)" (pred_expr_to_str e1) s (pred_expr_to_str e2)
+  | Cmp (e1, op, e2) ->
+    let s = match op with
+      | CEq -> "==" | CNeq -> "!=" | CLt -> "<" | CGt -> ">" | CLe -> "<=" | CGe -> ">="
+    in Printf.sprintf "(%s %s %s)" (pred_expr_to_str e1) s (pred_expr_to_str e2)
+  | BArith (e1, op, e2) ->
+    let s = match op with BConj -> "&&" | BDisj -> "||" in
+    Printf.sprintf "(%s %s %s)" (pred_expr_to_str e1) s (pred_expr_to_str e2)
+  | Neg e -> Printf.sprintf "(! %s)" (pred_expr_to_str e)
+  | _ -> "<non-pred-expr>"
+
+(** Renames a free occurrence of [old_v] to [new_v] inside an expression of
+    the predicate subset. Stops at any unsupported node (returns unchanged). *)
+let rec rename_var_in_pred_expr (e: expr) (old_v: string) (new_v: string) : expr =
+  match e with
+  | Var x -> if x = old_v then Var new_v else e
+  | Int _ | Bool _ -> e
+  | Arith (e1, op, e2) ->
+    Arith (rename_var_in_pred_expr e1 old_v new_v, op, rename_var_in_pred_expr e2 old_v new_v)
+  | Cmp (e1, op, e2) ->
+    Cmp (rename_var_in_pred_expr e1 old_v new_v, op, rename_var_in_pred_expr e2 old_v new_v)
+  | BArith (e1, op, e2) ->
+    BArith (rename_var_in_pred_expr e1 old_v new_v, op, rename_var_in_pred_expr e2 old_v new_v)
+  | Neg e' -> Neg (rename_var_in_pred_expr e' old_v new_v)
+  | _ -> e
+
+(** Substitutes a free occurrence of [old_v] with the expression [witness]
+    inside a predicate-subset expression. Used when forming the goal of a VC:
+    [P[v := [[e]]]]. *)
+let rec subst_var_in_pred_expr (e: expr) (old_v: string) (witness: expr) : expr =
+  match e with
+  | Var x -> if x = old_v then witness else e
+  | Int _ | Bool _ -> e
+  | Arith (e1, op, e2) ->
+    Arith (subst_var_in_pred_expr e1 old_v witness, op, subst_var_in_pred_expr e2 old_v witness)
+  | Cmp (e1, op, e2) ->
+    Cmp (subst_var_in_pred_expr e1 old_v witness, op, subst_var_in_pred_expr e2 old_v witness)
+  | BArith (e1, op, e2) ->
+    BArith (subst_var_in_pred_expr e1 old_v witness, op, subst_var_in_pred_expr e2 old_v witness)
+  | Neg e' -> Neg (subst_var_in_pred_expr e' old_v witness)
+  | _ -> e
+
 (** Returns a formatted string for the given type. For debugging purpose. *)
 let rec type_to_str (ty: ty) =
   let capability_to_str (cap: capability) =
@@ -80,6 +134,8 @@ let rec type_to_str (ty: ty) =
   | TVar v -> v
   | TForall (tvar, _kind, ty') -> Printf.sprintf "∀%s. %s" tvar (type_to_str ty')
   | TCap (_region, _opty) -> "Cap"
+  | TRefine (v, inner, p) ->
+    Printf.sprintf "{%s: %s | %s}" v (type_to_str inner) (pred_expr_to_str p)
 
 and cty_to_str (c: cty) =
   match c with
@@ -126,6 +182,13 @@ let alpha_normalize ty =
       let var = "'__t" ^ (string_of_int !counter) in
       incr counter;
       var
+  in
+  let fresh_refine =
+    let counter = ref 0 in
+    fun () ->
+      let v = "__r" ^ (string_of_int !counter) in
+      incr counter;
+      v
   in
   let rename_captured_set captured_set env =
     let (cap_opt, labels) = captured_set in
@@ -175,6 +238,14 @@ let alpha_normalize ty =
       let tv_new = fresh_var() in
       let env' = Varmap.add tv tv_new env in
       TForall (tv_new, kind, (normalize ty' env'))
+    | TRefine (v, inner, p) ->
+      (* Alpha-rename the value binder to a stable fresh name; rename free
+         occurrences of [v] inside the predicate. Capture/label envs don't
+         affect the predicate (predicates only reference term variables),
+         so [env] is not threaded into [p]. *)
+      let v_new = fresh_refine () in
+      let p' = rename_var_in_pred_expr p v v_new in
+      TRefine (v_new, normalize inner env, p')
     | _ -> ty
   and normalize_cty c env =
     match c with
@@ -232,6 +303,11 @@ let types_eq t1 t2 =
       (tv1 = tv2) && (List.equal normalized_types_eq t1_args t2_args)
     | (TForall (v1, k1, t1'), TForall (v2, k2, t2')) ->
       v1 = v2 && k1 = k2 && (normalized_types_eq t1' t2')
+    | (TRefine (v1, t1', p1), TRefine (v2, t2', p2)) ->
+      (* alpha_normalize already renamed both binders via the same fresh
+         counter, so equal-shape refinements have v1 = v2 and the predicate
+         expressions can be compared structurally. *)
+      v1 = v2 && normalized_types_eq t1' t2' && p1 = p2
     | (t1', t2') -> t1' = t2'
   and normalized_ctys_eq c1 c2 =
     match c1, c2 with
@@ -348,6 +424,12 @@ and types_sub ?(kind_env=[]) t1 t2 =
       captured_set_sub cs1 cs2
       && types_eq et1 et2
       && cty_sub ~kind_env rc1 rc2
+    (* Refinement: dropping a refinement is always sound, [{v:T|P} <: T]. *)
+    | TRefine (_, inner, _), _ -> types_sub ~kind_env inner t2
+    (* The other directions ([T <: {v:T|P}] and [{v:T|Q} <: {v:T|P}]) require
+       VC discharge; that lives in [Refinement.check_subtype_with_vc] reached
+       through [check_ty]/[check_cty]. The pure-structural [types_sub] is
+       conservative: it returns false here. *)
     | _ -> false
 
 (** Subtyping on effects / computation types, following the simplified ott
@@ -452,6 +534,9 @@ let rec rename_type_var ty var_old var_new =
       return_cty = rename_type_var_cty return_cty var_old var_new
     }
   | TRef ty' -> TRef (rename_type_var ty' var_old var_new)
+  | TRefine (v, inner, p) ->
+    (* Refinement predicates only mention term variables, not label/cap vars. *)
+    TRefine (v, rename_type_var inner var_old var_new, p)
   | _ -> ty
 
 and rename_type_var_cty c var_old var_new =
@@ -512,6 +597,8 @@ let rec substitute_label_to_type ty label label_new =
       return_cty = substitute_label_to_cty return_cty label label_new
     }
   | TRef ty' -> TRef (substitute_label_to_type ty' label label_new)
+  | TRefine (v, inner, p) ->
+    TRefine (v, substitute_label_to_type inner label label_new, p)
   | _ -> ty
 
 and substitute_label_to_cty c label label_new =
@@ -561,6 +648,8 @@ let rec substitute_capability_to_type ty cap_var capability =
       return_cty = substitute_capability_to_cty return_cty cap_var capability
     }
   | TRef ty' -> TRef (substitute_capability_to_type ty' cap_var capability)
+  | TRefine (v, inner, p) ->
+    TRefine (v, substitute_capability_to_type inner cap_var capability, p)
   | _ -> ty
 
 and substitute_capability_to_cty c cap_var capability =
@@ -620,6 +709,8 @@ let substitute_ty ty type_subs =
       let tv_new = fresh_var() in
       let type_subs' = (tv, TVar tv_new)::type_subs in
       TForall (tv_new, kind, substitute ty' type_subs')
+    | TRefine (v, inner, p) ->
+      TRefine (v, substitute inner type_subs, p)
     | _ -> ty
   and substitute_cty c type_subs =
     match c with

@@ -35,6 +35,13 @@ type region_ctx = {
 
 let empty_region_ctx = { current_region = RTop; evidence_env = []; label_regions = []; kind_env = [] }
 
+let fresh_refinement_witness =
+  let counter = ref 0 in
+  fun () ->
+    let name = "__refine_witness_" ^ string_of_int !counter ^ "__" in
+    incr counter;
+    name
+
 let region_to_str r =
   match r with
   | RTop -> "⊤"
@@ -179,17 +186,188 @@ let make_label_binding sig_name c1 c2 : label_binding =
   { lb_effect_name = sig_name; lb_op_ctys = op_ctys }
 
 (** Checks whether expression e has value type ty. Effects are not constrained.
-    Raises an error with expected and actual types if the value parts don't match. *)
+    Raises an error with expected and actual types if the value parts don't match.
+
+    Refinements: the actual-vs-expected comparison goes through [types_sub] so
+    that [{v:T|P} <: T] (dropping a refinement) succeeds without a VC. The
+    other directions ([T <: {v:T|P}] and [{v:T|Q} <: {v:T|P}]) need Z3 and
+    flow through [check_refined_subtype] below. *)
 let rec check_ty ?(msg = "") rctx captured_vars cap_vars label_vars term_vars (e: expr) ty =
   let te = type_expr rctx captured_vars cap_vars label_vars term_vars e in
   let actual = ty_of_cty te.expr_cty in
-  if not (types_eq ty actual) then
+  if types_eq ty actual || types_sub actual ty then te
+  else if check_refined_subtype rctx term_vars (Some e) actual ty then te
+  else
     typing_error
       "%s\n\tExpected: %s\n\tActual: %s\n"
       msg
       (type_to_str ty)
       (type_to_str actual)
-  else te
+
+(** Refinement-aware subtype check. Two non-trivial directions handled here
+    (the "drop refinement" direction is already covered by [types_sub]):
+
+    - [actual: T <: expected: {v:T|P}]    discharge: hyps |= P[v := [[e]]]
+    - [actual: {v:T|Q} <: expected: {v:T|P}]
+      discharge: hyps /\ Q[v := [[e]]] |= P[v := [[e]]]
+
+    [hyps] are gathered from refinements present in [term_vars]. The witness
+    expression is encoded by [Refinement.expr_to_smt_opt]; if a sub-tree is
+    not encodable, that sub-tree becomes a fresh symbol — sound but coarser.
+    *)
+and check_refined_subtype _rctx term_vars witness actual expected =
+  match expected with
+  | TRefine (ve, te, qe) ->
+    let actual_base =
+      match actual with
+      | TRefine (_, ta, _) -> ta
+      | t -> t
+    in
+    if not (types_eq actual_base te) then false
+    else begin
+      (* If the witness expression cannot be encoded by the SMT backend (for
+         example, a function call), replace it with a fresh symbol of the
+         expected base sort. This is conservative: Z3 has less information
+         about the value, but the checker does not crash or assume more than
+         it knows. *)
+      let witness_expr, extra_term_vars =
+        match witness with
+        | Some w ->
+          (match Refinement.expr_to_smt_opt w with
+           | Some _ -> Some w, []
+           | None ->
+             let fresh = fresh_refinement_witness () in
+             Some (Var fresh), [(fresh, te)])
+        | None -> None, [(ve, te)]
+      in
+      let actual_extra_hyps =
+        match actual with
+        | TRefine (va, _, qa) ->
+          (match witness_expr with
+           | Some w -> [subst_var_in_pred_expr qa va w]
+           | None -> [qa])
+        | _ -> []
+      in
+      (* Form goal as P[v := witness]. If no witness, leave [v] free. *)
+      let goal =
+        match witness_expr with
+        | Some w -> subst_var_in_pred_expr qe ve w
+        | None -> qe
+      in
+      Refinement.entails
+        ~term_vars:(extra_term_vars @ term_vars)
+        actual_extra_hyps goal
+    end
+  | _ -> false
+
+(** Validates that a predicate expression uses only the SMT-encodable subset:
+    integer/bool literals, variables, linear arithmetic (with multiplication
+    restricted to literal-times-anything), comparisons, boolean connectives,
+    and negation. Anything else raises a typing error. *)
+and validate_pred (p: SLsyntax.expr) =
+  let rec go (e: SLsyntax.expr) =
+    match e with
+    | Int _ | Bool _ | Var _ -> ()
+    | Arith (e1, AMult, e2) ->
+      (match e1, e2 with
+       | Int _, _ | _, Int _ -> go e1; go e2
+       | _ ->
+         typing_error
+           "Refinement predicate: '*' must have an integer literal on at least one side (linear arithmetic). Got: %s\n"
+           (pred_expr_to_str e))
+    | Arith (e1, _, e2) -> go e1; go e2
+    | Cmp (e1, _, e2) -> go e1; go e2
+    | BArith (e1, _, e2) -> go e1; go e2
+    | Neg e' -> go e'
+    | _ ->
+      typing_error
+        "Refinement predicate: unsupported expression form. Allowed: int/bool literals, variables, +,-,*,/,%%, ==, !=, <, >, <=, >=, &&, ||, !. Got: %s\n"
+        (pred_expr_to_str e)
+  in go p
+
+(** Walks a type and, for every [TRefine(v, base, p)] encountered, validates
+    [p] structurally and type-checks it as [TBool] under the env extended
+    with [(v, base)]. Refinements on non-base types should already be ruled
+    out at parse time, but we recurse defensively so synthetic types built by
+    the typechecker (e.g. via type substitution) don't slip through. *)
+and check_refinement_wellformed rctx term_vars (ty: ty) =
+  let rec contains_refinement ty =
+    match ty with
+    | TRefine _ -> true
+    | TRef t
+    | TNode t
+    | TTree t
+    | TQueue t
+    | TArray t -> contains_refinement t
+    | TCon (_, t_args) -> List.exists contains_refinement t_args
+    | TFun { params_ty; return_cty; _ } ->
+      List.exists contains_refinement params_ty || cty_contains_refinement return_cty
+    | TCont { effect_return_ty; return_cty; _ } ->
+      contains_refinement effect_return_ty || cty_contains_refinement return_cty
+    | TForall (_, _, t) -> contains_refinement t
+    | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> false
+  and cty_contains_refinement c =
+    match c with
+    | CCty (t, eff) -> contains_refinement t || eff_contains_refinement eff
+    | CTyVar _ -> false
+    | CFill (_, c') -> cty_contains_refinement c'
+  and eff_contains_refinement eff =
+    match eff with
+    | EPure | EEffVar _ -> false
+    | EAns (c1, c2) -> cty_contains_refinement c1 || cty_contains_refinement c2
+  in
+  let rec go term_vars ty = match ty with
+    | TRefine (v, inner, p) ->
+      validate_pred p;
+      (match inner with
+       | TInt | TBool -> ()
+       | _ ->
+         typing_error
+           "Refinement {%s: %s | _}: refinement is only supported on int and bool in this iteration\n"
+           v (type_to_str inner));
+      let _te = check_ty ~msg:"Refinement predicate must have type bool"
+                  rctx (Labels []) [] [] ((v, inner) :: term_vars) p TBool in
+      go term_vars inner
+    | TRef inner ->
+      if contains_refinement inner then
+        typing_error
+          "Refinement under ref is out of scope in this iteration: ref %s\n"
+          (type_to_str inner);
+      go term_vars inner
+    | TFun { params_ty; return_cty; _ } ->
+      List.iter (go term_vars) params_ty;
+      go_cty term_vars return_cty
+    | TCont { effect_return_ty; return_cty; _ } ->
+      go term_vars effect_return_ty;
+      go_cty term_vars return_cty
+    | TNode t | TTree t | TQueue t | TArray t ->
+      if contains_refinement t then
+        typing_error
+          "Refinement inside data-structure type arguments is out of scope in this iteration: %s\n"
+          (type_to_str ty);
+      go term_vars t
+    | TCon (_, t_args) ->
+      if List.exists contains_refinement t_args then
+        typing_error
+          "Refinement inside type-constructor arguments is out of scope in this iteration: %s\n"
+          (type_to_str ty);
+      List.iter (go term_vars) t_args
+    | TForall (_, _, t) -> go term_vars t
+    | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ()
+  and go_cty term_vars c = match c with
+    | CCty (t, eff) ->
+      go term_vars t;
+      go_eff eff
+    | CTyVar _ -> ()
+    | CFill (_, c') -> go_cty term_vars c'
+  and go_eff eff =
+    match eff with
+    | EPure | EEffVar _ -> ()
+    | EAns (c1, c2) ->
+      if cty_contains_refinement c1 || cty_contains_refinement c2 then
+        typing_error
+          "Refinement inside answer types is out of scope in this iteration\n"
+  in go term_vars ty
 
 (** Checks an expression against an expected computation type, allowing the
     subsumption "pure ≤ any ATM" from the ott subtyping rules. If the expression
@@ -200,12 +378,23 @@ and check_cty ?(msg = "") rctx captured_vars cap_vars label_vars term_vars (e: e
   let actual = te.expr_cty in
   if ctys_eq actual expected then te
   else if cty_sub actual expected then { te with expr_cty = expected }
-  else
-    typing_error
-      "%s\n\tExpected: %s\n\tActual: %s\n"
-      msg
-      (cty_to_str expected)
-      (cty_to_str actual)
+  else begin
+    (* Try a refinement-aware comparison on the value-type component. The
+       effect parts must still match via [eff_sub]. *)
+    let refinement_ok =
+      match actual, expected with
+      | CCty (ta, ea), CCty (te_, ee) ->
+        eff_sub ea ee && check_refined_subtype rctx term_vars (Some e) ta te_
+      | _ -> false
+    in
+    if refinement_ok then { te with expr_cty = expected }
+    else
+      typing_error
+        "%s\n\tExpected: %s\n\tActual: %s\n"
+        msg
+        (cty_to_str expected)
+        (cty_to_str actual)
+  end
 
 and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: (string * ty) list) (e: expr): typed_expr =
   let type_expr_with = type_expr in
@@ -268,7 +457,10 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
     | Cmp (e1, op, e2) ->
       if op == CEq || op == CNeq then
         let e1' = type_expr captured_vars cap_vars label_vars term_vars e1 in
-        let ty = ty_of e1' in
+        (* Equality on a refined operand should compare the underlying values,
+           not the refinement metadata. Strip outer refinement so [e2] can be
+           a plain int/bool. *)
+        let ty = match ty_of e1' with TRefine (_, inner, _) -> inner | t -> t in
         let e2' = check_ty captured_vars cap_vars label_vars term_vars e2 ty in
         let eff = compose_effs (eff_of e1') (eff_of e2') in
         Cmp (e1', op, e2'), CCty (TBool, eff)
@@ -390,6 +582,16 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
     | Fun { captured_set; cap_params; label_params; params; body; return_cty } ->
       let captured_vars' = check_capture_set_as_unamb captured_set captured_vars cap_vars label_vars in
       let params_ty = List.map snd params in
+      (* Validate any refinement type written in this function's signature. The
+         walk threads earlier params left-to-right so a later param's predicate
+         can reference earlier ones. *)
+      let _ = List.fold_left (fun acc (x, ty) ->
+          check_refinement_wellformed rctx (acc @ term_vars) ty;
+          acc @ [(x, ty)]
+        ) [] params in
+      (match return_cty with
+       | CCty (rty, _) -> check_refinement_wellformed rctx (params @ term_vars) rty
+       | _ -> ());
       (* The function body is typechecked at the annotated return_cty.
          The label_params are introduced with empty-op bindings (effectful function
          bodies that do-invoke label params are not yet supported). *)
@@ -720,6 +922,7 @@ let check_type_defs (defs: typedef list) =
       if List.exists (fun tv' -> tv = tv') type_vars
         then () else typing_error "Type Definition: type variable %s not defined" tv
     | TForall (tv, _kind, ty') -> check_typedef_ty type_names (tv::type_vars) ty'
+    | TRefine (_, inner, _) -> check_typedef_ty type_names type_vars inner
     | _ -> ()
   and check_typedef_cty type_names type_vars cty =
     match cty with

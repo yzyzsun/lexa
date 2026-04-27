@@ -41,6 +41,8 @@
 %token DIV
 %token NEQ
 %token CMPEQ
+%token LEQ
+%token GEQ
 %token IF
 %token THEN
 %token ELSE
@@ -99,7 +101,7 @@
 %left CONJ
 %left DISJ 
 %right NEG
-%nonassoc NEQ CMPEQ LTS GTS
+%nonassoc NEQ CMPEQ LTS GTS LEQ GEQ
 %left ADD SUB
 %nonassoc CTY_PURE
 %left MULT DIV PERC
@@ -164,6 +166,43 @@ type_exp:
   | LPAREN ty = type_exp RPAREN { ty }
   | tv = TYPE_VAR { TVar tv }
   | FORALL tv = TYPE_VAR DOT ty = type_exp { TForall (tv, KTy, ty) }
+  | LCB v = VAR COLON inner = refine_base_ty VBAR p = pred_expr RCB
+    { TRefine (v, inner, p) }
+
+(* Inner type of a refinement is restricted to the base scalar types: refinements
+   on ref/cont/function/ADT types are out of scope for this iteration. *)
+refine_base_ty:
+  | TINT { TInt }
+  | TBOOL { TBool }
+
+(* Predicate sub-grammar. A strict subset of [expr] that the SMT encoder can
+   handle: integer/bool literals, variables, linear arithmetic (validated at
+   typecheck time to avoid non-linear products), comparisons, boolean
+   connectives, parentheses. Returns an [SLsyntax.expr]. *)
+pred_expr:
+  | pred_simple { $1 }
+  | e1 = pred_expr ADD e2 = pred_expr { Arith(e1, AAdd, e2) }
+  | e1 = pred_expr SUB e2 = pred_expr { Arith(e1, ASub, e2) }
+  | e1 = pred_expr MULT e2 = pred_expr { Arith(e1, AMult, e2) }
+  | e1 = pred_expr DIV e2 = pred_expr { Arith(e1, ADiv, e2) }
+  | e1 = pred_expr PERC e2 = pred_expr { Arith(e1, AMod, e2) }
+  | e1 = pred_expr CMPEQ e2 = pred_expr { Cmp(e1, CEq, e2) }
+  | e1 = pred_expr NEQ e2 = pred_expr { Cmp(e1, CNeq, e2) }
+  | e1 = pred_expr LTS e2 = pred_expr { Cmp(e1, CLt, e2) }
+  | e1 = pred_expr GTS e2 = pred_expr { Cmp(e1, CGt, e2) }
+  | e1 = pred_expr LEQ e2 = pred_expr { Cmp(e1, CLe, e2) }
+  | e1 = pred_expr GEQ e2 = pred_expr { Cmp(e1, CGe, e2) }
+  | e1 = pred_expr CONJ e2 = pred_expr { BArith(e1, BConj, e2) }
+  | e1 = pred_expr DISJ e2 = pred_expr { BArith(e1, BDisj, e2) }
+  | NEG e = pred_expr { Neg(e) }
+
+pred_simple:
+  | VAR { Var $1 }
+  | INT { Int $1 }
+  | SUB INT { Int (Int.neg $2) }
+  | TRUE { Bool true }
+  | FALSE { Bool false }
+  | LPAREN e = pred_expr RPAREN { e }
 
 cty_exp:
   // Prefer parsing `... -> t / e` as `... -> (t / e)`.
@@ -303,6 +342,8 @@ expr:
 	| e1 = expr NEQ e2 = expr { Cmp(e1, CNeq, e2) }
 	| e1 = expr GTS e2 = expr { Cmp(e1, CGt, e2) }
 	| e1 = expr LTS e2 = expr { Cmp(e1, CLt, e2) }
+	| e1 = expr LEQ e2 = expr { Cmp(e1, CLe, e2) }
+	| e1 = expr GEQ e2 = expr { Cmp(e1, CGe, e2) }
 	
   | NEG e = expr { Neg(e) }
   | e1 = expr CONJ e2 = expr { BArith (e1, BConj, e2) }
