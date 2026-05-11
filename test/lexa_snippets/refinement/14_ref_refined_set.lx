@@ -1,0 +1,4 @@
+def f(r: ref { v: int | v >= 0 }, x: { v: int | v >= 0 }): int {
+    r[0] := x;
+    0
+}

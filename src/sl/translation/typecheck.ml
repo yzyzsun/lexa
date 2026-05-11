@@ -557,12 +557,7 @@ and check_refinement_wellformed rctx term_vars (ty: ty) =
            v (type_to_str inner));
       check_pred_expected rctx ((v, inner) :: term_vars) p TBool;
       go term_vars inner
-    | TRef inner ->
-      if contains_refinement inner then
-        typing_error
-          "Refinement under ref is out of scope in this iteration: ref %s\n"
-          (type_to_str inner);
-      go term_vars inner
+    | TRef inner -> go term_vars inner
     | TFun { params_ty; return_cty; _ } ->
       let term_vars' =
         List.fold_left
