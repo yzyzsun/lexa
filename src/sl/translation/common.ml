@@ -437,6 +437,11 @@ let alpha_normalize_cty (c: cty) =
     in go c
 
 (** Checks for equality of two types. *)
+let optional_param_names_compatible name1 name2 =
+  match name1, name2 with
+  | Some x, Some y -> x = y
+  | _ -> true
+
 let types_eq t1 t2 =
   let captured_sets_eq cs1 cs2 =
     match cs1, cs2 with
@@ -453,7 +458,8 @@ let types_eq t1 t2 =
         && (cp = cp')
         && (lp = lp')
         && (List.equal
-              (fun (name1, t1) (name2, t2) -> name1 = name2 && normalized_types_eq t1 t2)
+              (fun (name1, t1) (name2, t2) ->
+                optional_param_names_compatible name1 name2 && normalized_types_eq t1 t2)
               pt pt')
         && (normalized_ctys_eq rc rc')
     | (TCont { captured_set = cs; effect_return_var = erv; effect_return_ty = et; return_cty = rc },
@@ -583,7 +589,7 @@ and types_sub ?(kind_env=[]) t1 t2 =
       && lp1 = lp2
       && List.length pt1 = List.length pt2
       && List.for_all2 (fun (actual_name, actual_param) (expected_name, expected_param) ->
-           actual_name = expected_name
+           optional_param_names_compatible actual_name expected_name
            && types_sub ~kind_env expected_param actual_param
          ) pt1 pt2
       && cty_sub ~kind_env rc1 rc2
