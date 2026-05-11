@@ -839,11 +839,19 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
        | _ -> ());
       (* The function body is typechecked at the annotated return_cty.
          The label_params are introduced with empty-op bindings (effectful function
-         bodies that do-invoke label params are not yet supported). *)
+         bodies that do-invoke label params are not yet supported).
+
+         Outer cap_vars / label_vars are inherited so that the body can reference
+         capabilities and labels that are lexically in scope (matching the Ott
+         T_Abs rule, which checks the body under the full outer typing context).
+         The function's own cap_params / label_params shadow outer entries with
+         the same name. *)
       let inner_label_vars = List.map (fun (label, eff) ->
         (label, { lb_effect_name = eff; lb_op_ctys = [] })
       ) label_params in
-      let body' = check_cty captured_vars' cap_params inner_label_vars (params@term_vars) body return_cty ~msg:"Fun: Function body doesn't match the declared return cty" in
+      let body_cap_vars = cap_params @ cap_vars in
+      let body_label_vars = inner_label_vars @ label_vars in
+      let body' = check_cty captured_vars' body_cap_vars body_label_vars (params@term_vars) body return_cty ~msg:"Fun: Function body doesn't match the declared return cty" in
       let ty = TFun {
         captured_set;
         cap_params;
