@@ -11,8 +11,8 @@ def main(): int {
         val g = handle <s1> { [r2, e2] =>
             raise s1.set[e2; (<s1>(s2_st: int) -> int / <>(s1_st: int) -> int => <>(s1_st: int) -> int) / <>(s1_st: int) -> int => []; <>(s1_st: int) -> int](1);
             raise s2.set[0; []; ((<s1>(s2_st: int) -> int / <>(s1_st: int) -> int => <>(s1_st: int) -> int) / <>(s1_st: int) -> int => <>(s1_st: int) -> int)](2);
-            val a = raise s2.get[0; []; { z: int | z == 2 }, ((<s1>(s2_st: int) -> int / <>(s1_st: int) -> int => <>(s1_st: int) -> int) / <>(s1_st: int) -> int => <>(s1_st: int) -> int)]();
-            val b = raise s1.get[e2; (<s1>(s2_st: int) -> int / <>(s1_st: int) -> int => <>(s1_st: int) -> int) / <>(s1_st: int) -> int => []; { z: int | z == 1 }, <>(s1_st: int) -> int]();
+            val a = raise s2.get[0; []; Pred(z: Int) { z == 2 }, ((<s1>(s2_st: int) -> int / <>(s1_st: int) -> int => <>(s1_st: int) -> int) / <>(s1_st: int) -> int => <>(s1_st: int) -> int)]();
+            val b = raise s1.get[e2; (<s1>(s2_st: int) -> int / <>(s1_st: int) -> int => <>(s1_st: int) -> int) / <>(s1_st: int) -> int => []; Pred(z: Int) { z == 1 }, <>(s1_st: int) -> int]();
             (fun <> (): { x: int | x == 3 } { a + b })()
         } with s2: State {
             return x: int {

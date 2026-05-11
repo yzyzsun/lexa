@@ -25,57 +25,65 @@ let rec smt_sort_of_ty (ty: ty) : string option =
   | TRefine (_, inner, _) -> smt_sort_of_ty inner
   | _ -> None
 
-(** Translate an [expr] (assumed to be in the predicate subset, validated by
-    [Typecheck.validate_pred]) into an SMT-LIB term string. Unsupported nodes
-    raise — callers should validate first or use [expr_to_smt_opt]. *)
-let rec expr_to_smt (e: expr) : string =
-  match e with
-  | Int n ->
+(** Translate refinement logic terms and formulas into SMT-LIB. Unsupported
+    logical nodes raise; callers that may see residual predicate variables
+    should use [pred_to_smt_opt]. *)
+let rec pred_term_to_smt (t: pred_term) : string =
+  match t with
+  | PTInt n ->
     if n >= 0 then string_of_int n
     else Printf.sprintf "(- %d)" (-n)
-  | Bool true -> "true"
-  | Bool false -> "false"
-  | Var x -> x
-  | Arith (e1, op, e2) ->
+  | PTBool true -> "true"
+  | PTBool false -> "false"
+  | PTVar x -> x
+  | PTArith (t1, op, t2) ->
     let s = match op with
       | AAdd -> "+" | ASub -> "-" | AMult -> "*"
       | ADiv -> "div" | AMod -> "mod"
     in
-    Printf.sprintf "(%s %s %s)" s (expr_to_smt e1) (expr_to_smt e2)
-  | Cmp (e1, op, e2) ->
+    Printf.sprintf "(%s %s %s)" s (pred_term_to_smt t1) (pred_term_to_smt t2)
+  | PTUnit ->
+    failwith
+      (Printf.sprintf "pred_term_to_smt: unsupported unit term: %s" (pred_term_to_str t))
+
+and pred_to_smt (p: pred) : string =
+  match p with
+  | PAtom t -> pred_term_to_smt t
+  | PCmp (t1, op, t2) ->
     let s = match op with
       | CEq -> "=" | CNeq -> "distinct"
       | CLt -> "<" | CGt -> ">"
       | CLe -> "<=" | CGe -> ">="
     in
-    Printf.sprintf "(%s %s %s)" s (expr_to_smt e1) (expr_to_smt e2)
-  | BArith (e1, op, e2) ->
+    Printf.sprintf "(%s %s %s)" s (pred_term_to_smt t1) (pred_term_to_smt t2)
+  | PBArith (p1, op, p2) ->
     let s = match op with BConj -> "and" | BDisj -> "or" in
-    Printf.sprintf "(%s %s %s)" s (expr_to_smt e1) (expr_to_smt e2)
-  | PredApp _ ->
+    Printf.sprintf "(%s %s %s)" s (pred_to_smt p1) (pred_to_smt p2)
+  | PApp _ ->
     failwith
-      (Printf.sprintf "expr_to_smt: unsubstituted predicate variable: %s" (pred_expr_to_str e))
-  | Neg e' -> Printf.sprintf "(not %s)" (expr_to_smt e')
-  | _ ->
-    failwith
-      (Printf.sprintf "expr_to_smt: unsupported expression form: %s" (pred_expr_to_str e))
+      (Printf.sprintf "pred_to_smt: unsubstituted predicate variable: %s" (pred_to_str p))
+  | PNeg p' -> Printf.sprintf "(not %s)" (pred_to_smt p')
 
-(** Try to encode an arbitrary SLsyntax.expr (not necessarily in the predicate
-    subset) as an SMT-LIB term. Returns None on the first unsupported node so
-    the caller can fall back to a fresh symbol. *)
-let rec expr_to_smt_opt (e: expr) : string option =
-  match e with
-  | Int _ | Bool _ | Var _ -> Some (expr_to_smt e)
-  | Arith (e1, op, e2) ->
-    (match expr_to_smt_opt e1, expr_to_smt_opt e2 with
+(** Try to encode a logic term/formula as an SMT-LIB term. Returns None on
+    residual predicate variables or unit terms. *)
+let rec pred_term_to_smt_opt (t: pred_term) : string option =
+  match t with
+  | PTInt _ | PTBool _ | PTVar _ -> Some (pred_term_to_smt t)
+  | PTArith (t1, op, t2) ->
+    (match pred_term_to_smt_opt t1, pred_term_to_smt_opt t2 with
      | Some s1, Some s2 ->
        let s = match op with
          | AAdd -> "+" | ASub -> "-" | AMult -> "*"
          | ADiv -> "div" | AMod -> "mod"
        in Some (Printf.sprintf "(%s %s %s)" s s1 s2)
      | _ -> None)
-  | Cmp (e1, op, e2) ->
-    (match expr_to_smt_opt e1, expr_to_smt_opt e2 with
+  | PTUnit -> None
+
+and pred_to_smt_opt (p: pred) : string option =
+  match p with
+  | PAtom t -> pred_term_to_smt_opt t
+  | PCmp (t1, op, t2) ->
+    (match pred_term_to_smt_opt t1, pred_term_to_smt_opt t2 with
      | Some s1, Some s2 ->
        let s = match op with
          | CEq -> "=" | CNeq -> "distinct"
@@ -83,27 +91,26 @@ let rec expr_to_smt_opt (e: expr) : string option =
          | CLe -> "<=" | CGe -> ">="
        in Some (Printf.sprintf "(%s %s %s)" s s1 s2)
      | _ -> None)
-  | BArith (e1, op, e2) ->
-    (match expr_to_smt_opt e1, expr_to_smt_opt e2 with
+  | PBArith (p1, op, p2) ->
+    (match pred_to_smt_opt p1, pred_to_smt_opt p2 with
      | Some s1, Some s2 ->
        let s = match op with BConj -> "and" | BDisj -> "or" in
-       Some (Printf.sprintf "(%s %s %s)" s s1 s2)
+        Some (Printf.sprintf "(%s %s %s)" s s1 s2)
      | _ -> None)
-  | PredApp _ -> None
-  | Neg e' ->
-    (match expr_to_smt_opt e' with
+  | PApp _ -> None
+  | PNeg p' ->
+    (match pred_to_smt_opt p' with
      | Some s -> Some (Printf.sprintf "(not %s)" s)
      | None -> None)
-  | _ -> None
 
 (** Refinement hypotheses extracted from the typing environment: for every
     [(x, {v: T | P})] in scope where T is encodable, we'll emit P[v := x] as
-    an asserted formula. Returns the list of (predicate-as-expr) facts. *)
-let hyps_of_term_vars (term_vars: (string * ty) list) : expr list =
+    an asserted formula. *)
+let hyps_of_term_vars (term_vars: (string * ty) list) : pred list =
   List.filter_map (fun (x, ty) ->
     match ty with
     | TRefine (v, inner, p) when smt_sort_of_ty inner <> None ->
-      Some (subst_var_in_pred_expr p v (Var x))
+      Some (subst_var_in_pred p v (PTVar x))
     | _ -> None
   ) term_vars
 
@@ -122,8 +129,8 @@ let decls_of_term_vars (term_vars: (string * ty) list) : (string * string) list 
     counterexample exists. *)
 let build_script
     (decls: (string * string) list)
-    (hyps: expr list)
-    (goal: expr)
+    (hyps: pred list)
+    (goal: pred)
   : string =
   let buf = Buffer.create 256 in
   Buffer.add_string buf "(set-logic ALL)\n";
@@ -132,10 +139,10 @@ let build_script
     Buffer.add_string buf (Printf.sprintf "(declare-const %s %s)\n" x sort)
   ) decls;
   List.iter (fun h ->
-    Buffer.add_string buf (Printf.sprintf "(assert %s)\n" (expr_to_smt h))
+    Buffer.add_string buf (Printf.sprintf "(assert %s)\n" (pred_to_smt h))
   ) hyps;
   Buffer.add_string buf
-    (Printf.sprintf "(assert (not %s))\n" (expr_to_smt goal));
+    (Printf.sprintf "(assert (not %s))\n" (pred_to_smt goal));
   Buffer.add_string buf "(check-sat)\n";
   Buffer.contents buf
 
@@ -176,7 +183,7 @@ let discharge (script: string) : smt_result =
 (** [entails ~term_vars hyps goal] asks whether the typing context
     [term_vars]'s refinement predicates plus extra [hyps] entail [goal].
     Returns [true] iff Z3 says [unsat] on [(hyps /\ \neg goal)]. *)
-let entails ~term_vars (extra_hyps: expr list) (goal: expr) : bool =
+let entails ~term_vars (extra_hyps: pred list) (goal: pred) : bool =
   let env_hyps = hyps_of_term_vars term_vars in
   let all_hyps = env_hyps @ extra_hyps in
   let decls = decls_of_term_vars term_vars in

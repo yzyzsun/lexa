@@ -76,7 +76,6 @@ and expr =
   | Prim of string
   | Arith of expr * arith * expr
   | Cmp of expr * cmp * expr 
-  | PredApp of var * expr list
   | Neg of expr
   | BArith of expr * barith * expr
   | App of {
@@ -127,6 +126,20 @@ and expr =
   }
   | TypeApp of ty * expr
 
+and pred_term =
+  | PTUnit
+  | PTVar of var
+  | PTInt of int
+  | PTBool of bool
+  | PTArith of pred_term * arith * pred_term
+
+and pred =
+  | PAtom of pred_term
+  | PCmp of pred_term * cmp * pred_term
+  | PApp of var * pred_term list
+  | PNeg of pred
+  | PBArith of pred * barith * pred
+
 and ty = (* Lexaz SL types *)
   | TUnit
   | TInt
@@ -156,7 +169,7 @@ and ty = (* Lexaz SL types *)
   | TVar of var
   | TForall of var * kind * ty
   | TCap of region * opty
-  | TRefine of var * ty * expr  (* {v: ty | pred}; pred is an expr of bool over the predicate subset. v is the value binder. *)
+  | TRefine of var * ty * pred  (* { var: ty | pred } *)
 
 and opty = {
   op_ty_bindings : (var * kind) list;
@@ -221,6 +234,7 @@ and cty =
 
 and typelike =
   | TLTy of ty
+  | TLPred of (var * ty) list * pred
   | TLRegion of region
   | TLDist of distance
   | TLEvidence of evidence

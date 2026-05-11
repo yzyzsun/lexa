@@ -45,65 +45,126 @@ let find_effect_name label captured_vars label_vars =
   | Some eff_name -> eff_name
   | None -> typing_error "Label %s not found\n" label
 
-(** Pretty-prints an expression in the refinement-predicate subset. Outside the
-    subset, falls back to a placeholder so callers (error messages, debug
-    dumps) don't crash on unexpected nodes. *)
-let rec pred_expr_to_str (e: expr) =
-  match e with
-  | Int n -> string_of_int n
-  | Bool true -> "true"
-  | Bool false -> "false"
-  | Var x -> x
-  | Arith (e1, op, e2) ->
+(** Pretty-prints refinement logic terms and formulas. *)
+let rec pred_term_to_str (t: pred_term) =
+  match t with
+  | PTUnit -> "()"
+  | PTInt n -> string_of_int n
+  | PTBool true -> "true"
+  | PTBool false -> "false"
+  | PTVar x -> x
+  | PTArith (t1, op, t2) ->
     let s = match op with
       | AAdd -> "+" | ASub -> "-" | AMult -> "*" | ADiv -> "/" | AMod -> "%"
-    in Printf.sprintf "(%s %s %s)" (pred_expr_to_str e1) s (pred_expr_to_str e2)
-  | Cmp (e1, op, e2) ->
+    in Printf.sprintf "(%s %s %s)" (pred_term_to_str t1) s (pred_term_to_str t2)
+
+and pred_to_str (p: pred) =
+  match p with
+  | PAtom t -> pred_term_to_str t
+  | PCmp (t1, op, t2) ->
     let s = match op with
       | CEq -> "==" | CNeq -> "!=" | CLt -> "<" | CGt -> ">" | CLe -> "<=" | CGe -> ">="
-    in Printf.sprintf "(%s %s %s)" (pred_expr_to_str e1) s (pred_expr_to_str e2)
-  | PredApp (p, args) ->
-    Printf.sprintf "%s(%s)" p (String.concat ", " (List.map pred_expr_to_str args))
-  | BArith (e1, op, e2) ->
+    in Printf.sprintf "(%s %s %s)" (pred_term_to_str t1) s (pred_term_to_str t2)
+  | PApp (p_name, args) ->
+    Printf.sprintf "%s(%s)" p_name (String.concat ", " (List.map pred_term_to_str args))
+  | PBArith (p1, op, p2) ->
     let s = match op with BConj -> "&&" | BDisj -> "||" in
-    Printf.sprintf "(%s %s %s)" (pred_expr_to_str e1) s (pred_expr_to_str e2)
-  | Neg e -> Printf.sprintf "(! %s)" (pred_expr_to_str e)
-  | _ -> "<non-pred-expr>"
+    Printf.sprintf "(%s %s %s)" (pred_to_str p1) s (pred_to_str p2)
+  | PNeg p' -> Printf.sprintf "(! %s)" (pred_to_str p')
 
-(** Renames a free occurrence of [old_v] to [new_v] inside an expression of
-    the predicate subset. Stops at any unsupported node (returns unchanged). *)
-let rec rename_var_in_pred_expr (e: expr) (old_v: string) (new_v: string) : expr =
+let rec pred_term_of_expr_opt (e: expr) : pred_term option =
   match e with
-  | Var x -> if x = old_v then Var new_v else e
-  | Int _ | Bool _ -> e
+  | Unit -> Some PTUnit
+  | Int n -> Some (PTInt n)
+  | Bool b -> Some (PTBool b)
+  | Var x -> Some (PTVar x)
   | Arith (e1, op, e2) ->
-    Arith (rename_var_in_pred_expr e1 old_v new_v, op, rename_var_in_pred_expr e2 old_v new_v)
-  | Cmp (e1, op, e2) ->
-    Cmp (rename_var_in_pred_expr e1 old_v new_v, op, rename_var_in_pred_expr e2 old_v new_v)
-  | PredApp (p, args) ->
-    PredApp (p, List.map (fun arg -> rename_var_in_pred_expr arg old_v new_v) args)
-  | BArith (e1, op, e2) ->
-    BArith (rename_var_in_pred_expr e1 old_v new_v, op, rename_var_in_pred_expr e2 old_v new_v)
-  | Neg e' -> Neg (rename_var_in_pred_expr e' old_v new_v)
-  | _ -> e
+    (match pred_term_of_expr_opt e1, pred_term_of_expr_opt e2 with
+     | Some t1, Some t2 -> Some (PTArith (t1, op, t2))
+     | _ -> None)
+  | _ -> None
 
-(** Substitutes a free occurrence of [old_v] with the expression [witness]
-    inside a predicate-subset expression. Used when forming the goal of a VC:
-    [P[v := [[e]]]]. *)
-let rec subst_var_in_pred_expr (e: expr) (old_v: string) (witness: expr) : expr =
-  match e with
-  | Var x -> if x = old_v then witness else e
-  | Int _ | Bool _ -> e
-  | Arith (e1, op, e2) ->
-    Arith (subst_var_in_pred_expr e1 old_v witness, op, subst_var_in_pred_expr e2 old_v witness)
-  | Cmp (e1, op, e2) ->
-    Cmp (subst_var_in_pred_expr e1 old_v witness, op, subst_var_in_pred_expr e2 old_v witness)
-  | PredApp (p, args) ->
-    PredApp (p, List.map (fun arg -> subst_var_in_pred_expr arg old_v witness) args)
-  | BArith (e1, op, e2) ->
-    BArith (subst_var_in_pred_expr e1 old_v witness, op, subst_var_in_pred_expr e2 old_v witness)
-  | Neg e' -> Neg (subst_var_in_pred_expr e' old_v witness)
-  | _ -> e
+let rec rename_var_in_pred_term (t: pred_term) (old_v: string) (new_v: string) : pred_term =
+  match t with
+  | PTVar x -> if x = old_v then PTVar new_v else t
+  | PTUnit | PTInt _ | PTBool _ -> t
+  | PTArith (t1, op, t2) ->
+    PTArith (rename_var_in_pred_term t1 old_v new_v, op, rename_var_in_pred_term t2 old_v new_v)
+
+and rename_var_in_pred (p: pred) (old_v: string) (new_v: string) : pred =
+  match p with
+  | PAtom t -> PAtom (rename_var_in_pred_term t old_v new_v)
+  | PCmp (t1, op, t2) ->
+    PCmp (rename_var_in_pred_term t1 old_v new_v, op, rename_var_in_pred_term t2 old_v new_v)
+  | PApp (p_name, args) ->
+    PApp (p_name, List.map (fun arg -> rename_var_in_pred_term arg old_v new_v) args)
+  | PBArith (p1, op, p2) ->
+    PBArith (rename_var_in_pred p1 old_v new_v, op, rename_var_in_pred p2 old_v new_v)
+  | PNeg p' -> PNeg (rename_var_in_pred p' old_v new_v)
+
+let rec subst_var_in_pred_term (t: pred_term) (old_v: string) (witness: pred_term) : pred_term =
+  match t with
+  | PTVar x -> if x = old_v then witness else t
+  | PTUnit | PTInt _ | PTBool _ -> t
+  | PTArith (t1, op, t2) ->
+    PTArith (subst_var_in_pred_term t1 old_v witness, op, subst_var_in_pred_term t2 old_v witness)
+
+and subst_var_in_pred (p: pred) (old_v: string) (witness: pred_term) : pred =
+  match p with
+  | PAtom t -> PAtom (subst_var_in_pred_term t old_v witness)
+  | PCmp (t1, op, t2) ->
+    PCmp (subst_var_in_pred_term t1 old_v witness, op, subst_var_in_pred_term t2 old_v witness)
+  | PApp (p_name, args) ->
+    PApp (p_name, List.map (fun arg -> subst_var_in_pred_term arg old_v witness) args)
+  | PBArith (p1, op, p2) ->
+    PBArith (subst_var_in_pred p1 old_v witness, op, subst_var_in_pred p2 old_v witness)
+  | PNeg p' -> PNeg (subst_var_in_pred p' old_v witness)
+
+(** Substitute a value expression into a predicate. Returns [None] only when
+    the variable actually occurs and the witness is outside the logical
+    predicate syntax. *)
+let rec subst_expr_in_pred (p: pred) (old_v: string) (witness: expr) : pred option =
+  let subst_term t =
+    match pred_term_of_expr_opt witness with
+    | Some witness -> Some (subst_var_in_pred_term t old_v witness)
+    | None ->
+      let rec occurs t =
+        match t with
+        | PTVar x -> x = old_v
+        | PTArith (t1, _, t2) -> occurs t1 || occurs t2
+        | PTUnit | PTInt _ | PTBool _ -> false
+      in
+      if occurs t then None else Some t
+  in
+  match p with
+  | PAtom t ->
+    (match subst_term t with
+     | Some t' -> Some (PAtom t')
+     | None -> None)
+  | PCmp (t1, op, t2) ->
+    (match subst_term t1, subst_term t2 with
+     | Some t1', Some t2' -> Some (PCmp (t1', op, t2'))
+     | _ -> None)
+  | PApp (p_name, args) ->
+    let rec subst_args args =
+      match args with
+      | [] -> Some []
+      | arg :: rest ->
+        (match subst_term arg, subst_args rest with
+         | Some arg', Some rest' -> Some (arg' :: rest')
+         | _ -> None)
+    in
+    (match subst_args args with
+     | Some args' -> Some (PApp (p_name, args'))
+     | None -> None)
+  | PBArith (p1, op, p2) ->
+    (match subst_expr_in_pred p1 old_v witness, subst_expr_in_pred p2 old_v witness with
+     | Some p1', Some p2' -> Some (PBArith (p1', op, p2'))
+     | _ -> None)
+  | PNeg p' ->
+    (match subst_expr_in_pred p' old_v witness with
+     | Some p'' -> Some (PNeg p'')
+     | None -> None)
 
 let rec op_parameter_to_str (name, ty) =
   match name with
@@ -150,7 +211,7 @@ and type_to_str (ty: ty) =
   | TForall (tvar, _kind, ty') -> Printf.sprintf "∀%s. %s" tvar (type_to_str ty')
   | TCap (_region, _opty) -> "Cap"
   | TRefine (v, inner, p) ->
-    Printf.sprintf "{%s: %s | %s}" v (type_to_str inner) (pred_expr_to_str p)
+    Printf.sprintf "{%s: %s | %s}" v (type_to_str inner) (pred_to_str p)
 
 and cty_to_str (c: cty) =
   match c with
@@ -269,7 +330,7 @@ let alpha_normalize ty =
     | TRefine (v, inner, p) when v = old_v ->
       TRefine (v, rename_term_in_type inner old_v new_v, p)
     | TRefine (v, inner, p) ->
-      TRefine (v, rename_term_in_type inner old_v new_v, rename_var_in_pred_expr p old_v new_v)
+      TRefine (v, rename_term_in_type inner old_v new_v, rename_var_in_pred p old_v new_v)
     | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
   and rename_term_in_cty c old_v new_v =
     match c with
@@ -343,7 +404,7 @@ let alpha_normalize ty =
          affect the predicate (predicates only reference term variables),
          so [env] is not threaded into [p]. *)
       let v_new = fresh_refine () in
-      let p' = rename_var_in_pred_expr p v v_new in
+      let p' = rename_var_in_pred p v v_new in
       TRefine (v_new, normalize inner env, p')
     | _ -> ty
   and normalize_cty c env =
@@ -882,7 +943,10 @@ let rec substitute_term_to_type ty var witness =
   | TRefine (v, inner, p) when v = var ->
     TRefine (v, substitute_term_to_type inner var witness, p)
   | TRefine (v, inner, p) ->
-    TRefine (v, substitute_term_to_type inner var witness, subst_var_in_pred_expr p var witness)
+    let inner' = substitute_term_to_type inner var witness in
+    (match subst_expr_in_pred p var witness with
+     | Some p' -> TRefine (v, inner', p')
+     | None -> inner')
   | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
 
 and substitute_term_to_cty c var witness =
@@ -900,75 +964,80 @@ and substitute_term_to_eff e var witness =
     EAns (x, substitute_term_to_cty c1 var witness, substitute_term_to_cty c2 var witness)
 
 let pred_of_tylike = function
-  | TLTy (TRefine (v, inner, p)) -> Some (v, inner, p)
+  | TLPred (params, body) -> Some (params, body)
   | _ -> None
 
-let rec substitute_pred_in_expr pred_name pred_binder pred_body e =
-  match e with
-  | Int _ | Bool _ | Var _ -> e
-  | Arith (e1, op, e2) ->
-    Arith (substitute_pred_in_expr pred_name pred_binder pred_body e1, op,
-           substitute_pred_in_expr pred_name pred_binder pred_body e2)
-  | Cmp (e1, op, e2) ->
-    Cmp (substitute_pred_in_expr pred_name pred_binder pred_body e1, op,
-         substitute_pred_in_expr pred_name pred_binder pred_body e2)
-  | BArith (e1, op, e2) ->
-    BArith (substitute_pred_in_expr pred_name pred_binder pred_body e1, op,
-            substitute_pred_in_expr pred_name pred_binder pred_body e2)
-  | Neg e' -> Neg (substitute_pred_in_expr pred_name pred_binder pred_body e')
-  | PredApp (p, [arg]) when p = pred_name ->
-    let arg' = substitute_pred_in_expr pred_name pred_binder pred_body arg in
-    subst_var_in_pred_expr pred_body pred_binder arg'
-  | PredApp (p, args) ->
-    PredApp (p, List.map (substitute_pred_in_expr pred_name pred_binder pred_body) args)
-  | _ -> e
+let rec substitute_pred_in_term pred_name pred_params pred_body t =
+  match t with
+  | PTUnit | PTInt _ | PTBool _ | PTVar _ -> t
+  | PTArith (t1, op, t2) ->
+    PTArith (substitute_pred_in_term pred_name pred_params pred_body t1, op,
+             substitute_pred_in_term pred_name pred_params pred_body t2)
 
-let rec substitute_pred_to_type ty pred_name pred_binder pred_body =
+and substitute_pred_in_pred pred_name pred_params pred_body p =
+  match p with
+  | PAtom t -> PAtom (substitute_pred_in_term pred_name pred_params pred_body t)
+  | PCmp (t1, op, t2) ->
+    PCmp (substitute_pred_in_term pred_name pred_params pred_body t1, op,
+          substitute_pred_in_term pred_name pred_params pred_body t2)
+  | PBArith (p1, op, p2) ->
+    PBArith (substitute_pred_in_pred pred_name pred_params pred_body p1, op,
+             substitute_pred_in_pred pred_name pred_params pred_body p2)
+  | PNeg p' -> PNeg (substitute_pred_in_pred pred_name pred_params pred_body p')
+  | PApp (p_name, args) when p_name = pred_name && List.length args = List.length pred_params ->
+    let args' = List.map (substitute_pred_in_term pred_name pred_params pred_body) args in
+    List.fold_left2
+      (fun body (param, _) arg -> subst_var_in_pred body param arg)
+      pred_body pred_params args'
+  | PApp (p_name, args) ->
+    PApp (p_name, List.map (substitute_pred_in_term pred_name pred_params pred_body) args)
+
+let rec substitute_pred_to_type ty pred_name pred_params pred_body =
   match ty with
-  | TRef ty' -> TRef (substitute_pred_to_type ty' pred_name pred_binder pred_body)
+  | TRef ty' -> TRef (substitute_pred_to_type ty' pred_name pred_params pred_body)
   | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
     TFun {
       captured_set; cap_params; label_params;
-      params_ty = List.map (fun (name, t) -> (name, substitute_pred_to_type t pred_name pred_binder pred_body)) params_ty;
-      return_cty = substitute_pred_to_cty return_cty pred_name pred_binder pred_body
+      params_ty = List.map (fun (name, t) -> (name, substitute_pred_to_type t pred_name pred_params pred_body)) params_ty;
+      return_cty = substitute_pred_to_cty return_cty pred_name pred_params pred_body
     }
   | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
     TCont {
       captured_set;
       effect_return_var;
-      effect_return_ty = substitute_pred_to_type effect_return_ty pred_name pred_binder pred_body;
-      return_cty = substitute_pred_to_cty return_cty pred_name pred_binder pred_body
+      effect_return_ty = substitute_pred_to_type effect_return_ty pred_name pred_params pred_body;
+      return_cty = substitute_pred_to_cty return_cty pred_name pred_params pred_body
     }
-  | TNode t -> TNode (substitute_pred_to_type t pred_name pred_binder pred_body)
-  | TTree t -> TTree (substitute_pred_to_type t pred_name pred_binder pred_body)
-  | TQueue t -> TQueue (substitute_pred_to_type t pred_name pred_binder pred_body)
-  | TArray t -> TArray (substitute_pred_to_type t pred_name pred_binder pred_body)
+  | TNode t -> TNode (substitute_pred_to_type t pred_name pred_params pred_body)
+  | TTree t -> TTree (substitute_pred_to_type t pred_name pred_params pred_body)
+  | TQueue t -> TQueue (substitute_pred_to_type t pred_name pred_params pred_body)
+  | TArray t -> TArray (substitute_pred_to_type t pred_name pred_params pred_body)
   | TCon (name, args) ->
-    TCon (name, List.map (fun t -> substitute_pred_to_type t pred_name pred_binder pred_body) args)
+    TCon (name, List.map (fun t -> substitute_pred_to_type t pred_name pred_params pred_body) args)
   | TForall (tv, kind, body) when tv = pred_name -> TForall (tv, kind, body)
   | TForall (tv, kind, body) ->
-    TForall (tv, kind, substitute_pred_to_type body pred_name pred_binder pred_body)
+    TForall (tv, kind, substitute_pred_to_type body pred_name pred_params pred_body)
   | TRefine (v, inner, p) ->
     TRefine (v,
-             substitute_pred_to_type inner pred_name pred_binder pred_body,
-             substitute_pred_in_expr pred_name pred_binder pred_body p)
+             substitute_pred_to_type inner pred_name pred_params pred_body,
+             substitute_pred_in_pred pred_name pred_params pred_body p)
   | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
 
-and substitute_pred_to_cty c pred_name pred_binder pred_body =
+and substitute_pred_to_cty c pred_name pred_params pred_body =
   match c with
   | CTyVar _ -> c
   | CCty (t, e) ->
-    CCty (substitute_pred_to_type t pred_name pred_binder pred_body,
-          substitute_pred_to_eff e pred_name pred_binder pred_body)
-  | CFill (v, c') -> CFill (v, substitute_pred_to_cty c' pred_name pred_binder pred_body)
+    CCty (substitute_pred_to_type t pred_name pred_params pred_body,
+          substitute_pred_to_eff e pred_name pred_params pred_body)
+  | CFill (v, c') -> CFill (v, substitute_pred_to_cty c' pred_name pred_params pred_body)
 
-and substitute_pred_to_eff e pred_name pred_binder pred_body =
+and substitute_pred_to_eff e pred_name pred_params pred_body =
   match e with
   | EPure | EEffVar _ -> e
   | EAns (x, c1, c2) ->
     EAns (x,
-          substitute_pred_to_cty c1 pred_name pred_binder pred_body,
-          substitute_pred_to_cty c2 pred_name pred_binder pred_body)
+          substitute_pred_to_cty c1 pred_name pred_params pred_body,
+          substitute_pred_to_cty c2 pred_name pred_params pred_body)
 
 let rec substitute_cty_var_to_type ty cty_var replacement =
   match ty with
@@ -1021,7 +1090,7 @@ let substitute_tylike_to_type ty var kind arg =
   | KTy, TLTy replacement -> substitute_ty ty [(var, replacement)]
   | KPred _, _ ->
     (match pred_of_tylike arg with
-     | Some (binder, _inner, body) -> substitute_pred_to_type ty var binder body
+     | Some (params, body) -> substitute_pred_to_type ty var params body
      | None -> ty)
   | KCty, TLCty c -> substitute_cty_var_to_type ty var c
   | KCty, TLTy t -> substitute_cty_var_to_type ty var (CCty (t, EPure))
@@ -1040,7 +1109,7 @@ let substitute_tylike_to_cty c var kind arg =
     in subst_c c
   | KPred _, _ ->
     (match pred_of_tylike arg with
-     | Some (binder, _inner, body) -> substitute_pred_to_cty c var binder body
+     | Some (params, body) -> substitute_pred_to_cty c var params body
      | None -> c)
   | KCty, TLCty replacement -> substitute_cty_var_to_cty c var replacement
   | KCty, TLTy t -> substitute_cty_var_to_cty c var (CCty (t, EPure))

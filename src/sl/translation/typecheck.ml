@@ -337,8 +337,9 @@ let rec check_ty ?(msg = "") rctx captured_vars cap_vars label_vars term_vars (e
       discharge: hyps /\ Q[v := [[e]]] |= P[v := [[e]]]
 
     [hyps] are gathered from refinements present in [term_vars]. The witness
-    expression is encoded by [Refinement.expr_to_smt_opt]; if a sub-tree is
-    not encodable, that sub-tree becomes a fresh symbol — sound but coarser.
+    expression is converted to the predicate syntax and encoded by the SMT
+    backend; if it is not encodable, it becomes a fresh symbol — sound but
+    coarser.
     *)
 and check_refined_subtype _rctx term_vars witness actual expected =
   match expected with
@@ -355,34 +356,34 @@ and check_refined_subtype _rctx term_vars witness actual expected =
          expected base sort. This is conservative: Z3 has less information
          about the value, but the checker does not crash or assume more than
          it knows. *)
-      let witness_expr, extra_term_vars =
+      let witness_term, extra_term_vars =
         match witness with
         | Some w ->
-          (match Refinement.expr_to_smt_opt w with
-           | Some _ -> Some w, []
-           | None ->
+          (match pred_term_of_expr_opt w with
+           | Some t when Refinement.pred_term_to_smt_opt t <> None -> Some t, []
+           | _ ->
              let fresh = fresh_refinement_witness () in
-             Some (Var fresh), [(fresh, te)])
+             Some (PTVar fresh), [(fresh, te)])
         | None -> None, [(ve, te)]
       in
       let actual_extra_hyps =
         match actual with
         | TRefine (va, _, qa) ->
-          (match witness_expr with
-           | Some w -> [subst_var_in_pred_expr qa va w]
+          (match witness_term with
+           | Some w -> [subst_var_in_pred qa va w]
            | None -> [qa])
         | _ -> []
       in
       (* Form goal as P[v := witness]. If no witness, leave [v] free. *)
       let goal =
-        match witness_expr with
-        | Some w -> subst_var_in_pred_expr qe ve w
+        match witness_term with
+        | Some w -> subst_var_in_pred qe ve w
         | None -> qe
       in
-      match Refinement.expr_to_smt_opt goal with
+      match Refinement.pred_to_smt_opt goal with
       | None -> false
       | Some _ ->
-        if List.exists (fun h -> Refinement.expr_to_smt_opt h = None) actual_extra_hyps then false
+        if List.exists (fun h -> Refinement.pred_to_smt_opt h = None) actual_extra_hyps then false
         else
           Refinement.entails
             ~term_vars:(extra_term_vars @ term_vars)
@@ -390,31 +391,129 @@ and check_refined_subtype _rctx term_vars witness actual expected =
     end
   | _ -> false
 
-(** Validates that a predicate expression uses only the SMT-encodable subset:
-    integer/bool literals, variables, linear arithmetic (with multiplication
-    restricted to literal-times-anything), comparisons, boolean connectives,
-    and negation. Anything else raises a typing error. *)
-and validate_pred (p: SLsyntax.expr) =
-  let rec go (e: SLsyntax.expr) =
-    match e with
-    | Int _ | Bool _ | Var _ -> ()
-    | Arith (e1, AMult, e2) ->
-      (match e1, e2 with
-       | Int _, _ | _, Int _ -> go e1; go e2
+(** Validates the SMT-friendly refinement predicate fragment. Multiplication
+    is restricted to literal-times-anything so VCs stay in linear arithmetic. *)
+and validate_pred (p: SLsyntax.pred) =
+  let rec go_term t =
+    match t with
+    | PTUnit | PTInt _ | PTBool _ | PTVar _ -> ()
+    | PTArith (t1, AMult, t2) ->
+      (match t1, t2 with
+       | PTInt _, _ | _, PTInt _ -> go_term t1; go_term t2
        | _ ->
          typing_error
            "Refinement predicate: '*' must have an integer literal on at least one side (linear arithmetic). Got: %s\n"
-           (pred_expr_to_str e))
-    | Arith (e1, _, e2) -> go e1; go e2
-    | Cmp (e1, _, e2) -> go e1; go e2
-    | PredApp (_, args) -> List.iter go args
-    | BArith (e1, _, e2) -> go e1; go e2
-    | Neg e' -> go e'
-    | _ ->
-      typing_error
-        "Refinement predicate: unsupported expression form. Allowed: int/bool literals, variables, +,-,*,/,%%, ==, !=, <, >, <=, >=, &&, ||, !. Got: %s\n"
-        (pred_expr_to_str e)
+           (pred_term_to_str t))
+    | PTArith (t1, _, t2) -> go_term t1; go_term t2
+  in
+  let rec go p =
+    match p with
+    | PAtom t -> go_term t
+    | PCmp (t1, _, t2) -> go_term t1; go_term t2
+    | PApp (_, args) -> List.iter go_term args
+    | PBArith (p1, _, p2) -> go p1; go p2
+    | PNeg p' -> go p'
   in go p
+
+and ty_of_base_ty = function
+  | BInt -> TInt
+  | BBool -> TBool
+  | BUnit -> TUnit
+
+and base_ty_of_ty = function
+  | TInt -> Some BInt
+  | TBool -> Some BBool
+  | TUnit -> Some BUnit
+  | _ -> None
+
+and strip_outer_refinement = function
+  | TRefine (_, inner, _) -> inner
+  | t -> t
+
+and check_pred_expected rctx term_vars p expected =
+  let actual = pred_type rctx term_vars p in
+  if not (types_eq actual expected || types_sub actual expected) then
+    typing_error
+      "Refinement predicate: expected %s but got %s in %s\n"
+      (type_to_str expected) (type_to_str actual) (pred_to_str p)
+
+and check_pred_term_expected rctx term_vars t expected =
+  let actual = pred_term_type rctx term_vars t in
+  if not (types_eq actual expected || types_sub actual expected) then
+    typing_error
+      "Refinement predicate term: expected %s but got %s in %s\n"
+      (type_to_str expected) (type_to_str actual) (pred_term_to_str t)
+
+and pred_term_type rctx term_vars (t: pred_term) : ty =
+  match t with
+  | PTUnit -> TUnit
+  | PTInt _ -> TInt
+  | PTBool _ -> TBool
+  | PTVar x ->
+    (match List.assoc_opt x term_vars with
+     | Some t -> t
+     | None -> typing_error "Refinement predicate: variable %s not found\n" x)
+  | PTArith (t1, _, t2) ->
+    check_pred_term_expected rctx term_vars t1 TInt;
+    check_pred_term_expected rctx term_vars t2 TInt;
+    TInt
+
+and pred_type rctx term_vars (p: pred) : ty =
+  match p with
+  | PAtom t -> pred_term_type rctx term_vars t
+  | PCmp (t1, op, t2) ->
+    if op = CEq || op = CNeq then begin
+      let ty1 = strip_outer_refinement (pred_term_type rctx term_vars t1) in
+      let ty2 = strip_outer_refinement (pred_term_type rctx term_vars t2) in
+      if types_eq ty1 ty2 then TBool
+      else
+        typing_error
+          "Refinement predicate: equality operands have different types in %s\n\tLeft: %s\n\tRight: %s\n"
+          (pred_to_str p) (type_to_str ty1) (type_to_str ty2)
+    end else begin
+      check_pred_term_expected rctx term_vars t1 TInt;
+      check_pred_term_expected rctx term_vars t2 TInt;
+      TBool
+    end
+  | PBArith (p1, _, p2) ->
+    check_pred_expected rctx term_vars p1 TBool;
+    check_pred_expected rctx term_vars p2 TBool;
+    TBool
+  | PNeg p' ->
+    check_pred_expected rctx term_vars p' TBool;
+    TBool
+  | PApp (pred_name, args) ->
+    let expected_args =
+      match List.assoc_opt pred_name rctx.kind_env with
+      | Some (KPred args) -> args
+      | Some _ -> typing_error "Predicate application: %s is not predicate-kinded\n" pred_name
+      | None -> typing_error "Predicate application: predicate variable %s not found\n" pred_name
+    in
+    if List.length expected_args <> List.length args then
+      typing_error
+        "Predicate application: %s expected %d arguments but got %d\n"
+        pred_name (List.length expected_args) (List.length args);
+    List.iter2
+      (fun arg bty -> check_pred_term_expected rctx term_vars arg (ty_of_base_ty bty))
+      args expected_args;
+    TBool
+
+and check_pred_tylike rctx term_vars expected_args params body =
+  if List.length expected_args <> List.length params then
+    typing_error
+      "Predicate instantiation: expected %d parameters but got %d\n"
+      (List.length expected_args) (List.length params);
+  List.iter2
+    (fun (_name, ty) expected ->
+      match base_ty_of_ty ty with
+      | Some actual when actual = expected -> ()
+      | _ ->
+        typing_error
+          "Predicate instantiation: expected parameter type %s but got %s\n"
+          (type_to_str (ty_of_base_ty expected)) (type_to_str ty))
+    params expected_args;
+  validate_pred body;
+  check_pred_expected rctx (params @ term_vars) body TBool
 
 (** Walks a type and, for every [TRefine(v, base, p)] encountered, validates
     [p] structurally and type-checks it as [TBool] under the env extended
@@ -456,8 +555,7 @@ and check_refinement_wellformed rctx term_vars (ty: ty) =
          typing_error
            "Refinement {%s: %s | _}: refinement is only supported on int and bool in this iteration\n"
            v (type_to_str inner));
-      let _te = check_ty ~msg:"Refinement predicate must have type bool"
-                  rctx (Labels []) [] [] ((v, inner) :: term_vars) p TBool in
+      check_pred_expected rctx ((v, inner) :: term_vars) p TBool;
       go term_vars inner
     | TRef inner ->
       if contains_refinement inner then
@@ -621,29 +719,6 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
         let e2' = check_ty captured_vars cap_vars label_vars term_vars e2 TInt in
         let eff = compose_effs (eff_of e1') (eff_of e2') in
         Cmp (e1', op, e2'), CCty (TBool, eff)
-    | PredApp (p, args) ->
-      let expected_args =
-        match List.assoc_opt p rctx.kind_env with
-        | Some (KPred args) -> args
-        | Some _ -> typing_error "Predicate application: %s is not predicate-kinded\n" p
-        | None -> typing_error "Predicate application: predicate variable %s not found\n" p
-      in
-      if List.length expected_args <> List.length args then
-        typing_error
-          "Predicate application: %s expected %d arguments but got %d\n"
-          p (List.length expected_args) (List.length args);
-      let ty_of_base = function
-        | BInt -> TInt
-        | BBool -> TBool
-        | BUnit -> TUnit
-      in
-      let args' =
-        List.map2
-          (fun arg bty -> check_ty captured_vars cap_vars label_vars term_vars arg (ty_of_base bty))
-          args expected_args
-      in
-      let eff = List.fold_left (fun acc te -> compose_effs acc (eff_of te)) EPure args' in
-      PredApp (p, args'), CCty (TBool, eff)
     | Neg e ->
       let e' = check_ty captured_vars cap_vars label_vars term_vars e TBool in
       Neg e', CCty (TBool, eff_of e')
@@ -1009,7 +1084,8 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
         | KTy, TLTy _ -> ()
         | KCty, TLCty _ -> ()
         | KCty, TLTy _ -> ()
-        | KPred _, TLTy (TRefine _) -> ()
+        | KPred expected_args, TLPred (params, body) ->
+          check_pred_tylike rctx term_vars expected_args params body
         | _ ->
           typing_error
             "Raise: Type-like instantiation has wrong kind for %s.%s\n"

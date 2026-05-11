@@ -42,7 +42,6 @@ and typed_expr_desc =
   | Prim of string
   | Arith of typed_expr * arith * typed_expr
   | Cmp of typed_expr * cmp * typed_expr
-  | PredApp of var * typed_expr list
   | Neg of typed_expr
   | BArith of typed_expr * barith * typed_expr
   | App of {

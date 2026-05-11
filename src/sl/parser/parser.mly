@@ -178,35 +178,43 @@ refine_base_ty:
   | TINT { TInt }
   | TBOOL { TBool }
 
-(* Predicate sub-grammar. A strict subset of [expr] that the SMT encoder can
-   handle: integer/bool literals, variables, linear arithmetic (validated at
-   typecheck time to avoid non-linear products), comparisons, boolean
-   connectives, parentheses. Returns an [SLsyntax.expr]. *)
+(* Predicate sub-grammar. A strict logical syntax for refinement predicates:
+   integer/bool literals, variables, predicate variables, linear arithmetic
+   (validated at typecheck time to avoid non-linear products), comparisons,
+   boolean connectives, parentheses. *)
 pred_expr:
-  | pred_simple { $1 }
-  | e1 = pred_expr ADD e2 = pred_expr { Arith(e1, AAdd, e2) }
-  | e1 = pred_expr SUB e2 = pred_expr { Arith(e1, ASub, e2) }
-  | e1 = pred_expr MULT e2 = pred_expr { Arith(e1, AMult, e2) }
-  | e1 = pred_expr DIV e2 = pred_expr { Arith(e1, ADiv, e2) }
-  | e1 = pred_expr PERC e2 = pred_expr { Arith(e1, AMod, e2) }
-  | e1 = pred_expr CMPEQ e2 = pred_expr { Cmp(e1, CEq, e2) }
-  | e1 = pred_expr NEQ e2 = pred_expr { Cmp(e1, CNeq, e2) }
-  | e1 = pred_expr LTS e2 = pred_expr { Cmp(e1, CLt, e2) }
-  | e1 = pred_expr GTS e2 = pred_expr { Cmp(e1, CGt, e2) }
-  | e1 = pred_expr LEQ e2 = pred_expr { Cmp(e1, CLe, e2) }
-  | e1 = pred_expr GEQ e2 = pred_expr { Cmp(e1, CGe, e2) }
-  | e1 = pred_expr CONJ e2 = pred_expr { BArith(e1, BConj, e2) }
-  | e1 = pred_expr DISJ e2 = pred_expr { BArith(e1, BDisj, e2) }
-  | NEG e = pred_expr { Neg(e) }
+  | pred_atom { $1 }
+  | t1 = pred_term CMPEQ t2 = pred_term { PCmp(t1, CEq, t2) }
+  | t1 = pred_term NEQ t2 = pred_term { PCmp(t1, CNeq, t2) }
+  | t1 = pred_term LTS t2 = pred_term { PCmp(t1, CLt, t2) }
+  | t1 = pred_term GTS t2 = pred_term { PCmp(t1, CGt, t2) }
+  | t1 = pred_term LEQ t2 = pred_term { PCmp(t1, CLe, t2) }
+  | t1 = pred_term GEQ t2 = pred_term { PCmp(t1, CGe, t2) }
+  | e1 = pred_expr CONJ e2 = pred_expr { PBArith(e1, BConj, e2) }
+  | e1 = pred_expr DISJ e2 = pred_expr { PBArith(e1, BDisj, e2) }
+  | NEG e = pred_expr { PNeg(e) }
 
-pred_simple:
-  | VAR { Var $1 }
-  | p = TYPE_VAR LPAREN args = separated_list(COMMA, pred_expr) RPAREN { PredApp (p, args) }
-  | INT { Int $1 }
-  | SUB INT { Int (Int.neg $2) }
-  | TRUE { Bool true }
-  | FALSE { Bool false }
+pred_atom:
+  | t = pred_term { PAtom t }
+  | p = TYPE_VAR LPAREN args = separated_list(COMMA, pred_term) RPAREN { PApp (p, args) }
   | LPAREN e = pred_expr RPAREN { e }
+
+pred_term:
+  | pred_term_atom { $1 }
+  | t1 = pred_term ADD t2 = pred_term { PTArith(t1, AAdd, t2) }
+  | t1 = pred_term SUB t2 = pred_term { PTArith(t1, ASub, t2) }
+  | t1 = pred_term MULT t2 = pred_term { PTArith(t1, AMult, t2) }
+  | t1 = pred_term DIV t2 = pred_term { PTArith(t1, ADiv, t2) }
+  | t1 = pred_term PERC t2 = pred_term { PTArith(t1, AMod, t2) }
+
+pred_term_atom:
+  | VAR { PTVar $1 }
+  | INT { PTInt $1 }
+  | SUB INT { PTInt (Int.neg $2) }
+  | TRUE { PTBool true }
+  | FALSE { PTBool false }
+  | LPAREN RPAREN { PTUnit }
+  | LPAREN t = pred_term RPAREN { t }
 
 cty_exp:
   // Prefer parsing `... -> t / e` as `... -> (t / e)`.
@@ -235,12 +243,19 @@ dist_exp:
 kind_anno:
   | ATC LPAREN d = dist_exp RPAREN { KATC d }
   | CTY { KCty }
-  | PRED LSB tys = separated_nonempty_list(COMMA, pred_base_ty) RSB { KPred tys }
+  | PRED LSB tys = separated_list(COMMA, pred_base_ty) RSB { KPred tys }
 
 pred_base_ty:
   | TINT { BInt }
   | TBOOL { BBool }
   | TUNIT { BUnit }
+  | name = CAPITALIZED_VAR {
+      match name with
+      | "Int" -> BInt
+      | "Bool" -> BBool
+      | "Unit" -> BUnit
+      | _ -> failwith (Printf.sprintf "predicate kind: unsupported base type %s" name)
+    }
 
 (* Type parameter with optional kind annotation (defaults to KTy). *)
 type_param_decl:
@@ -340,7 +355,26 @@ atc_exp:
   | tv = TYPE_VAR { ATCVar tv }
   | t = type_exp DIV c = atc_cty FATARROW cc = atc_exp { ATCAns (t, c, cc) }
 
+pred_arg_ty:
+  | TUNIT { TUnit }
+  | TINT { TInt }
+  | TBOOL { TBool }
+  | name = CAPITALIZED_VAR {
+      match name with
+      | "Unit" -> TUnit
+      | "Int" -> TInt
+      | "Bool" -> TBool
+      | _ -> failwith (Printf.sprintf "predicate parameter: unsupported base type %s" name)
+    }
+
+pred_parameter:
+  | name = VAR COLON ty = pred_arg_ty { (name, ty) }
+
 typelike_arg:
+  | PRED LPAREN params = separated_nonempty_list(COMMA, pred_parameter) RPAREN LCB p = pred_expr RCB
+    { TLPred (params, p) }
+  | PRED LCB p = pred_expr RCB
+    { TLPred ([], p) }
   | ty = type_exp { TLTy ty }
   | LPAREN c = cty_exp RPAREN { TLCty c }
 
