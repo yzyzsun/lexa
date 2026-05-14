@@ -186,12 +186,17 @@ and type_to_str (ty: ty) =
   | TChar -> "char"
   | TStr -> "string"
   | TRef ty' -> Printf.sprintf "ref %s" (type_to_str ty')
-  | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+  | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
     let captured_set_str = capability_to_str captured_set in
     let cap_params_str = String.concat ", " cap_params in
     let label_vars_str = String.concat ", " (List.map (fun (label, eff) -> Printf.sprintf "%s: %s" label eff) label_params) in
     let params_ty_str = String.concat ", " (List.map op_parameter_to_str params_ty) in
-    Printf.sprintf "{ %s } [%s; %s] (%s) -> %s" captured_set_str cap_params_str label_vars_str params_ty_str (cty_to_str return_cty)
+    let region_str = match region with
+      | RTop -> "⊤"
+      | RVar v -> v
+      | RNull -> "null"
+    in
+    Printf.sprintf "{ %s } [%s; %s] (%s) -> [%s] %s" captured_set_str cap_params_str label_vars_str params_ty_str region_str (cty_to_str return_cty)
   | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
     let captured_set_str = capability_to_str captured_set in
     let effect_ty_str =
@@ -291,7 +296,7 @@ let alpha_normalize ty =
   let rec rename_term_in_type ty old_v new_v =
     match ty with
     | TRef t -> TRef (rename_term_in_type t old_v new_v)
-    | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+    | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
       let rec go_params params =
         match params with
         | [] -> []
@@ -308,6 +313,7 @@ let alpha_normalize ty =
         cap_params;
         label_params;
         params_ty = go_params params_ty;
+        region;
         return_cty =
           if shadows then return_cty else rename_term_in_cty return_cty old_v new_v
       }
@@ -348,13 +354,17 @@ let alpha_normalize ty =
   let rec normalize ty env =
     match ty with
     | TRef ty' -> TRef (normalize ty' env)
-    | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+    | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
       let captured_set' = rename_captured_set captured_set env in
       let new_caps = List.map (fun _ -> fresh_label()) cap_params in
       let new_labels = List.map (fun (_, eff) -> (fresh_label(), eff)) label_params in
       let env' = List.fold_right2 (fun label label_new env ->
         Varmap.add label label_new env
       ) (cap_params@(List.map fst label_params)) (new_caps@(List.map fst new_labels)) env in
+      let region' = match region with
+        | RVar v -> (match Varmap.find_opt v env' with Some v' -> RVar v' | None -> RVar v)
+        | _ -> region
+      in
       let rec normalize_params params return_cty =
         match params with
         | [] -> [], normalize_cty return_cty env'
@@ -378,6 +388,7 @@ let alpha_normalize ty =
         cap_params = new_caps;
         label_params = new_labels;
         params_ty = params_ty';
+        region = region';
         return_cty = return_cty'
       }
     | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
@@ -452,11 +463,12 @@ let types_eq t1 t2 =
   let rec normalized_types_eq t1 t2 =
     match (t1, t2) with
     | (TRef t1', TRef t2') -> normalized_types_eq t1' t2'
-    | (TFun {captured_set = cs; cap_params = cp; label_params=lp; params_ty = pt; return_cty = rc},
-      TFun {captured_set = cs'; cap_params = cp'; label_params = lp'; params_ty = pt' ; return_cty = rc'}) ->
+    | (TFun {captured_set = cs; cap_params = cp; label_params=lp; params_ty = pt; region = r; return_cty = rc},
+      TFun {captured_set = cs'; cap_params = cp'; label_params = lp'; params_ty = pt' ; region = r'; return_cty = rc'}) ->
         (captured_sets_eq cs cs')
         && (cp = cp')
         && (lp = lp')
+        && (r = r')
         && (List.equal
               (fun (name1, t1) (name2, t2) ->
                 optional_param_names_compatible name1 name2 && normalized_types_eq t1 t2)
@@ -582,11 +594,12 @@ and types_sub ?(kind_env=[]) t1 t2 =
     let t1 = alpha_normalize t1 in
     let t2 = alpha_normalize t2 in
     match t1, t2 with
-    | TFun { captured_set = cs1; cap_params = cp1; label_params = lp1; params_ty = pt1; return_cty = rc1 },
-      TFun { captured_set = cs2; cap_params = cp2; label_params = lp2; params_ty = pt2; return_cty = rc2 } ->
+    | TFun { captured_set = cs1; cap_params = cp1; label_params = lp1; params_ty = pt1; region = r1; return_cty = rc1 },
+      TFun { captured_set = cs2; cap_params = cp2; label_params = lp2; params_ty = pt2; region = r2; return_cty = rc2 } ->
       captured_set_sub cs1 cs2
       && cp1 = cp2
       && lp1 = lp2
+      && r1 = r2
       && List.length pt1 = List.length pt2
       && List.for_all2 (fun (actual_name, actual_param) (expected_name, expected_param) ->
            optional_param_names_compatible actual_name expected_name
@@ -695,12 +708,17 @@ let rec rename_type_var ty var_old var_new =
     | None -> None, labels'
   in
   match ty with
-  | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+  | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
+    let region' = match region with
+      | RVar v when v = var_old -> RVar var_new
+      | _ -> region
+    in
     TFun {
       captured_set = rename_captured_set captured_set var_old var_new;
       cap_params = List.map (fun a -> if a = var_old then var_new else a) cap_params;
       label_params = List.map (fun (l, eff) -> if l = var_old then (var_new, eff) else (l, eff)) label_params;
       params_ty = List.map (fun (name, ty) -> (name, rename_type_var ty var_old var_new)) params_ty;
+      region = region';
       return_cty = rename_type_var_cty return_cty var_old var_new
     }
   | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
@@ -747,10 +765,10 @@ let substitute_cap_to_captured_set (captured_set: capability) cap_var capability
 (** Makes a single label subsitution on the given type. *)
 let rec substitute_label_to_type ty label label_new =
   match ty with
-  | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+  | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
     let captured_set' = substitute_label_to_captured_set captured_set label label_new in
     (match List.assoc_opt label label_params with
-    | Some _ -> TFun { captured_set = captured_set'; cap_params; label_params; params_ty; return_cty }
+    | Some _ -> TFun { captured_set = captured_set'; cap_params; label_params; params_ty; region; return_cty }
     | None ->
       let label_params', params_ty', return_cty' =
         if List.exists (fun (l, _) -> l = label_new) label_params
@@ -764,6 +782,7 @@ let rec substitute_label_to_type ty label label_new =
           cap_params;
           label_params = label_params';
           params_ty = List.map (fun (name, ty) -> (name, substitute_label_to_type ty label label_new)) params_ty';
+          region;
           return_cty = substitute_label_to_cty return_cty' label label_new
         })
   | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
@@ -794,10 +813,10 @@ and substitute_label_to_eff e label label_new =
 (** Makes a single capability subsitution on the given type. *)
 let rec substitute_capability_to_type ty cap_var capability =
   match ty with
-  | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+  | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
     let captured_set' = substitute_cap_to_captured_set captured_set cap_var capability in
     if List.exists (fun a -> a = cap_var) cap_params
-      then TFun { captured_set = captured_set'; cap_params; label_params; params_ty; return_cty }
+      then TFun { captured_set = captured_set'; cap_params; label_params; params_ty; region; return_cty }
       else
         let free_vars = (match capability with
         | (Some cap, labels) -> cap::(Varset.to_list labels)
@@ -816,6 +835,7 @@ let rec substitute_capability_to_type ty cap_var capability =
             cap_params;
             label_params = label_params';
             params_ty = List.map (fun (name, ty) -> (name, substitute_capability_to_type ty cap_var capability)) params_ty';
+            region;
             return_cty = substitute_capability_to_cty return_cty' cap_var capability
           }
   | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
@@ -864,10 +884,10 @@ let substitute_ty ty type_subs =
   let rec substitute ty type_subs =
     match ty with
     | TRef ty' -> TRef (substitute ty' type_subs)
-    | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+    | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
       let params_ty' = List.map (fun (name, ty) -> (name, substitute ty type_subs)) params_ty in
       let return_cty' = substitute_cty return_cty type_subs in
-      TFun { captured_set; cap_params; label_params; params_ty=params_ty'; return_cty=return_cty' }
+      TFun { captured_set; cap_params; label_params; params_ty=params_ty'; region; return_cty=return_cty' }
     | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
       let effect_return_ty' = substitute effect_return_ty type_subs in
       let return_cty' = substitute_cty return_cty type_subs in
@@ -909,7 +929,7 @@ let substitute_ty ty type_subs =
 let rec substitute_term_to_type ty var witness =
   match ty with
   | TRef ty' -> TRef (substitute_term_to_type ty' var witness)
-  | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+  | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
     let rec subst_params params =
       match params with
       | [] -> [], true
@@ -926,6 +946,7 @@ let rec substitute_term_to_type ty var witness =
     TFun {
       captured_set; cap_params; label_params;
       params_ty = params_ty';
+      region;
       return_cty =
         if subst_return then substitute_term_to_cty return_cty var witness
         else return_cty
@@ -1001,10 +1022,11 @@ and substitute_pred_in_pred pred_name pred_params pred_body p =
 let rec substitute_pred_to_type ty pred_name pred_params pred_body =
   match ty with
   | TRef ty' -> TRef (substitute_pred_to_type ty' pred_name pred_params pred_body)
-  | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+  | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
     TFun {
       captured_set; cap_params; label_params;
       params_ty = List.map (fun (name, t) -> (name, substitute_pred_to_type t pred_name pred_params pred_body)) params_ty;
+      region;
       return_cty = substitute_pred_to_cty return_cty pred_name pred_params pred_body
     }
   | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
@@ -1045,13 +1067,66 @@ and substitute_pred_to_eff e pred_name pred_params pred_body =
           substitute_pred_to_cty c1 pred_name pred_params pred_body,
           substitute_pred_to_cty c2 pred_name pred_params pred_body)
 
+(** Substitute a region-kinded type variable for a concrete region. *)
+let rec substitute_region_to_type ty region_var (replacement: region) =
+  let subst_region r =
+    match r with
+    | RVar v when v = region_var -> replacement
+    | _ -> r
+  in
+  match ty with
+  | TRef t -> TRef (substitute_region_to_type t region_var replacement)
+  | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
+    TFun {
+      captured_set; cap_params; label_params;
+      params_ty = List.map (fun (name, t) -> (name, substitute_region_to_type t region_var replacement)) params_ty;
+      region = subst_region region;
+      return_cty = substitute_region_to_cty return_cty region_var replacement
+    }
+  | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
+    TCont {
+      captured_set;
+      effect_return_var;
+      effect_return_ty = substitute_region_to_type effect_return_ty region_var replacement;
+      return_cty = substitute_region_to_cty return_cty region_var replacement
+    }
+  | TNode t -> TNode (substitute_region_to_type t region_var replacement)
+  | TTree t -> TTree (substitute_region_to_type t region_var replacement)
+  | TQueue t -> TQueue (substitute_region_to_type t region_var replacement)
+  | TArray t -> TArray (substitute_region_to_type t region_var replacement)
+  | TCon (name, args) ->
+    TCon (name, List.map (fun t -> substitute_region_to_type t region_var replacement) args)
+  | TForall (tv, kind, body) ->
+    TForall (tv, kind, substitute_region_to_type body region_var replacement)
+  | TRefine (v, inner, p) ->
+    TRefine (v, substitute_region_to_type inner region_var replacement, p)
+  | TCap (r, opty) -> TCap (subst_region r, opty)
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> ty
+
+and substitute_region_to_cty c region_var replacement =
+  match c with
+  | CTyVar _ -> c
+  | CCty (t, e) ->
+    CCty (substitute_region_to_type t region_var replacement,
+          substitute_region_to_eff e region_var replacement)
+  | CFill (v, c') -> CFill (v, substitute_region_to_cty c' region_var replacement)
+
+and substitute_region_to_eff e region_var replacement =
+  match e with
+  | EPure | EEffVar _ -> e
+  | EAns (x, c1, c2) ->
+    EAns (x,
+          substitute_region_to_cty c1 region_var replacement,
+          substitute_region_to_cty c2 region_var replacement)
+
 let rec substitute_cty_var_to_type ty cty_var replacement =
   match ty with
   | TRef t -> TRef (substitute_cty_var_to_type t cty_var replacement)
-  | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+  | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
     TFun {
       captured_set; cap_params; label_params;
       params_ty = List.map (fun (name, t) -> (name, substitute_cty_var_to_type t cty_var replacement)) params_ty;
+      region;
       return_cty = substitute_cty_var_to_cty return_cty cty_var replacement
     }
   | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
@@ -1091,6 +1166,17 @@ and substitute_cty_var_to_eff e cty_var replacement =
           substitute_cty_var_to_cty c1 cty_var replacement,
           substitute_cty_var_to_cty c2 cty_var replacement)
 
+(* A region tylike argument can be written bare in surface syntax: [[top]],
+   a VAR (a region binder like [[r1]]), or a TYPE_VAR (a region-kinded
+   abstract var like [['rho]]). The first parses as [TLRegion RTop]; the
+   other two parse as [TLTy] under the default [type_exp] production and
+   are reinterpreted here. *)
+let region_of_tylike = function
+  | TLRegion r -> Some r
+  | TLTy (TCon (name, [])) -> Some (RVar name)
+  | TLTy (TVar tv) -> Some (RVar tv)
+  | _ -> None
+
 let substitute_tylike_to_type ty var kind arg =
   match kind, arg with
   | KTy, TLTy replacement -> substitute_ty ty [(var, replacement)]
@@ -1100,6 +1186,10 @@ let substitute_tylike_to_type ty var kind arg =
      | None -> ty)
   | KCty, TLCty c -> substitute_cty_var_to_type ty var c
   | KCty, TLTy t -> substitute_cty_var_to_type ty var (CCty (t, EPure))
+  | KReg, _ ->
+    (match region_of_tylike arg with
+     | Some r -> substitute_region_to_type ty var r
+     | None -> ty)
   | _ -> ty
 
 let substitute_tylike_to_cty c var kind arg =
@@ -1119,6 +1209,10 @@ let substitute_tylike_to_cty c var kind arg =
      | None -> c)
   | KCty, TLCty replacement -> substitute_cty_var_to_cty c var replacement
   | KCty, TLTy t -> substitute_cty_var_to_cty c var (CCty (t, EPure))
+  | KReg, _ ->
+    (match region_of_tylike arg with
+     | Some r -> substitute_region_to_cty c var r
+     | None -> c)
   | _ -> c
 
 let substitute_tylikes_to_type ty bindings args =
@@ -1140,12 +1234,13 @@ let promote_cty_vars_in_type kind_env ty =
   let rec go_ty ty =
     match ty with
     | TRef t -> TRef (go_ty t)
-    | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+    | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
       TFun {
         captured_set;
         cap_params;
         label_params;
         params_ty = List.map (fun (name, t) -> (name, go_ty t)) params_ty;
+        region;
         return_cty = go_cty return_cty
       }
     | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
@@ -1183,6 +1278,7 @@ let promote_cty_vars_in_cty kind_env c =
     cap_params = [];
     label_params = [];
     params_ty = [];
+    region = RTop;
     return_cty = c;
   }) with
   | TFun { return_cty; _ } -> return_cty

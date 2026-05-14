@@ -153,6 +153,7 @@ and ty = (* Lexaz SL types *)
     cap_params : var list;
     label_params : (var * var) list;
     params_ty : op_parameter list;
+    region : region;
     return_cty : cty
   }
   | TCont of {

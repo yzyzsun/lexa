@@ -183,10 +183,11 @@ let rec erase_refinements_ty ty =
   match ty with
   | TRefine (_, inner, _) -> erase_refinements_ty inner
   | TRef t -> TRef (erase_refinements_ty t)
-  | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+  | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
     TFun {
       captured_set; cap_params; label_params;
       params_ty = List.map (fun (name, ty) -> (name, erase_refinements_ty ty)) params_ty;
+      region;
       return_cty = erase_refinements_cty return_cty
     }
   | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
@@ -224,13 +225,14 @@ let is_empty_capability cap =
 
 let rec replace_empty_fun_capture replacement ty =
   match ty with
-  | TFun { captured_set; cap_params; label_params; params_ty; return_cty } ->
+  | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
     let captured_set =
       if is_empty_capability captured_set then replacement else captured_set
     in
     TFun {
       captured_set; cap_params; label_params;
       params_ty = List.map (fun (name, ty) -> (name, replace_empty_fun_capture replacement ty)) params_ty;
+      region;
       return_cty = replace_empty_fun_capture_cty replacement return_cty
     }
   | TRef t -> TRef (replace_empty_fun_capture replacement t)
@@ -794,6 +796,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
             cap_params=[];
             label_params=[];
             params_ty=[];
+            region = rctx.current_region;
             return_cty = make_pure_cty return_ty
           }
         | None ->
@@ -806,6 +809,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
                   cap_params=[];
                   label_params=[];
                   params_ty=List.map (fun ty -> (None, ty)) params_ty;
+                  region = rctx.current_region;
                   return_cty = make_pure_cty return_ty
                 })
             | None ->
@@ -819,6 +823,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
                 cap_params=[];
                 label_params=[];
                 params_ty=List.map (fun ty -> (None, ty)) params_ty;
+                region = rctx.current_region;
                 return_cty = make_pure_cty return_ty
               }
           )
@@ -857,6 +862,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
         cap_params;
         label_params;
         params_ty;
+        region = rctx.current_region;
         return_cty
       } in
       Fun {
@@ -872,7 +878,14 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       let func' = type_expr captured_vars cap_vars label_vars term_vars func in
       let fun_type = ty_of func' in
       (match fun_type with
-        | TFun {captured_set; cap_params; label_params; params_ty; return_cty;_} ->
+        | TFun {captured_set; cap_params; label_params; params_ty; region = fun_region; return_cty;_} ->
+          (* Per OTT App: function's region must match current evaluation region. *)
+          (match func with
+            | Prim _ -> ()
+            | _ ->
+              if not (regions_eq fun_region rctx.current_region) then
+                typing_error "App: Function expects to be called at region %s, but current region is %s"
+                  (region_to_str fun_region) (region_to_str rctx.current_region));
           (match func with
             | Prim f ->
               let name = (String.sub f 1 ((String.length f) - 1)) in
@@ -941,6 +954,16 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
         label_regions = (handler_label, handler_region) :: rctx.label_regions;
         kind_env = rctx.kind_env;
       } in
+      (* Per OTT (Handle rule, [lex_algeff_atm.ott:1389]), the return clause
+         and operation handler clauses are typed at the OUTER region, not the
+         handler's inner region. Only the handled body M is typed at the
+         handler region. We keep the handler's evidence and label_regions in
+         scope because lexa exposes those binders in surface syntax. *)
+      let handler_rctx = {
+        rctx with
+        evidence_env = (evidence_binder, handler_constraint) :: rctx.evidence_env;
+        label_regions = (handler_label, handler_region) :: rctx.label_regions;
+      } in
       (* Answer-type modification: the handle body has cty T / C1 => C2 where
          - T is the body's value type (given by the return clause's annotation when present),
          - C1 is the initial answer cty (return clause's output; also continuations' return cty),
@@ -962,7 +985,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
           t, None, make_pure_cty t, None
         | Some { return_var; return_var_ty; return_body } ->
           let return_body' =
-            type_expr_with body_rctx captured_vars' [] []
+            type_expr_with handler_rctx captured_vars' [] []
               ((return_var, return_var_ty) :: term_vars) return_body
           in
           let c1 = return_body'.expr_cty in
@@ -1011,24 +1034,24 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
           then typing_error "Handle: Incorrect numbers of handler arguments\n\tExpected: %d\n\tActual: %d" (List.length effect_inputs_ty) (List.length op_params)
           else
             let handler_params = List.map2 (fun x y -> (x, y)) op_params effect_inputs_ty in
-            let body_rctx = { body_rctx with kind_env = op_bindings @ body_rctx.kind_env } in
+            let op_rctx = { handler_rctx with kind_env = op_bindings @ handler_rctx.kind_env } in
             let op_body' =
               if op_anno == HDef then
-                type_expr_with body_rctx captured_vars' [] [] (handler_params@term_vars) op_body
+                type_expr_with op_rctx captured_vars' [] [] (handler_params@term_vars) op_body
               else
                 match op_c2 with
                 | Some c2 ->
                   check_cty_with ~msg:"Handle: Effect body cty doesn't match the polymorphic operation signature"
-                    body_rctx captured_vars' [] [] (handler_params@term_vars) op_body c2
+                    op_rctx captured_vars' [] [] (handler_params@term_vars) op_body c2
                 | None ->
                   match !final_ans_cty with
                   | None ->
-                    let te = type_expr_with body_rctx captured_vars' [] [] (handler_params@term_vars) op_body in
+                    let te = type_expr_with op_rctx captured_vars' [] [] (handler_params@term_vars) op_body in
                     final_ans_cty := Some te.expr_cty;
                     te
                   | Some c2 ->
                     check_cty_with ~msg:"Handle: Effect body cty doesn't agree on the final answer type"
-                      body_rctx captured_vars' [] [] (handler_params@term_vars) op_body c2
+                      op_rctx captured_vars' [] [] (handler_params@term_vars) op_body c2
             in
             { op_anno; op_name; op_params; op_body = op_body' }
       ) handler_defs in
@@ -1087,6 +1110,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
         | KTy, TLTy _ -> ()
         | KCty, TLCty _ -> ()
         | KCty, TLTy _ -> ()
+        | KReg, _ when region_of_tylike arg <> None -> ()
         | KPred expected_args, TLPred (params, body) ->
           check_pred_tylike rctx term_vars expected_args params body
         | _ ->
@@ -1188,6 +1212,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
           cap_params;
           label_params;
           params_ty = List.map (fun (x, ty) -> (Some x, ty)) params;
+          region = rctx.current_region;
           return_cty
         } in
         (name, fun_ty)) fundefs) in

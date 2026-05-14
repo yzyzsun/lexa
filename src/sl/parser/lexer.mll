@@ -103,6 +103,8 @@ rule read =
   | "ATC" { ATC }
   | "Cty" { CTY }
   | "Pred" { PRED }
+  | "top" { TOP }
+  | "Reg" { REG }
 
   | "exceptional effect" { EXCEPTION }
   | '"' { read_string (Buffer.create 17) lexbuf }

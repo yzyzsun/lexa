@@ -92,6 +92,8 @@
 %token PRED
 
 %token EXCEPTION
+%token TOP
+%token REG
 
 %start <SLsyntax.top_level list> prog
 
@@ -154,9 +156,11 @@ type_exp:
   | TREF ty = type_exp { TRef ty }
   | LTS captured_set = capability GTS
     opt_params = opt_params
-    LPAREN params_ty = separated_list(COMMA, op_parameter) RPAREN RARROW return_cty = cty_exp
+    LPAREN params_ty = separated_list(COMMA, op_parameter) RPAREN RARROW
+    LSB region = region_lit RSB
+    return_cty = cty_exp
     { let (cap_params, label_params) = opt_params in
-      TFun { captured_set; cap_params; label_params; params_ty; return_cty } }
+      TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } }
   | TCONT LTS captured_set = capability GTS effect_return_ty = type_exp RARROW return_cty = cty_exp
     { TCont { captured_set; effect_return_var = None; effect_return_ty; return_cty } }
   | TNODE COLON COLON LSB ty = type_exp RSB { TNode ty }
@@ -171,6 +175,11 @@ type_exp:
     { List.fold_right (fun (tv, k) acc -> TForall (tv, k, acc)) bindings ty }
   | LCB v = VAR COLON inner = refine_base_ty VBAR p = pred_expr RCB
     { TRefine (v, inner, p) }
+
+region_lit:
+  | TOP { RTop }
+  | v = VAR { RVar v }
+  | tv = TYPE_VAR { RVar tv }
 
 (* Inner type of a refinement is restricted to the base scalar types: refinements
    on ref/cont/function/ADT types are out of scope for this iteration. *)
@@ -243,6 +252,7 @@ dist_exp:
 kind_anno:
   | ATC LPAREN d = dist_exp RPAREN { KATC d }
   | CTY { KCty }
+  | REG { KReg }
   | PRED LSB tys = separated_list(COMMA, pred_base_ty) RSB { KPred tys }
 
 pred_base_ty:
@@ -375,6 +385,7 @@ typelike_arg:
     { TLPred (params, p) }
   | PRED LCB p = pred_expr RCB
     { TLPred ([], p) }
+  | TOP { TLRegion RTop }
   | ty = type_exp { TLTy ty }
   | LPAREN c = cty_exp RPAREN { TLCty c }
 
