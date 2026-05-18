@@ -1,0 +1,13 @@
+effect Abort {
+    done: ({ z: int | z == 0 }) -> int
+}
+
+def main(): { z: int | z == 0 } {
+    handle <> { [r, e] =>
+        raise abort.done[0; []](0)
+    } with abort: Abort {
+        exc done(z) {
+            z
+        }
+    }
+}
