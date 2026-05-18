@@ -10,20 +10,18 @@ let effect_names: string list ref = ref []
 let effectz_names: string list ref = ref[]
 let type_defs_context = ref []
 
-(* Evidence checking context *)
+(* Region checking context *)
 type region_ctx = {
   (* The region the expression currently being checked sits in. Starts at
      RTop at the top level and is replaced by the handler's region binder
      inside a Handle body, so that Raise can form the constraint
-     current_region ≤ target_region against the evidence. *)
+     current_region ≤ target_region against the subregion tree. *)
   current_region : SLsyntax.region;
-  (* Bindings for evidence variables in scope, keyed by the name introduced
-     by a Handle's evidence_binder. Each entry records the region_constraint
-     (inner/outer regions and distance) the variable witnesses; check_evidence
-     consults it when typing an EVar. *)
-  evidence_env : (string * SLsyntax.region_constraint) list;
+  (* Concrete subregion edges introduced by nested handlers. Each pair
+     (inner, outer) represents inner ⊏ outer in the current derivation. *)
+  subregions : (SLsyntax.region * SLsyntax.region) list;
   (* Maps a handler label to the region it was introduced at. Raise looks up
-     its raise_label here to recover the target region for the evidence
+     its raise_label here to recover the target region for the subregion
      check; new entries are added as Handle expressions are entered. *)
   label_regions : (string * SLsyntax.region) list;
   (* Kinds of in-scope type-level variables. Currently only KATC entries
@@ -33,7 +31,7 @@ type region_ctx = {
   kind_env : (string * SLsyntax.kind) list;
 }
 
-let empty_region_ctx = { current_region = RTop; evidence_env = []; label_regions = []; kind_env = [] }
+let empty_region_ctx = { current_region = RTop; subregions = []; label_regions = []; kind_env = [] }
 
 let fresh_refinement_witness =
   let counter = ref 0 in
@@ -55,46 +53,126 @@ let regions_eq r1 r2 =
   | RNull, RNull -> true
   | _ -> false
 
-(** Checks an evidence value against the expected region constraint
-    [current_r <= target_r] and returns its level. *)
-let rec check_evidence ev_env current_r target_r ev : distance =
-  match ev with
-  | ENull -> DZero
-  | EZero ->
-    if not (regions_eq current_r target_r) then
-      typing_error "Do: Evidence 0 requires same region, but current region %s ≠ target region %s"
-        (region_to_str current_r) (region_to_str target_r);
-    DZero
-  | EVar v ->
-    (match List.assoc_opt v ev_env with
-    | Some { rc_inner; rc_dist; rc_outer } ->
-      if not (regions_eq rc_inner current_r && regions_eq rc_outer target_r) then
-        typing_error "Do: Evidence variable %s has constraint %s ≤ %s, but need %s ≤ %s"
-          v (region_to_str rc_inner) (region_to_str rc_outer)
-          (region_to_str current_r) (region_to_str target_r);
-      rc_dist
-    | None -> typing_error "Do: Evidence variable %s not found" v)
-  | EPlus (e1, e2) ->
-    let r_mid = infer_evidence_target ev_env current_r e1 in
-    let d1 = check_evidence ev_env current_r r_mid e1 in
-    let d2 = check_evidence ev_env r_mid target_r e2 in
-    DPlus (d1, d2)
+let constraints_union c1 c2 =
+  List.fold_left
+    (fun acc c -> if List.exists ((=) c) acc then acc else c :: acc)
+    c1 c2
 
-and infer_evidence_target ev_env current_r ev =
-  match ev with
-  | ENull -> typing_error "Do: Cannot infer intermediate region from null evidence in +"
-  | EZero -> current_r
-  | EVar v ->
-    (match List.assoc_opt v ev_env with
-    | Some { rc_inner; rc_outer; _ } ->
-      if not (regions_eq rc_inner current_r) then
-        typing_error "Do: Evidence variable %s starts at %s, but expected %s"
-          v (region_to_str rc_inner) (region_to_str current_r)
-      else rc_outer
-    | None -> typing_error "Do: Evidence variable %s not found" v)
-  | EPlus (e1, e2) ->
-    let r_mid = infer_evidence_target ev_env current_r e1 in
-    infer_evidence_target ev_env r_mid e2
+let constraints_unions constraints =
+  List.fold_left constraints_union [] constraints
+
+let region_nodes subregions =
+  List.fold_left
+    (fun acc (inner, outer) -> constraints_union acc [inner; outer])
+    [RTop] subregions
+
+let region_is_node subregions region =
+  List.exists (regions_eq region) (region_nodes subregions)
+
+let rec resolve_subregion_path subregions current_r target_r visited =
+  if regions_eq current_r target_r then Some DZero
+  else if List.exists (regions_eq current_r) visited then None
+  else
+    let next_edges =
+      List.filter (fun (inner, _) -> regions_eq inner current_r) subregions
+    in
+    let rec try_edges = function
+      | [] -> None
+      | (_, outer) :: rest ->
+        match resolve_subregion_path subregions outer target_r (current_r :: visited) with
+        | Some d -> Some (DPlus (DOne, d))
+        | None -> try_edges rest
+    in
+    try_edges next_edges
+
+let check_subregion_constraint rctx { rc_inner; rc_dist; rc_outer } =
+  match resolve_subregion_path rctx.subregions rc_inner rc_outer [] with
+  | Some d ->
+    if distance_eq d rc_dist then []
+    else
+      typing_error
+        "Do: subregion path %s <= %s has level %s, but ATC has level %s"
+        (region_to_str rc_inner)
+        (region_to_str rc_outer)
+        (distance_to_str d)
+        (distance_to_str rc_dist)
+  | None ->
+    let inner_node = region_is_node rctx.subregions rc_inner in
+    let outer_node = region_is_node rctx.subregions rc_outer in
+    if inner_node && outer_node then
+      typing_error
+        "Do: no subregion path from %s to %s"
+        (region_to_str rc_inner)
+        (region_to_str rc_outer)
+    else
+      [{ rc_inner; rc_dist; rc_outer }]
+
+let check_subregion rctx current_r target_r distance =
+  check_subregion_constraint rctx
+    { rc_inner = current_r; rc_dist = distance; rc_outer = target_r }
+
+let rec fv_distance = function
+  | DVar v -> [v]
+  | DPlus (d1, d2) -> constraints_union (fv_distance d1) (fv_distance d2)
+  | DZero | DOne -> []
+
+let fv_region = function
+  | RVar v -> [v]
+  | RTop | RNull -> []
+
+let fv_region_constraint { rc_inner; rc_dist; rc_outer } =
+  constraints_unions [fv_region rc_inner; fv_distance rc_dist; fv_region rc_outer]
+
+let constraint_mentions v c =
+  List.exists ((=) v) (fv_region_constraint c)
+
+let partition_constraints_by_var v constraints =
+  List.partition (constraint_mentions v) constraints
+
+let close_forall_constraints bindings ty constraints =
+  List.fold_right
+    (fun (tv, kind) (ty, constraints) ->
+      let captured, residual = partition_constraints_by_var tv constraints in
+      TForall (tv, kind, captured, ty), residual)
+    bindings (ty, constraints)
+
+let substitute_tylike_to_region region var kind arg =
+  match kind, arg with
+  | KReg, _ ->
+    (match region_of_tylike arg with
+     | Some replacement ->
+       (match region with
+        | RVar v when v = var -> replacement
+        | _ -> region)
+     | None -> region)
+  | _ -> region
+
+let rec substitute_tylike_to_distance distance var kind arg =
+  match kind, arg with
+  | KDist, TLDist replacement ->
+    (match distance with
+     | DVar v when v = var -> replacement
+     | DPlus (d1, d2) ->
+       DPlus (
+         substitute_tylike_to_distance d1 var kind arg,
+         substitute_tylike_to_distance d2 var kind arg
+       )
+     | _ -> distance)
+  | _ ->
+    (match distance with
+     | DPlus (d1, d2) ->
+       DPlus (
+         substitute_tylike_to_distance d1 var kind arg,
+         substitute_tylike_to_distance d2 var kind arg
+       )
+     | _ -> distance)
+
+let substitute_tylike_to_constraint constraint_ var kind arg =
+  {
+    rc_inner = substitute_tylike_to_region constraint_.rc_inner var kind arg;
+    rc_dist = substitute_tylike_to_distance constraint_.rc_dist var kind arg;
+    rc_outer = substitute_tylike_to_region constraint_.rc_outer var kind arg;
+  }
 
 (** Infers the level of an ATC, checking well-formedness per the ott rules at
     lex_algeff_atm.ott:1281-1295 (ATCHole/ATCImpure/ATCFill). Type- and
@@ -202,7 +280,7 @@ let rec erase_refinements_ty ty =
   | TQueue t -> TQueue (erase_refinements_ty t)
   | TArray t -> TArray (erase_refinements_ty t)
   | TCon (name, args) -> TCon (name, List.map erase_refinements_ty args)
-  | TForall (v, k, t) -> TForall (v, k, erase_refinements_ty t)
+  | TForall (v, k, constraints, t) -> TForall (v, k, constraints, erase_refinements_ty t)
   | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
 
 and erase_refinements_cty c =
@@ -248,7 +326,8 @@ let rec replace_empty_fun_capture replacement ty =
   | TQueue t -> TQueue (replace_empty_fun_capture replacement t)
   | TArray t -> TArray (replace_empty_fun_capture replacement t)
   | TCon (name, args) -> TCon (name, List.map (replace_empty_fun_capture replacement) args)
-  | TForall (v, k, t) -> TForall (v, k, replace_empty_fun_capture replacement t)
+  | TForall (v, k, constraints, t) ->
+    TForall (v, k, constraints, replace_empty_fun_capture replacement t)
   | TRefine (v, inner, p) -> TRefine (v, replace_empty_fun_capture replacement inner, p)
   | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
 
@@ -536,7 +615,7 @@ and check_refinement_wellformed rctx term_vars (ty: ty) =
       List.exists (fun (_, ty) -> contains_refinement ty) params_ty || cty_contains_refinement return_cty
     | TCont { effect_return_ty; return_cty; _ } ->
       contains_refinement effect_return_ty || cty_contains_refinement return_cty
-    | TForall (_, _, t) -> contains_refinement t
+    | TForall (_, _, _, t) -> contains_refinement t
     | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> false
   and cty_contains_refinement c =
     match c with
@@ -591,7 +670,7 @@ and check_refinement_wellformed rctx term_vars (ty: ty) =
           "Refinement inside type-constructor arguments is out of scope in this iteration: %s\n"
           (type_to_str ty);
       List.iter (go term_vars) t_args
-    | TForall (_, _, t) -> go term_vars t
+    | TForall (_, _, _, t) -> go term_vars t
     | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ()
   and go_cty term_vars c = match c with
     | CCty (t, EAns (Some x, c1, c2)) ->
@@ -686,6 +765,59 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       ( lift_to_cty ~msg te1 branch_cty,
         lift_to_cty ~msg te2 branch_cty,
         branch_cty )
+  in
+  let extra_region_constraints = ref [] in
+  let constraints_of_expr te = te.region_constraints in
+  let constraints_of_exprs exprs =
+    constraints_unions (List.map constraints_of_expr exprs)
+  in
+  let constraints_of_return_clause = function
+    | None -> []
+    | Some ({ return_body; _ } : Typed_ast.typed_return_clause) ->
+      return_body.region_constraints
+  in
+  let constraints_of_hdl ({ op_body; _ } : Typed_ast.hdl) =
+    op_body.region_constraints
+  in
+  let constraints_of_fundef ({ body; _ } : Typed_ast.fundef) =
+    body.region_constraints
+  in
+  let constraints_of_desc = function
+    | Unit | Var _ | Int _ | Float _ | Bool _ | Str _ | Char _ | Prim _ -> []
+    | Arith (e1, _, e2)
+    | Cmp (e1, _, e2)
+    | BArith (e1, _, e2)
+    | Get (e1, e2)
+    | Resume (e1, e2)
+    | ResumeFinal (e1, e2)
+    | Stmt (e1, e2) ->
+      constraints_unions [constraints_of_expr e1; constraints_of_expr e2]
+    | Neg e -> constraints_of_expr e
+    | App { func; args; _ } ->
+      constraints_unions (constraints_of_expr func :: List.map constraints_of_expr args)
+    | New exprs -> constraints_of_exprs exprs
+    | Set (e1, e2, e3)
+    | If (e1, e2, e3) ->
+      constraints_unions [constraints_of_expr e1; constraints_of_expr e2; constraints_of_expr e3]
+    | Raise { raise_args; _ } -> constraints_of_exprs raise_args
+    | Handle { handle_body; return_clause; handler_defs; _ } ->
+      constraints_unions [
+        handle_body.region_constraints;
+        constraints_of_return_clause return_clause;
+        constraints_unions (List.map constraints_of_hdl handler_defs)
+      ]
+    | Recdef (fundefs, body) ->
+      constraints_unions
+        (body.region_constraints :: List.map constraints_of_fundef fundefs)
+    | Fun { body; _ } -> body.region_constraints
+    | Let (_, e1, e2) ->
+      constraints_unions [constraints_of_expr e1; constraints_of_expr e2]
+    | Typecon (_, _, args) -> constraints_of_exprs args
+    | Match { match_expr; pattern_matching } ->
+      constraints_unions
+        (match_expr.region_constraints
+         :: List.map (fun (_, e) -> e.region_constraints) pattern_matching)
+    | TypeApp (_, e) -> constraints_of_expr e
   in
 
   let expr_desc, expr_cty = match e with
@@ -803,7 +935,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
           (
             match List.assoc_opt name prim_polymophic_sigs with
             | Some (tv, params_ty, return_ty) ->
-              TForall (tv, KTy,
+              TForall (tv, KTy, [],
                 TFun {
                   captured_set=None, Varset.empty;
                   cap_params=[];
@@ -947,23 +1079,17 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       let captured_vars' = check_capture_set_as_unamb captured_set captured_vars cap_vars label_vars in
       (* Use the explicit region binder for this handler's region. *)
       let handler_region = RVar region_binder in
-      let handler_constraint = { rc_inner = handler_region; rc_dist = DOne; rc_outer = rctx.current_region } in
       let body_rctx = {
         current_region = handler_region;
-        evidence_env = (evidence_binder, handler_constraint) :: rctx.evidence_env;
+        subregions = (handler_region, rctx.current_region) :: rctx.subregions;
         label_regions = (handler_label, handler_region) :: rctx.label_regions;
         kind_env = rctx.kind_env;
       } in
       (* Per OTT (Handle rule, [lex_algeff_atm.ott:1389]), the return clause
          and operation handler clauses are typed at the OUTER region, not the
          handler's inner region. Only the handled body M is typed at the
-         handler region. We keep the handler's evidence and label_regions in
-         scope because lexa exposes those binders in surface syntax. *)
-      let handler_rctx = {
-        rctx with
-        evidence_env = (evidence_binder, handler_constraint) :: rctx.evidence_env;
-        label_regions = (handler_label, handler_region) :: rctx.label_regions;
-      } in
+         handler region. *)
+      let handler_rctx = rctx in
       (* Answer-type modification: the handle body has cty T / C1 => C2 where
          - T is the body's value type (given by the return clause's annotation when present),
          - C1 is the initial answer cty (return clause's output; also continuations' return cty),
@@ -1068,6 +1194,10 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
           type_expr_with body_rctx captured_vars' []
             body_label_vars term_vars handle_body
         in
+        if List.exists (constraint_mentions region_binder) handle_body'.region_constraints then
+          typing_error
+            "Handle: residual subregion constraints cannot mention local region %s"
+            region_binder;
         let body_actual_ty = ty_of handle_body' in
         if not (types_sub body_actual_ty body_ty
                 || check_refined_subtype body_rctx term_vars (Some handle_body) body_actual_ty body_ty)
@@ -1094,6 +1224,10 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
             body_label_vars term_vars
             handle_body body_expected_cty
         in
+        if List.exists (constraint_mentions region_binder) handle_body'.region_constraints then
+          typing_error
+            "Handle: residual subregion constraints cannot mention local region %s"
+            region_binder;
         Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
       end
 
@@ -1128,23 +1262,16 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       let op_return_ty = instantiate_type op_cty_info.op_return_ty in
       let op_c1 = instantiate_cty op_cty_info.op_c1 in
       let op_c2 = instantiate_cty op_cty_info.op_c2 in
-      (* Check evidence: need Ev(current_region <= label_region) with some level l.
-         Returns the inferred level so we can match it against the ATC's level. *)
-      let ev_level_opt =
-        match List.assoc_opt raise_label rctx.label_regions with
-        | Some target_region ->
-          Some (check_evidence rctx.evidence_env rctx.current_region target_region raise_evidence)
-        | None -> None
-      in
-      (* Check CC : ATC(l_atc) and require l_atc = l_ev. *)
+      (* Check CC : ATC(l_atc), then discharge or defer the subregion
+         obligation current_region <=[l_atc] label_region. *)
       let l_atc = check_atc rctx.kind_env term_vars raise_atc in
-      (match ev_level_opt with
-      | Some l_ev ->
-        if not (distance_eq l_ev l_atc) then
-          typing_error
-            "Raise: evidence level %s does not match ATC level %s"
-            (distance_to_str l_ev) (distance_to_str l_atc)
-      | None -> ());
+      let subregion_constraints =
+        match List.assoc_opt raise_label rctx.label_regions with
+        | Some target_region -> check_subregion rctx rctx.current_region target_region l_atc
+        | None -> []
+      in
+      extra_region_constraints :=
+        constraints_union !extra_region_constraints subregion_constraints;
       if (List.length raise_args) != (List.length op_params_ty)
         then typing_error "Raise: Incorrect number of arguments\n\tExpected: %d\n\tActual: %d\n" (List.length op_params_ty) (List.length raise_args)
         else
@@ -1281,15 +1408,37 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       let te = type_expr captured_vars cap_vars label_vars term_vars e in
       let te_ty = ty_of te in
       let instantiated_ty = (match te_ty with
-        | TForall (tv, _kind, t') ->
-          substitute_ty t' [(tv, t_arg)]
+        | TForall (tv, kind, constraints, t') ->
+          let tylike_arg = TLTy t_arg in
+          (match kind, tylike_arg with
+          | KTy, TLTy _ -> ()
+          | KReg, _ when region_of_tylike tylike_arg <> None -> ()
+          | _ ->
+            typing_error
+              "TypeApp: type argument has wrong kind for %s"
+              tv);
+          let instantiated_constraints =
+            List.map
+              (fun c -> substitute_tylike_to_constraint c tv kind tylike_arg)
+              constraints
+          in
+          let residual_constraints =
+            constraints_unions
+              (List.map (check_subregion_constraint rctx) instantiated_constraints)
+          in
+          extra_region_constraints :=
+            constraints_union !extra_region_constraints residual_constraints;
+          substitute_tylike_to_type t' tv kind tylike_arg
         | _ -> typing_error "TypeApp: A forall type expected\n\tActual: %s" (type_to_str te_ty)
       ) in
       TypeApp (t_arg, te), CCty (instantiated_ty, eff_of te)
 
 
   in
-  { expr_desc; expr_cty; captured_vars; cap_vars; label_vars }
+  let region_constraints =
+    constraints_union !extra_region_constraints (constraints_of_desc expr_desc)
+  in
+  { expr_desc; expr_cty; region_constraints; captured_vars; cap_vars; label_vars }
 
 
 let check_type_defs (defs: typedef list) =
@@ -1315,7 +1464,7 @@ let check_type_defs (defs: typedef list) =
     | TVar tv ->
       if List.exists (fun tv' -> tv = tv') type_vars
         then () else typing_error "Type Definition: type variable %s not defined" tv
-    | TForall (tv, _kind, ty') -> check_typedef_ty type_names (tv::type_vars) ty'
+    | TForall (tv, _kind, _constraints, ty') -> check_typedef_ty type_names (tv::type_vars) ty'
     | TRefine (_, inner, _) -> check_typedef_ty type_names type_vars inner
     | _ -> ()
   and check_typedef_cty type_names type_vars cty =

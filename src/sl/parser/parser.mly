@@ -172,7 +172,7 @@ type_exp:
   | LPAREN ty = type_exp RPAREN { ty }
   | tv = TYPE_VAR { TVar tv }
   | FORALL bindings = separated_nonempty_list(COMMA, type_param_decl) DOT ty = type_exp
-    { List.fold_right (fun (tv, k) acc -> TForall (tv, k, acc)) bindings ty }
+    { List.fold_right (fun (tv, k) acc -> TForall (tv, k, [], acc)) bindings ty }
   | LCB v = VAR COLON inner = refine_base_ty VBAR p = pred_expr RCB
     { TRefine (v, inner, p) }
 
@@ -422,6 +422,12 @@ expr:
   | v1 = app_expr LSB v2 = expr RSB COLONEQ v3 = expr { Set (v1, v2, v3) }
   | VALDEF x = VAR EQ t1 = expr SEMICOLON t2 = expr %prec HIGHER_THAN_STMT { Let (x, t1, t2) }
   | IF v = expr THEN t1 = expr ELSE t2 = expr { If (v, t1, t2) }
+  | RAISE raise_label = VAR DOT raise_op = VAR LSB raise_atc = atc_exp RSB LPAREN raise_args = separated_list(COMMA, expr) RPAREN
+    { Raise {raise_label; raise_op; raise_evidence = ENull; raise_tylikes = []; raise_atc; raise_args} }
+  | RAISE raise_label = VAR DOT raise_op = VAR LSB
+    raise_atc = atc_exp SEMICOLON raise_tylikes = separated_nonempty_list(COMMA, typelike_arg) RSB
+    LPAREN raise_args = separated_list(COMMA, expr) RPAREN
+    { Raise {raise_label; raise_op; raise_evidence = ENull; raise_tylikes; raise_atc; raise_args} }
   | RAISE raise_label = VAR DOT raise_op = VAR LSB raise_evidence = evidence_exp SEMICOLON raise_atc = atc_exp RSB LPAREN raise_args = separated_list(COMMA, expr) RPAREN
     { Raise {raise_label; raise_op; raise_evidence; raise_tylikes = []; raise_atc; raise_args} }
   | RAISE raise_label = VAR DOT raise_op = VAR LSB raise_evidence = evidence_exp SEMICOLON
@@ -430,6 +436,12 @@ expr:
     { Raise {raise_label; raise_op; raise_evidence; raise_tylikes; raise_atc; raise_args} }
   | RESUME k = simple_expr v = app_expr { Resume (k, v) }
   | RESUMEFINAL k = simple_expr v = app_expr { ResumeFinal (k, v) }
+  | HANDLE
+    LTS captured_set = capability GTS
+    LCB LSB region_binder = VAR RSB FATARROW handle_body = expr RCB
+    WITH handler_label = VAR COLON sig_name = CAPITALIZED_VAR
+    LCB return_clause = option(return_clause) handler_defs = list(hdl_def) RCB
+    { Handle {captured_set; region_binder; evidence_binder = "__unused_evidence__"; handle_body; handler_label; sig_name; return_clause; handler_defs} }
   | HANDLE
     LTS captured_set = capability GTS
     LCB LSB region_binder = VAR COMMA evidence_binder = VAR RSB FATARROW handle_body = expr RCB

@@ -5,6 +5,7 @@ type typed_expr =
 {
   expr_desc: typed_expr_desc;
   expr_cty: cty;
+  region_constraints: region_constraint list;
   captured_vars: capture_set;
   cap_vars: var list;
   label_vars: (var * label_binding) list;

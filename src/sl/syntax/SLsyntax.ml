@@ -168,7 +168,7 @@ and ty = (* Lexaz SL types *)
   | TArray of ty (* array_t* *)
   | TCon of var * ty list
   | TVar of var
-  | TForall of var * kind * ty
+  | TForall of var * kind * region_constraint list * ty
   | TCap of region * opty
   | TRefine of var * ty * pred  (* { var: ty | pred } *)
 

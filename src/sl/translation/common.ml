@@ -213,7 +213,30 @@ and type_to_str (ty: ty) =
     if (t_args = [])
       then t else Printf.sprintf "%s::[%s]" t (String.concat ", " (List.map type_to_str t_args))
   | TVar v -> v
-  | TForall (tvar, _kind, ty') -> Printf.sprintf "∀%s. %s" tvar (type_to_str ty')
+  | TForall (tvar, _kind, constraints, ty') ->
+    let region_to_str = function
+      | RTop -> "⊤"
+      | RVar v -> v
+      | RNull -> "null"
+    in
+    let rec distance_to_str = function
+      | DZero -> "lzero"
+      | DOne -> "lone"
+      | DVar v -> v
+      | DPlus (d1, d2) -> Printf.sprintf "(%s + %s)" (distance_to_str d1) (distance_to_str d2)
+    in
+    let constraint_to_str { rc_inner; rc_dist; rc_outer } =
+      Printf.sprintf "%s <=[%s] %s"
+        (region_to_str rc_inner)
+        (distance_to_str rc_dist)
+        (region_to_str rc_outer)
+    in
+    let constraints_str =
+      match constraints with
+      | [] -> ""
+      | _ -> Printf.sprintf "[%s]" (String.concat ", " (List.map constraint_to_str constraints))
+    in
+    Printf.sprintf "∀%s%s. %s" tvar constraints_str (type_to_str ty')
   | TCap (_region, _opty) -> "Cap"
   | TRefine (v, inner, p) ->
     Printf.sprintf "{%s: %s | %s}" v (type_to_str inner) (pred_to_str p)
@@ -293,6 +316,22 @@ let alpha_normalize ty =
       | None -> Some cap, labels')
     | None -> None, labels'
   in
+  let rename_region env = function
+    | RVar v -> (match Varmap.find_opt v env with Some v' -> RVar v' | None -> RVar v)
+    | r -> r
+  in
+  let rec rename_distance env = function
+    | DVar v -> (match Varmap.find_opt v env with Some v' -> DVar v' | None -> DVar v)
+    | DPlus (d1, d2) -> DPlus (rename_distance env d1, rename_distance env d2)
+    | d -> d
+  in
+  let rename_constraint env { rc_inner; rc_dist; rc_outer } =
+    {
+      rc_inner = rename_region env rc_inner;
+      rc_dist = rename_distance env rc_dist;
+      rc_outer = rename_region env rc_outer;
+    }
+  in
   let rec rename_term_in_type ty old_v new_v =
     match ty with
     | TRef t -> TRef (rename_term_in_type t old_v new_v)
@@ -332,7 +371,8 @@ let alpha_normalize ty =
     | TQueue t -> TQueue (rename_term_in_type t old_v new_v)
     | TArray t -> TArray (rename_term_in_type t old_v new_v)
     | TCon (name, args) -> TCon (name, List.map (fun t -> rename_term_in_type t old_v new_v) args)
-    | TForall (tv, kind, t) -> TForall (tv, kind, rename_term_in_type t old_v new_v)
+    | TForall (tv, kind, constraints, t) ->
+      TForall (tv, kind, constraints, rename_term_in_type t old_v new_v)
     | TRefine (v, inner, p) when v = old_v ->
       TRefine (v, rename_term_in_type inner old_v new_v, p)
     | TRefine (v, inner, p) ->
@@ -405,10 +445,10 @@ let alpha_normalize ty =
       | Some tv' -> TVar tv'
       | None -> TVar tv
     )
-    | TForall (tv, kind, ty') ->
+    | TForall (tv, kind, constraints, ty') ->
       let tv_new = fresh_var() in
       let env' = Varmap.add tv tv_new env in
-      TForall (tv_new, kind, (normalize ty' env'))
+      TForall (tv_new, kind, List.map (rename_constraint env') constraints, (normalize ty' env'))
     | TRefine (v, inner, p) ->
       (* Alpha-rename the value binder to a stable fresh name; rename free
          occurrences of [v] inside the predicate. Capture/label envs don't
@@ -460,6 +500,9 @@ let types_eq t1 t2 =
     | (Some cap1, labels1), (Some cap2, labels2) -> (cap1 = cap2) && (Varset.equal labels1 labels2)
     | _ -> false
   in
+  let constraints_eq c1 c2 =
+    List.equal (=) (List.sort_uniq compare c1) (List.sort_uniq compare c2)
+  in
   let rec normalized_types_eq t1 t2 =
     match (t1, t2) with
     | (TRef t1', TRef t2') -> normalized_types_eq t1' t2'
@@ -482,8 +525,8 @@ let types_eq t1 t2 =
         && (normalized_ctys_eq rc rc')
     | (TCon (tv1, t1_args), TCon (tv2, t2_args)) ->
       (tv1 = tv2) && (List.equal normalized_types_eq t1_args t2_args)
-    | (TForall (v1, k1, t1'), TForall (v2, k2, t2')) ->
-      v1 = v2 && k1 = k2 && (normalized_types_eq t1' t2')
+    | (TForall (v1, k1, c1, t1'), TForall (v2, k2, c2, t2')) ->
+      v1 = v2 && k1 = k2 && constraints_eq c1 c2 && (normalized_types_eq t1' t2')
     | (TRefine (v1, t1', p1), TRefine (v2, t2', p2)) ->
       (* alpha_normalize already renamed both binders via the same fresh
          counter, so equal-shape refinements have v1 = v2 and the predicate
@@ -881,6 +924,22 @@ let substitute_ty ty type_subs =
       incr counter;
       var
   in
+  let rename_region_var_in_constraint var_old var_new { rc_inner; rc_dist; rc_outer } =
+    let rename_region = function
+      | RVar v when v = var_old -> RVar var_new
+      | r -> r
+    in
+    let rec rename_distance = function
+      | DVar v when v = var_old -> DVar var_new
+      | DPlus (d1, d2) -> DPlus (rename_distance d1, rename_distance d2)
+      | d -> d
+    in
+    {
+      rc_inner = rename_region rc_inner;
+      rc_dist = rename_distance rc_dist;
+      rc_outer = rename_region rc_outer;
+    }
+  in
   let rec substitute ty type_subs =
     match ty with
     | TRef ty' -> TRef (substitute ty' type_subs)
@@ -904,10 +963,15 @@ let substitute_ty ty type_subs =
     | TCon (con, t_args) ->
       let t_args' = List.map (fun t_arg -> substitute t_arg type_subs) t_args in
       TCon (con, t_args')
-    | TForall (tv, kind, ty') ->
+    | TForall (tv, kind, constraints, ty') ->
       let tv_new = fresh_var() in
       let type_subs' = (tv, TVar tv_new)::type_subs in
-      TForall (tv_new, kind, substitute ty' type_subs')
+      TForall (
+        tv_new,
+        kind,
+        List.map (rename_region_var_in_constraint tv tv_new) constraints,
+        substitute ty' type_subs'
+      )
     | TRefine (v, inner, p) ->
       TRefine (v, substitute inner type_subs, p)
     | _ -> ty
@@ -966,7 +1030,8 @@ let rec substitute_term_to_type ty var witness =
   | TQueue t -> TQueue (substitute_term_to_type t var witness)
   | TArray t -> TArray (substitute_term_to_type t var witness)
   | TCon (name, args) -> TCon (name, List.map (fun t -> substitute_term_to_type t var witness) args)
-  | TForall (tv, kind, t) -> TForall (tv, kind, substitute_term_to_type t var witness)
+  | TForall (tv, kind, constraints, t) ->
+    TForall (tv, kind, constraints, substitute_term_to_type t var witness)
   | TRefine (v, inner, p) when v = var ->
     TRefine (v, substitute_term_to_type inner var witness, p)
   | TRefine (v, inner, p) ->
@@ -1042,9 +1107,10 @@ let rec substitute_pred_to_type ty pred_name pred_params pred_body =
   | TArray t -> TArray (substitute_pred_to_type t pred_name pred_params pred_body)
   | TCon (name, args) ->
     TCon (name, List.map (fun t -> substitute_pred_to_type t pred_name pred_params pred_body) args)
-  | TForall (tv, kind, body) when tv = pred_name -> TForall (tv, kind, body)
-  | TForall (tv, kind, body) ->
-    TForall (tv, kind, substitute_pred_to_type body pred_name pred_params pred_body)
+  | TForall (tv, kind, constraints, body) when tv = pred_name ->
+    TForall (tv, kind, constraints, body)
+  | TForall (tv, kind, constraints, body) ->
+    TForall (tv, kind, constraints, substitute_pred_to_type body pred_name pred_params pred_body)
   | TRefine (v, inner, p) ->
     TRefine (v,
              substitute_pred_to_type inner pred_name pred_params pred_body,
@@ -1074,6 +1140,27 @@ let rec substitute_region_to_type ty region_var (replacement: region) =
     | RVar v when v = region_var -> replacement
     | _ -> r
   in
+  let rec subst_distance d =
+    match d with
+    | DVar v when v = region_var ->
+      (* Region substitution does not provide a distance witness; keep
+         distance variables unless a future surface syntax adds one. *)
+      DVar v
+    | DPlus (d1, d2) -> DPlus (subst_distance d1, subst_distance d2)
+    | _ -> d
+  in
+  let substitute_region_to_constraint region_var replacement { rc_inner; rc_dist; rc_outer } =
+    let subst_region r =
+      match r with
+      | RVar v when v = region_var -> replacement
+      | _ -> r
+    in
+    {
+      rc_inner = subst_region rc_inner;
+      rc_dist = subst_distance rc_dist;
+      rc_outer = subst_region rc_outer;
+    }
+  in
   match ty with
   | TRef t -> TRef (substitute_region_to_type t region_var replacement)
   | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
@@ -1096,8 +1183,15 @@ let rec substitute_region_to_type ty region_var (replacement: region) =
   | TArray t -> TArray (substitute_region_to_type t region_var replacement)
   | TCon (name, args) ->
     TCon (name, List.map (fun t -> substitute_region_to_type t region_var replacement) args)
-  | TForall (tv, kind, body) ->
-    TForall (tv, kind, substitute_region_to_type body region_var replacement)
+  | TForall (tv, kind, constraints, body) when tv = region_var ->
+    TForall (tv, kind, constraints, body)
+  | TForall (tv, kind, constraints, body) ->
+    TForall (
+      tv,
+      kind,
+      List.map (substitute_region_to_constraint region_var replacement) constraints,
+      substitute_region_to_type body region_var replacement
+    )
   | TRefine (v, inner, p) ->
     TRefine (v, substitute_region_to_type inner region_var replacement, p)
   | TCap (r, opty) -> TCap (subst_region r, opty)
@@ -1142,9 +1236,10 @@ let rec substitute_cty_var_to_type ty cty_var replacement =
   | TArray t -> TArray (substitute_cty_var_to_type t cty_var replacement)
   | TCon (name, args) ->
     TCon (name, List.map (fun t -> substitute_cty_var_to_type t cty_var replacement) args)
-  | TForall (tv, kind, body) when tv = cty_var -> TForall (tv, kind, body)
-  | TForall (tv, kind, body) ->
-    TForall (tv, kind, substitute_cty_var_to_type body cty_var replacement)
+  | TForall (tv, kind, constraints, body) when tv = cty_var ->
+    TForall (tv, kind, constraints, body)
+  | TForall (tv, kind, constraints, body) ->
+    TForall (tv, kind, constraints, substitute_cty_var_to_type body cty_var replacement)
   | TRefine (v, inner, p) ->
     TRefine (v, substitute_cty_var_to_type inner cty_var replacement, p)
   | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
@@ -1255,8 +1350,8 @@ let promote_cty_vars_in_type kind_env ty =
     | TQueue t -> TQueue (go_ty t)
     | TArray t -> TArray (go_ty t)
     | TCon (name, args) -> TCon (name, List.map go_ty args)
-    | TForall (tv, kind, body) ->
-      TForall (tv, kind, go_ty body)
+    | TForall (tv, kind, constraints, body) ->
+      TForall (tv, kind, constraints, go_ty body)
     | TRefine (v, inner, p) -> TRefine (v, go_ty inner, p)
     | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
   and go_cty c =
