@@ -1,0 +1,50 @@
+effect Transaction {
+    get: forall 'rho: Reg, 'alpha: Pred[int], 'beta: Pred[int], 'gamma: Cty. () ->
+        { balance: int | 'alpha(balance) }
+            / ((<>({ balance: int | 'alpha(balance) }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ balance: int | 'alpha(balance) }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+
+    put: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. (v: int) ->
+        unit
+            / ((<>({ balance: int | balance == v }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>(int) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+
+    rollback: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. (snapshot: int) ->
+        unit
+            / ((<>({ balance: int | balance == snapshot }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>(int) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+}
+
+def main(): { z: int | z == 10 } / int => int {
+    val run = handle <> { [r, e] =>
+        raise tx.put[0; []; top, Pred(z: Int) { z == 10 }, int](0);
+        raise tx.rollback[0; []; top, Pred(z: Int) { z == 10 }, int](10);
+        val balance = raise tx.get[0; []; top, Pred(z: Int) { z == 10 }, Pred(z: Int) { z == 10 }, int]();
+        (fun <> (): { z: int | z == 10 } {
+            balance
+        })()
+    } with tx: Transaction {
+        return x: { z: int | z == 10 } {
+            fun <> (balance: int): { z: int | z == 10 } { x }
+        }
+        hdl_1 get(k) {
+            fun <> (balance: int): { z: int | z == 10 } / int => int {
+                val r = resume_final k balance;
+                r(balance)
+            }
+        }
+        hdl_1 put(v, k) {
+            fun <> (balance: int): { z: int | z == 10 } / int => int {
+                val r = resume_final k (());
+                r(v)
+            }
+        }
+        hdl_1 rollback(snapshot, k) {
+            fun <> (balance: int): { z: int | z == 10 } / int => int {
+                val r = resume_final k (());
+                r(snapshot)
+            }
+        }
+    };
+    run(10)
+}

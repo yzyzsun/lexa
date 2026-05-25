@@ -1,0 +1,50 @@
+effect File {
+    fopen: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. () ->
+        unit
+            / ((<>({ st: int | st == 1 }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ st: int | st == 0 }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+
+    fread: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. () ->
+        { n: int | n == 42 }
+            / ((<>({ st: int | st == 1 }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ st: int | st == 1 }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+
+    fclose: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. () ->
+        unit
+            / ((<>({ st: int | st == 0 }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ st: int | st == 1 }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+}
+
+def main(): { z: int | z == 42 } / int => int {
+    val run = handle <> { [r, e] =>
+        raise file.fopen[0; []; top, Pred(z: Int) { z == 42 }, int]();
+        val n = raise file.fread[0; []; top, Pred(z: Int) { z == 42 }, int]();
+        raise file.fclose[0; []; top, Pred(z: Int) { z == 42 }, int]();
+        (fun <> (): { z: int | z == 42 } {
+            n
+        })()
+    } with file: File {
+        return x: { z: int | z == 42 } {
+            fun <> (st: int): { z: int | z == 42 } { x }
+        }
+        hdl_1 fopen(k) {
+            fun <> (st: int): { z: int | z == 42 } / int => int {
+                val r = resume_final k (());
+                r(1)
+            }
+        }
+        hdl_1 fread(k) {
+            fun <> (st: int): { z: int | z == 42 } / int => int {
+                val r = resume_final k 42;
+                r(1)
+            }
+        }
+        hdl_1 fclose(k) {
+            fun <> (st: int): { z: int | z == 42 } / int => int {
+                val r = resume_final k (());
+                r(0)
+            }
+        }
+    };
+    run(0)
+}

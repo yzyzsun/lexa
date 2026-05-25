@@ -1,0 +1,37 @@
+effect TickCount {
+    tick: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. (before: { b: int | b >= 0 }, v: int) ->
+        unit
+            / ((<>({ count: int | count == before + 1 }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ count: int | count == before }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+
+    count: forall 'rho: Reg, 'alpha: Pred[int], 'beta: Pred[int], 'gamma: Cty. () ->
+        { count: int | 'alpha(count) }
+            / ((<>({ count: int | 'alpha(count) }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ count: int | 'alpha(count) }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+}
+
+def main(): { z: int | z == 2 } / int => int {
+    val run = handle <> { [r, e] =>
+        raise tick.tick[0; []; top, Pred(z: Int) { z == 2 }, int](0, 7);
+        raise tick.tick[0; []; top, Pred(z: Int) { z == 2 }, int](1, 9);
+        val n = raise tick.count[0; []; top, Pred(z: Int) { z == 2 }, Pred(z: Int) { z == 2 }, int]();
+        n
+    } with tick: TickCount {
+        return x: { z: int | z == 2 } {
+            fun <> (count: int): { z: int | z == 2 } { x }
+        }
+        hdl_1 tick(before, v, k) {
+            fun <> (count: int): { z: int | z == 2 } / int => int {
+                val r = resume_final k (());
+                r(before + 1)
+            }
+        }
+        hdl_1 count(k) {
+            fun <> (count: int): { z: int | z == 2 } / int => int {
+                val r = resume_final k count;
+                r(count)
+            }
+        }
+    };
+    run(0)
+}

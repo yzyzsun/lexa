@@ -13,23 +13,23 @@ effect State {
 def main(): int / int => int {
     val f = handle <> { [r1, e1] =>
         val g = handle <s1> { [r2, e2] =>
-            raise s1.set[e2; (<s1>(s2_st: int) ->[r1] { z: int | z == 3 } / (<>({ z: int | z == 1 }) ->[top] { z: int | z == 3 } / int => int) => (<>({ z: int | z == 1 }) ->[top] { z: int | z == 3 } / int => int)) / (<>({ z: int | z == 1 }) ->[top] { z: int | z == 3 } / int => int) => []; top, Pred(z: Int) { z == 3 }, int](1);
-            raise s2.set[0; []; r1, Pred(z: Int) { z == 3 }, <>({ z: int | z == 1 }) ->[top] { z: int | z == 3 } / int => int](2);
-            val a = raise s2.get[0; []; r1, Pred(z: Int) { z == 2 }, Pred(z: Int) { z == 3 }, <>({ z: int | z == 1 }) ->[top] { z: int | z == 3 } / int => int]();
-            val b = raise s1.get[e2; (<s1>(s2_st: int) ->[r1] { z: int | z == 3 } / (<>({ z: int | z == 1 }) ->[top] { z: int | z == 3 } / int => int) => (<>({ z: int | z == 1 }) ->[top] { z: int | z == 3 } / int => int)) / (<>({ z: int | z == 1 }) ->[top] { z: int | z == 3 } / int => int) => []; top, Pred(z: Int) { z == 1 }, Pred(z: Int) { z == 3 }, int]();
+            raise s1.set[e2; (<s1>(s2_st: int) ->[r1] { z: int | z == 3 } / (<>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int) => (<>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int)) / (<>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int) => []; top, Pred(z: Int) { z == 3 }, int](1);
+            raise s2.set[0; []; r1, Pred(z: Int) { z == 3 }, <>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int](2);
+            val a = raise s2.get[0; []; r1, Pred(z: Int) { z == 2 }, Pred(z: Int) { z == 3 }, <>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int]();
+            val b = raise s1.get[e2; (<s1>(s2_st: int) ->[r1] { z: int | z == 3 } / (<>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int) => (<>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int)) / (<>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int) => []; top, Pred(z: Int) { z == 1 }, Pred(z: Int) { z == 3 }, int]();
             (fun <> (): { x: int | x == 3 } { a + b })()
         } with s2: State {
             return x: { x: int | x == 3 } {
-                fun <s1> (s2_st: int): { z: int | z == 3 } / (<>({ z: int | z == 1 }) ->[top] { z: int | z == 3 } / int => int) => (<>({ z: int | z == 1 }) ->[top] { z: int | z == 3 } / int => int) { x }
+                fun <s1> (s2_st: int): { z: int | z == 3 } / (<>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int) => (<>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int) { x }
             }
             hdl_1 get(k) {
-                fun <s1> (s2_st: int): int / (<>({ z: int | z == 1 }) ->[top] { z: int | z == 3 } / int => int) => (<>({ z: int | z == 1 }) ->[top] { z: int | z == 3 } / int => int) {
+                fun <s1> (s2_st: int): int / (<>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int) => (<>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int) {
                     val r = resume_final k s2_st;
                     r(s2_st)
                 }
             }
             hdl_1 set(v, k) {
-                fun <s1> (s2_st: int): int / (<>({ z: int | z == 1 }) ->[top] { z: int | z == 3 } / int => int) => (<>({ z: int | z == 1 }) ->[top] { z: int | z == 3 } / int => int) {
+                fun <s1> (s2_st: int): int / (<>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int) => (<>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int) {
                     val r = resume_final k (());
                     r(v)
                 }
