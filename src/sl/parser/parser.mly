@@ -157,7 +157,7 @@ type_exp:
   | LTS captured_set = capability GTS
     opt_params = opt_params
     LPAREN params_ty = separated_list(COMMA, op_parameter) RPAREN RARROW
-    LSB region = region_lit RSB
+    region = opt_fun_region
     return_cty = cty_exp
     { let (cap_params, label_params) = opt_params in
       TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } }
@@ -180,6 +180,10 @@ region_lit:
   | TOP { RTop }
   | v = VAR { RVar v }
   | tv = TYPE_VAR { RVar tv }
+
+opt_fun_region:
+  | LSB region = region_lit RSB { region }
+  | { RTop }
 
 (* Inner type of a refinement is restricted to the base scalar types: refinements
    on ref/cont/function/ADT types are out of scope for this iteration. *)

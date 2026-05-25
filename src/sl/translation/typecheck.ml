@@ -24,6 +24,10 @@ type region_ctx = {
      its raise_label here to recover the target region for the subregion
      check; new entries are added as Handle expressions are entered. *)
   label_regions : (string * SLsyntax.region) list;
+  (* Region variables whose concrete position is being inferred. A function body
+     is checked under a fresh flexible region; obligations that can only be
+     completed once that region is known are kept as residual constraints. *)
+  flex_regions : SLsyntax.region list;
   (* Kinds of in-scope type-level variables. Currently only KATC entries
      are consulted (by check_atc); other kinds may be stored as a record
      of what the binder declared. Populated when type abstractions are
@@ -31,7 +35,7 @@ type region_ctx = {
   kind_env : (string * SLsyntax.kind) list;
 }
 
-let empty_region_ctx = { current_region = RTop; subregions = []; label_regions = []; kind_env = [] }
+let empty_region_ctx = { current_region = RTop; subregions = []; label_regions = []; flex_regions = []; kind_env = [] }
 
 let fresh_refinement_witness =
   let counter = ref 0 in
@@ -39,6 +43,13 @@ let fresh_refinement_witness =
     let name = "__refine_witness_" ^ string_of_int !counter ^ "__" in
     incr counter;
     name
+
+let fresh_function_region =
+  let counter = ref 0 in
+  fun () ->
+    let name = "__fun_region_" ^ string_of_int !counter ^ "__" in
+    incr counter;
+    RVar name
 
 let region_to_str r =
   match r with
@@ -69,6 +80,9 @@ let region_nodes subregions =
 let region_is_node subregions region =
   List.exists (regions_eq region) (region_nodes subregions)
 
+let region_is_flexible rctx region =
+  List.exists (regions_eq region) rctx.flex_regions
+
 let rec resolve_subregion_path subregions current_r target_r visited =
   if regions_eq current_r target_r then Some DZero
   else if List.exists (regions_eq current_r) visited then None
@@ -85,9 +99,64 @@ let rec resolve_subregion_path subregions current_r target_r visited =
     in
     try_edges next_edges
 
+let rec distance_atoms = function
+  | DZero -> []
+  | DPlus (d1, d2) -> distance_atoms d1 @ distance_atoms d2
+  | d -> [d]
+
+let distance_of_atoms = function
+  | [] -> DZero
+  | d :: rest -> List.fold_left (fun acc x -> DPlus (acc, x)) d rest
+
+let drop_distance_prefix prefix distance =
+  let rec ones_count d =
+    match normalize_distance d with
+    | DZero -> Some 0
+    | DOne -> Some 1
+    | DPlus (DOne, rest) ->
+      Option.map ((+) 1) (ones_count rest)
+    | _ -> None
+  in
+  match ones_count prefix with
+  | None -> Some distance
+  | Some count ->
+    let rec drop n atoms =
+      if n = 0 then Some atoms
+      else
+        match atoms with
+        | DOne :: rest -> drop (n - 1) rest
+        | [] -> None
+        | _ :: _ -> Some atoms
+    in
+    Option.map distance_of_atoms (drop count (distance_atoms (normalize_distance distance)))
+
+type subregion_resolution =
+  | Complete of distance
+  | Blocked of region * distance
+
+let rec resolve_subregion_or_flex rctx current_r target_r visited =
+  if regions_eq current_r target_r then Some (Complete DZero)
+  else if List.exists (regions_eq current_r) visited then None
+  else if region_is_flexible rctx current_r then Some (Blocked (current_r, DZero))
+  else
+    let next_edges =
+      List.filter (fun (inner, _) -> regions_eq inner current_r) rctx.subregions
+    in
+    let rec try_edges blocked = function
+      | [] -> blocked
+      | (_, outer) :: rest ->
+        match resolve_subregion_or_flex rctx outer target_r (current_r :: visited) with
+        | Some (Complete d) -> Some (Complete (DPlus (DOne, d)))
+        | Some (Blocked (flex_region, d)) ->
+          let blocked = Some (Blocked (flex_region, DPlus (DOne, d))) in
+          try_edges blocked rest
+        | None -> try_edges blocked rest
+    in
+    try_edges None next_edges
+
 let check_subregion_constraint rctx { rc_inner; rc_dist; rc_outer } =
-  match resolve_subregion_path rctx.subregions rc_inner rc_outer [] with
-  | Some d ->
+  match resolve_subregion_or_flex rctx rc_inner rc_outer [] with
+  | Some (Complete d) ->
     if distance_eq d rc_dist then []
     else
       typing_error
@@ -96,6 +165,16 @@ let check_subregion_constraint rctx { rc_inner; rc_dist; rc_outer } =
         (region_to_str rc_outer)
         (distance_to_str d)
         (distance_to_str rc_dist)
+  | Some (Blocked (flex_region, prefix)) ->
+    (match drop_distance_prefix prefix rc_dist with
+     | Some residual_dist ->
+       [{ rc_inner = flex_region; rc_dist = residual_dist; rc_outer }]
+     | None ->
+       typing_error
+         "Do: subregion path from %s already has level %s, but ATC has level %s"
+         (region_to_str rc_inner)
+         (distance_to_str prefix)
+         (distance_to_str rc_dist))
   | None ->
     let inner_node = region_is_node rctx.subregions rc_inner in
     let outer_node = region_is_node rctx.subregions rc_outer in
@@ -110,6 +189,80 @@ let check_subregion_constraint rctx { rc_inner; rc_dist; rc_outer } =
 let check_subregion rctx current_r target_r distance =
   check_subregion_constraint rctx
     { rc_inner = current_r; rc_dist = distance; rc_outer = target_r }
+
+let check_region_requirement rctx current_r required_r =
+  if regions_eq required_r RTop then []
+  else
+    match resolve_subregion_or_flex rctx current_r required_r [] with
+    | Some (Complete _) -> []
+    | Some (Blocked (flex_region, _)) ->
+      [{ rc_inner = flex_region; rc_dist = DZero; rc_outer = required_r }]
+    | None ->
+      let current_node = region_is_node rctx.subregions current_r in
+      let required_node = region_is_node rctx.subregions required_r in
+      if current_node && required_node then
+        typing_error
+          "App: current region %s does not satisfy function region requirement %s"
+          (region_to_str current_r)
+          (region_to_str required_r)
+      else
+        [{ rc_inner = current_r; rc_dist = DZero; rc_outer = required_r }]
+
+let region_requirement_sub rctx actual_req expected_req =
+  (* Function regions are preconditions. An actual function can stand in for an
+     expected one when it accepts every region the expected type promises. *)
+  regions_eq actual_req expected_req
+  || regions_eq actual_req RTop
+  || Option.is_some (resolve_subregion_path rctx.subregions expected_req actual_req [])
+
+let infer_function_region rctx fun_region constraints =
+  let is_fun_region = regions_eq fun_region in
+  let fun_constraints, residual =
+    List.partition
+      (fun c -> is_fun_region c.rc_inner || is_fun_region c.rc_outer)
+      constraints
+  in
+  let candidates =
+    List.filter_map
+      (fun c ->
+        if is_fun_region c.rc_inner then
+          if is_fun_region c.rc_outer then None else Some c.rc_outer
+        else
+          typing_error
+            "Fun: cannot infer invocation region from residual constraint %s <= %s"
+            (region_to_str c.rc_inner)
+            (region_to_str c.rc_outer))
+      fun_constraints
+  in
+  let choose_stricter r1 r2 =
+    if regions_eq r1 r2 then r1
+    else if regions_eq r1 RTop then r2
+    else if regions_eq r2 RTop then r1
+    else
+      match resolve_subregion_path rctx.subregions r1 r2 [],
+            resolve_subregion_path rctx.subregions r2 r1 [] with
+      | Some _, _ -> r1
+      | _, Some _ -> r2
+      | None, None ->
+        typing_error
+          "Fun: cannot choose a single invocation region from incomparable requirements %s and %s"
+          (region_to_str r1)
+          (region_to_str r2)
+  in
+  let inferred_region =
+    List.fold_left choose_stricter RTop candidates
+  in
+  List.iter
+    (fun c ->
+      if is_fun_region c.rc_inner
+         && not (region_requirement_sub rctx inferred_region c.rc_outer)
+      then
+        typing_error
+          "Fun: inferred region %s does not satisfy residual requirement %s"
+          (region_to_str inferred_region)
+          (region_to_str c.rc_outer))
+    fun_constraints;
+  inferred_region, residual
 
 let rec fv_distance = function
   | DVar v -> [v]
@@ -402,6 +555,7 @@ let rec check_ty ?(msg = "") rctx captured_vars cap_vars label_vars term_vars (e
   let te = type_expr rctx captured_vars cap_vars label_vars term_vars e in
   let actual = ty_of_cty te.expr_cty in
   if types_eq ty actual || types_sub actual ty then te
+  else if refined_type_sub rctx term_vars actual ty then te
   else if check_refined_subtype rctx term_vars (Some e) actual ty then te
   else
     typing_error
@@ -503,7 +657,7 @@ and refined_type_sub ?(kind_env = []) rctx term_vars actual expected =
       captured_set_sub cs1 cs2
       && cp1 = cp2
       && lp1 = lp2
-      && r1 = r2
+      && region_requirement_sub rctx r1 r2
       && List.length pt1 = List.length pt2
       && List.for_all2
            (fun (actual_name, actual_param) (expected_name, expected_param) ->
@@ -830,7 +984,6 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
   let check_cty_with = check_cty in
   let type_expr = type_expr rctx in
   let check_ty ?(msg="") = check_ty ~msg rctx in
-  let check_cty ?(msg="") = check_cty ~msg rctx in
   let compose_effs ?(kind_env = []) e1 e2 =
     compose_effs_refined ~kind_env rctx term_vars e1 e2
   in
@@ -1034,7 +1187,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
             cap_params=[];
             label_params=[];
             params_ty=[];
-            region = rctx.current_region;
+            region = RTop;
             return_cty = make_pure_cty return_ty
           }
         | None ->
@@ -1047,7 +1200,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
                   cap_params=[];
                   label_params=[];
                   params_ty=List.map (fun ty -> (None, ty)) params_ty;
-                  region = rctx.current_region;
+                  region = RTop;
                   return_cty = make_pure_cty return_ty
                 })
             | None ->
@@ -1061,7 +1214,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
                 cap_params=[];
                 label_params=[];
                 params_ty=List.map (fun ty -> (None, ty)) params_ty;
-                region = rctx.current_region;
+                region = RTop;
                 return_cty = make_pure_cty return_ty
               }
           )
@@ -1094,13 +1247,27 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       ) label_params in
       let body_cap_vars = cap_params @ cap_vars in
       let body_label_vars = inner_label_vars @ label_vars in
-      let body' = check_cty captured_vars' body_cap_vars body_label_vars (params@term_vars) body return_cty ~msg:"Fun: Function body doesn't match the declared return cty" in
+      let fun_region = fresh_function_region () in
+      let body_rctx = {
+        rctx with
+        current_region = fun_region;
+        flex_regions = constraints_union rctx.flex_regions [fun_region];
+      } in
+      let body' =
+        check_cty_with ~msg:"Fun: Function body doesn't match the declared return cty"
+          body_rctx captured_vars' body_cap_vars body_label_vars
+          (params@term_vars) body return_cty
+      in
+      let inferred_region, residual_constraints =
+        infer_function_region rctx fun_region body'.region_constraints
+      in
+      let body' = { body' with region_constraints = residual_constraints } in
       let ty = TFun {
         captured_set;
         cap_params;
         label_params;
         params_ty;
-        region = rctx.current_region;
+        region = inferred_region;
         return_cty
       } in
       Fun {
@@ -1117,13 +1284,16 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       let fun_type = ty_of func' in
       (match fun_type with
         | TFun {captured_set; cap_params; label_params; params_ty; region = fun_region; return_cty;_} ->
-          (* Per OTT App: function's region must match current evaluation region. *)
+          (* Function regions are requirements: the current evaluation region
+             must be at or below the region stored in the function type. *)
           (match func with
             | Prim _ -> ()
             | _ ->
-              if not (regions_eq fun_region rctx.current_region) then
-                typing_error "App: Function expects to be called at region %s, but current region is %s"
-                  (region_to_str fun_region) (region_to_str rctx.current_region));
+              let region_constraints =
+                check_region_requirement rctx rctx.current_region fun_region
+              in
+              extra_region_constraints :=
+                constraints_union !extra_region_constraints region_constraints);
           (match func with
             | Prim f ->
               let name = (String.sub f 1 ((String.length f) - 1)) in
@@ -1189,6 +1359,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
         current_region = handler_region;
         subregions = (handler_region, rctx.current_region) :: rctx.subregions;
         label_regions = (handler_label, handler_region) :: rctx.label_regions;
+        flex_regions = rctx.flex_regions;
         kind_env = rctx.kind_env;
       } in
       (* Per OTT (Handle rule, [lex_algeff_atm.ott:1389]), the return clause

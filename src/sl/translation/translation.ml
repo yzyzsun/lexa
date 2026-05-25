@@ -41,7 +41,7 @@ let rec gen_top_level_types (tls : top_level list) =
 let remove_assoc key bindings =
   List.filter (fun (key', _) -> key <> key') bindings
 
-let infer_poly_top_level_type top_level_fun_types
+let infer_top_level_type top_level_fun_types
     name type_params cap_params label_params params return_cty body =
   let fun_expr =
     SLsyntax.Fun {
@@ -61,7 +61,7 @@ let infer_poly_top_level_type top_level_fun_types
   in
   if residual <> [] then
     typing_error
-      "Top-level polymorphic function %s has uncaptured subregion constraints"
+      "Top-level function %s has uncaptured subregion constraints"
       name;
   closed_ty
 
@@ -71,8 +71,14 @@ let enrich_top_level_types tls top_level_fun_types =
       match tl with
       | TLPolyAbs (name, type_params, cap_params, label_params, params, return_cty, body) ->
         let ty =
-          infer_poly_top_level_type env
+          infer_top_level_type env
             name type_params cap_params label_params params return_cty body
+        in
+        (name, ty) :: remove_assoc name env
+      | TLAbs (name, cap_params, label_params, params, return_cty, body) ->
+        let ty =
+          infer_top_level_type env
+            name [] cap_params label_params params return_cty body
         in
         (name, ty) :: remove_assoc name env
       | _ -> env)
