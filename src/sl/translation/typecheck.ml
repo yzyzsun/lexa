@@ -450,9 +450,12 @@ and check_refined_subtype _rctx term_vars witness actual expected =
       let actual_extra_hyps =
         match actual with
         | TRefine (va, _, qa) ->
-          (match witness_term with
-           | Some w -> [subst_var_in_pred qa va w]
-           | None -> [qa])
+          let w =
+            match witness_term with
+            | Some w -> w
+            | None -> PTVar ve
+          in
+          [subst_var_in_pred qa va w]
         | _ -> []
       in
       (* Form goal as P[v := witness]. If no witness, leave [v] free. *)
@@ -469,8 +472,108 @@ and check_refined_subtype _rctx term_vars witness actual expected =
           Refinement.entails
             ~term_vars:(extra_term_vars @ term_vars)
             actual_extra_hyps goal
-    end
+      end
   | _ -> false
+
+(** Refinement-aware subtyping for computation/effect composition. The common
+    structural relation stays cheap; this layer only runs in the typechecker
+    where the term environment is available for SMT entailment. *)
+and refined_type_sub ?(kind_env = []) rctx term_vars actual expected =
+  if types_eq actual expected || types_sub ~kind_env actual expected then true
+  else
+    let actual = alpha_normalize actual in
+    let expected = alpha_normalize expected in
+    match actual, expected with
+    | TFun {
+        captured_set = cs1;
+        cap_params = cp1;
+        label_params = lp1;
+        params_ty = pt1;
+        region = r1;
+        return_cty = rc1
+      },
+      TFun {
+        captured_set = cs2;
+        cap_params = cp2;
+        label_params = lp2;
+        params_ty = pt2;
+        region = r2;
+        return_cty = rc2
+      } ->
+      captured_set_sub cs1 cs2
+      && cp1 = cp2
+      && lp1 = lp2
+      && r1 = r2
+      && List.length pt1 = List.length pt2
+      && List.for_all2
+           (fun (actual_name, actual_param) (expected_name, expected_param) ->
+             optional_param_names_compatible actual_name expected_name
+             && refined_type_sub ~kind_env rctx term_vars expected_param actual_param)
+           pt1 pt2
+      && refined_cty_sub ~kind_env rctx term_vars rc1 rc2
+    | TCont {
+        captured_set = cs1;
+        effect_return_var = erv1;
+        effect_return_ty = et1;
+        return_cty = rc1
+      },
+      TCont {
+        captured_set = cs2;
+        effect_return_var = erv2;
+        effect_return_ty = et2;
+        return_cty = rc2
+      } ->
+      captured_set_sub cs1 cs2
+      && erv1 = erv2
+      && types_eq et1 et2
+      && refined_cty_sub ~kind_env rctx term_vars rc1 rc2
+    | TRefine _, _
+    | _, TRefine _ ->
+      check_refined_subtype rctx term_vars None actual expected
+    | _ -> false
+
+and refined_eff_sub ?(kind_env = []) rctx term_vars actual expected =
+  if effs_eq actual expected || eff_sub ~kind_env actual expected then true
+  else
+    match actual, expected with
+    | EAns (x1, c11, c12), EAns (x2, c21, c22) ->
+      x1 = x2
+      && refined_cty_sub ~kind_env rctx term_vars c21 c11
+      && refined_cty_sub ~kind_env rctx term_vars c12 c22
+    | _ -> false
+
+and refined_cty_sub ?(kind_env = []) rctx term_vars actual expected =
+  if ctys_eq actual expected || cty_sub ~kind_env actual expected then true
+  else
+    match actual, expected with
+    | CCty (t1, e1), CCty (t2, e2) ->
+      refined_type_sub ~kind_env rctx term_vars t1 t2
+      && refined_eff_sub ~kind_env rctx term_vars e1 e2
+    | CFill (x1, c1), CFill (x2, c2) ->
+      x1 = x2
+      && (match List.assoc_opt x1 kind_env with
+          | None | Some (KATC _) -> true
+          | Some _ -> false)
+      && refined_cty_sub ~kind_env rctx term_vars c1 c2
+    | _ -> false
+
+and compose_effs_refined ?(kind_env = []) rctx term_vars e1 e2 =
+  match e1, e2 with
+  | EPure, _ -> e2
+  | _, EPure -> e1
+  | EAns (_x1, c_in_1, c_out_1), EAns (x2, c_in_2, c_out_2) ->
+    if refined_cty_sub ~kind_env rctx term_vars c_out_2 c_in_1 then
+      EAns (x2, c_in_2, c_out_1)
+    else
+      typing_error
+        "Effect composition: answer types disagree\n\tFirst needs input %s\n\tSecond produces output %s\n"
+        (cty_to_str c_in_1)
+        (cty_to_str c_out_2)
+  | _ ->
+    typing_error
+      "Effect composition: cannot compose %s with %s\n"
+      (eff_to_str e1)
+      (eff_to_str e2)
 
 (** Validates the SMT-friendly refinement predicate fragment. Multiplication
     is restricted to literal-times-anything so VCs stay in linear arithmetic. *)
@@ -703,7 +806,7 @@ and check_cty ?(msg = "") rctx captured_vars cap_vars label_vars term_vars (e: e
   let te = type_expr rctx captured_vars cap_vars label_vars term_vars e in
   let actual = te.expr_cty in
   if ctys_eq actual expected then te
-  else if cty_sub actual expected then { te with expr_cty = expected }
+  else if refined_cty_sub rctx term_vars actual expected then { te with expr_cty = expected }
   else begin
     (* Try a refinement-aware comparison on the value-type component. The
        effect parts must still match via [eff_sub]. *)
@@ -728,11 +831,14 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
   let type_expr = type_expr rctx in
   let check_ty ?(msg="") = check_ty ~msg rctx in
   let check_cty ?(msg="") = check_cty ~msg rctx in
+  let compose_effs ?(kind_env = []) e1 e2 =
+    compose_effs_refined ~kind_env rctx term_vars e1 e2
+  in
   let ty_of te = ty_of_cty te.expr_cty in
   let eff_of te = eff_of_cty te.expr_cty in
   let lift_to_cty ?(msg = "") te expected =
     if ctys_eq te.expr_cty expected then te
-    else if cty_sub te.expr_cty expected then { te with expr_cty = expected }
+    else if refined_cty_sub rctx term_vars te.expr_cty expected then { te with expr_cty = expected }
     else
       typing_error
         "%s\n\tExpected: %s\n\tActual: %s\n"
@@ -742,8 +848,8 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
   in
   let common_eff ?(msg = "") eff1 eff2 =
     if effs_eq eff1 eff2 then eff1
-    else if sub_eff eff1 eff2 then eff2
-    else if sub_eff eff2 eff1 then eff1
+    else if refined_eff_sub rctx term_vars eff1 eff2 then eff2
+    else if refined_eff_sub rctx term_vars eff2 eff1 then eff1
     else
       typing_error
         "%s\n\tLeft: %s\n\tRight: %s\n"
@@ -1208,7 +1314,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
           match handle_body'.expr_cty with
           | CCty (_, EPure) -> initial_ans_cty
           | CCty (_, EAns (_ans_binder, c1_actual, c2_actual)) ->
-            if cty_sub initial_ans_cty c1_actual then c2_actual
+            if refined_cty_sub rctx term_vars initial_ans_cty c1_actual then c2_actual
             else
               typing_error
                 "Handle: Body initial answer type doesn't match return clause\n\tExpected input: %s\n\tActual input: %s\n"
