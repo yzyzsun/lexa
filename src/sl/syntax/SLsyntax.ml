@@ -92,7 +92,7 @@ and expr =
     raise_op : var;
     raise_evidence : evidence;
     raise_tylikes : typelike list;
-    raise_atc : atc;
+    raise_atc : atc option;
     raise_args : expr list
   }
   | Resume of expr * expr
