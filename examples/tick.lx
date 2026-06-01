@@ -12,9 +12,9 @@ effect TickCount {
 
 def main(): { z: int | z == 2 } / int => int {
     val run = handle <> { [r, e] =>
-        raise tick.tick[0; []; top, Pred(z: Int) { z == 2 }, int](0, 7);
-        raise tick.tick[0; []; top, Pred(z: Int) { z == 2 }, int](1, 9);
-        val n = raise tick.count[0; []; top, Pred(z: Int) { z == 2 }, Pred(z: Int) { z == 2 }, int]();
+        raise tick.tick[top, Pred(z: Int) { z == 2 }, int](0, 7);
+        raise tick.tick[top, Pred(z: Int) { z == 2 }, int](1, 9);
+        val n = raise tick.count[top, Pred(z: Int) { z == 2 }, Pred(z: Int) { z == 2 }, int]();
         n
     } with tick: TickCount {
         return x: { z: int | z == 2 } {
