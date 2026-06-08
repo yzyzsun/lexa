@@ -49,6 +49,13 @@ let fresh_refinement_witness =
     incr counter;
     name
 
+let fresh_path_hypothesis =
+  let counter = ref 0 in
+  fun () ->
+    let name = "__path_hyp_" ^ string_of_int !counter ^ "__" in
+    incr counter;
+    name
+
 let fresh_function_region =
   let counter = ref 0 in
   fun () ->
@@ -566,6 +573,86 @@ let make_label_binding ?(op_captured_set=empty_capability) sig_name c1 c2 : labe
   in
   { lb_effect_name = sig_name; lb_op_ctys = op_ctys }
 
+let term_vars_with_path_hypothesis term_vars pred =
+  let hyp = fresh_path_hypothesis () in
+  (hyp, TRefine (hyp, TBool, pred)) :: term_vars
+
+let branch_term_vars term_vars cond positive =
+  match pred_of_expr_opt cond with
+  | None -> term_vars
+  | Some pred ->
+    term_vars_with_path_hypothesis term_vars
+      (if positive then pred else PNeg pred)
+
+let rec syntactic_term_eq t1 t2 =
+  match t1, t2 with
+  | PTUnit, PTUnit -> true
+  | PTInt n1, PTInt n2 -> n1 = n2
+  | PTBool b1, PTBool b2 -> b1 = b2
+  | PTVar x, PTVar y -> x = y
+  | PTArith (l1, op1, r1), PTArith (l2, op2, r2) ->
+    op1 = op2 && syntactic_term_eq l1 l2 && syntactic_term_eq r1 r2
+  | _ -> false
+
+let rec syntactic_pred_holds = function
+  | PAtom (PTBool true) -> true
+  | PAtom _ -> false
+  | PCmp (t1, CEq, t2) -> syntactic_term_eq t1 t2
+  | PCmp (t1, CNeq, t2) -> not (syntactic_term_eq t1 t2)
+  | PCmp _ -> false
+  | PBArith (p1, BConj, p2) ->
+    syntactic_pred_holds p1 && syntactic_pred_holds p2
+  | PBArith (p1, BDisj, p2) ->
+    syntactic_pred_holds p1 || syntactic_pred_holds p2
+  | PNeg p -> not (syntactic_pred_holds p)
+  | PApp _ -> false
+
+let rec pred_contains_app = function
+  | PApp _ -> true
+  | PAtom _ | PCmp _ -> false
+  | PNeg p -> pred_contains_app p
+  | PBArith (p1, _, p2) -> pred_contains_app p1 || pred_contains_app p2
+
+let rec ty_contains_pred_app = function
+  | TRef t
+  | TNode t
+  | TTree t
+  | TQueue t
+  | TArray t -> ty_contains_pred_app t
+  | TFun { params_ty; return_cty; _ } ->
+    List.exists (fun (_, t) -> ty_contains_pred_app t) params_ty
+    || cty_contains_pred_app return_cty
+  | TCont { effect_return_ty; return_cty; _ } ->
+    ty_contains_pred_app effect_return_ty || cty_contains_pred_app return_cty
+  | TCon (_, args) -> List.exists ty_contains_pred_app args
+  | TForall (_, _, _, t) -> ty_contains_pred_app t
+  | TRefine (_, inner, pred) ->
+    ty_contains_pred_app inner || pred_contains_app pred
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> false
+
+and cty_contains_pred_app = function
+  | CTyVar _ -> false
+  | CCty (t, eff) -> ty_contains_pred_app t || eff_contains_pred_app eff
+  | CFill (_, c) -> cty_contains_pred_app c
+
+and eff_contains_pred_app = function
+  | EPure | EEffVar _ -> false
+  | EAns (_, c1, c2) -> cty_contains_pred_app c1 || cty_contains_pred_app c2
+
+let nullary_constructor_type con_name =
+  List.find_map
+    (fun (type_name, (type_params, type_cons)) ->
+       match List.assoc_opt con_name type_cons with
+       | Some [] -> Some (TCon (type_name, List.map (fun tv -> TVar tv) type_params))
+       | _ -> None)
+    !type_defs_context
+
+let handler_cty_var_default handle_final =
+  match handle_final with
+  | CCty (TFun { return_cty = CCty (_, EAns (_, _, final_cty)); _ }, EPure) ->
+    final_cty
+  | _ -> handle_final
+
 (** Checks whether expression e has value type ty. Effects are not constrained.
     Raises an error with expected and actual types if the value parts don't match.
 
@@ -607,6 +694,14 @@ and check_refined_subtype _rctx term_vars witness actual expected =
       | t -> t
     in
     if not (types_eq actual_base te) then false
+    else if Refinement.smt_sort_of_ty te = None then
+      (match witness with
+       | Some w ->
+         (match pred_term_of_expr_opt w with
+          | Some witness_term ->
+            syntactic_pred_holds (subst_var_in_pred qe ve witness_term)
+          | None -> false)
+       | None -> false)
     else begin
       (* If the witness expression cannot be encoded by the SMT backend (for
          example, a function call), replace it with a fresh symbol of the
@@ -925,19 +1020,13 @@ and compose_effs_refined ?(kind_env = []) rctx term_vars e1 e2 =
       (eff_to_str e1)
       (eff_to_str e2)
 
-(** Validates the SMT-friendly refinement predicate fragment. Multiplication
-    is restricted to literal-times-anything so VCs stay in linear arithmetic. *)
+(** Validates refinement predicates structurally. The SMT backend emits
+    [set-logic ALL], so nonlinear integer terms are left to Z3 instead of
+    rejected here. *)
 and validate_pred (p: SLsyntax.pred) =
   let rec go_term t =
     match t with
     | PTUnit | PTInt _ | PTBool _ | PTVar _ -> ()
-    | PTArith (t1, AMult, t2) ->
-      (match t1, t2 with
-       | PTInt _, _ | _, PTInt _ -> go_term t1; go_term t2
-       | _ ->
-         typing_error
-           "Refinement predicate: '*' must have an integer literal on at least one side (linear arithmetic). Got: %s\n"
-           (pred_term_to_str t))
     | PTArith (t1, _, t2) -> go_term t1; go_term t2
   in
   let rec go p =
@@ -986,7 +1075,10 @@ and pred_term_type rctx term_vars (t: pred_term) : ty =
   | PTVar x ->
     (match List.assoc_opt x term_vars with
      | Some t -> t
-     | None -> typing_error "Refinement predicate: variable %s not found\n" x)
+     | None ->
+       (match nullary_constructor_type x with
+        | Some t -> t
+        | None -> typing_error "Refinement predicate: variable %s not found\n" x))
   | PTArith (t1, _, t2) ->
     check_pred_term_expected rctx term_vars t1 TInt;
     check_pred_term_expected rctx term_vars t2 TInt;
@@ -1051,44 +1143,11 @@ and check_pred_tylike rctx term_vars expected_args params body =
 
 (** Walks a type and, for every [TRefine(v, base, p)] encountered, validates
     [p] structurally and type-checks it as [TBool] under the env extended
-    with [(v, base)]. Refinements on non-base types should already be ruled
-    out at parse time, but we recurse defensively so synthetic types built by
-    the typechecker (e.g. via type substitution) don't slip through. *)
+    with [(v, base)]. *)
 and check_refinement_wellformed rctx term_vars (ty: ty) =
-  let rec contains_refinement ty =
-    match ty with
-    | TRefine _ -> true
-    | TRef t
-    | TNode t
-    | TTree t
-    | TQueue t
-    | TArray t -> contains_refinement t
-    | TCon (_, t_args) -> List.exists contains_refinement t_args
-    | TFun { params_ty; return_cty; _ } ->
-      List.exists (fun (_, ty) -> contains_refinement ty) params_ty || cty_contains_refinement return_cty
-    | TCont { effect_return_ty; return_cty; _ } ->
-      contains_refinement effect_return_ty || cty_contains_refinement return_cty
-    | TForall (_, _, _, t) -> contains_refinement t
-    | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> false
-  and cty_contains_refinement c =
-    match c with
-    | CCty (t, eff) -> contains_refinement t || eff_contains_refinement eff
-    | CTyVar _ -> false
-    | CFill (_, c') -> cty_contains_refinement c'
-  and eff_contains_refinement eff =
-    match eff with
-    | EPure | EEffVar _ -> false
-    | EAns (_, c1, c2) -> cty_contains_refinement c1 || cty_contains_refinement c2
-  in
   let rec go term_vars ty = match ty with
     | TRefine (v, inner, p) ->
       validate_pred p;
-      (match inner with
-       | TInt | TBool -> ()
-       | _ ->
-         typing_error
-           "Refinement {%s: %s | _}: refinement is only supported on int and bool in this iteration\n"
-           v (type_to_str inner));
       check_pred_expected rctx ((v, inner) :: term_vars) p TBool;
       go term_vars inner
     | TRef inner -> go term_vars inner
@@ -1112,16 +1171,8 @@ and check_refinement_wellformed rctx term_vars (ty: ty) =
       in
       go_cty term_vars' return_cty
     | TNode t | TTree t | TQueue t | TArray t ->
-      if contains_refinement t then
-        typing_error
-          "Refinement inside data-structure type arguments is out of scope in this iteration: %s\n"
-          (type_to_str ty);
       go term_vars t
     | TCon (_, t_args) ->
-      if List.exists contains_refinement t_args then
-        typing_error
-          "Refinement inside type-constructor arguments is out of scope in this iteration: %s\n"
-          (type_to_str ty);
       List.iter (go term_vars) t_args
     | TForall (_, _, _, t) -> go term_vars t
     | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ()
@@ -1326,6 +1377,39 @@ and check_cty ?(msg = "") rctx captured_vars cap_vars label_vars term_vars (e: e
         (cty_to_str expected)
         (cty_to_str te.expr_cty)
   | _ ->
+    (match expected, e with
+     | CCty (_, EPure), If (cond, e1, e2) ->
+       let cond' =
+         check_ty rctx captured_vars cap_vars label_vars term_vars cond TBool
+           ~msg:"If: Expected bool as condition"
+       in
+       let then_vars = branch_term_vars term_vars cond true in
+       let else_vars = branch_term_vars term_vars cond false in
+       let e1' =
+         check_cty ~msg rctx captured_vars cap_vars label_vars then_vars e1 expected
+       in
+       let e2' =
+         check_cty ~msg rctx captured_vars cap_vars label_vars else_vars e2 expected
+       in
+       let actual = CCty (ty_of_cty expected, eff_of_cty cond'.expr_cty) in
+       if refined_cty_sub rctx term_vars actual expected then
+         {
+           expr_desc = If (cond', e1', e2');
+           expr_cty = expected;
+           region_constraints =
+             constraints_unions
+               [cond'.region_constraints; e1'.region_constraints; e2'.region_constraints];
+           captured_vars;
+           cap_vars;
+           label_vars;
+         }
+       else
+         typing_error
+           "%s\n\tExpected: %s\n\tActual: %s\n"
+           msg
+           (cty_to_str expected)
+           (cty_to_str actual)
+     | _ ->
     let te = type_expr rctx captured_vars cap_vars label_vars term_vars e in
     let actual = te.expr_cty in
     if ctys_eq actual expected then te
@@ -1346,7 +1430,7 @@ and check_cty ?(msg = "") rctx captured_vars cap_vars label_vars term_vars (e: e
           msg
           (cty_to_str expected)
           (cty_to_str actual)
-    end
+    end)
 
 and type_expr_with_final rctx (captured_vars: capture_set) cap_vars label_vars
     (term_vars: (string * ty) list) (e: expr) (final_cty: cty)
@@ -1482,12 +1566,14 @@ and type_expr_with_final rctx (captured_vars: capture_set) cap_vars label_vars
       check_ty captured_vars cap_vars label_vars term_vars cond TBool
         ~msg:"If: Expected bool as condition"
     in
+    let then_vars = branch_term_vars term_vars cond true in
+    let else_vars = branch_term_vars term_vars cond false in
     let e1' =
-      type_expr_with_final rctx captured_vars cap_vars label_vars term_vars
+      type_expr_with_final rctx captured_vars cap_vars label_vars then_vars
         e1 final_cty return_seed
     in
     let e2' =
-      type_expr_with_final rctx captured_vars cap_vars label_vars term_vars
+      type_expr_with_final rctx captured_vars cap_vars label_vars else_vars
         e2 final_cty return_seed
     in
     let t1 = ty_of e1' in
@@ -1741,8 +1827,10 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
 
     | If (cond, e1, e2) ->
       let cond' = check_ty captured_vars cap_vars label_vars term_vars cond TBool ~msg:"If: Expected bool as condition" in
-      let e1' = type_expr captured_vars cap_vars label_vars term_vars e1 in
-      let e2' = type_expr captured_vars cap_vars label_vars term_vars e2 in
+      let then_vars = branch_term_vars term_vars cond true in
+      let else_vars = branch_term_vars term_vars cond false in
+      let e1' = type_expr captured_vars cap_vars label_vars then_vars e1 in
+      let e2' = type_expr captured_vars cap_vars label_vars else_vars e2 in
       let e1'', e2'', branch_cty =
         align_branch_ctys ~msg:"If: The two branches don't agree" e1' e2'
       in
@@ -1949,13 +2037,14 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       let type_handler_defs handler_initial_cty =
         List.map (fun ({ op_anno; op_name; op_params; op_body }: SLsyntax.hdl) ->
           let effect_sig = get_effect_sig sig_name op_name in
-          let op_bindings, effect_params, effect_inputs_ty, effect_return_ty, op_c1, op_c2 =
+          let op_bindings, effect_params, effect_inputs_ty, effect_return_ty, effect_return_var, op_c1, op_c2 =
             match effect_sig with
             | EffectSimple (effect_inputs_ty, effect_return_ty) ->
               ( [],
                 List.map (fun ty -> (None, ty)) effect_inputs_ty,
                 effect_inputs_ty,
                 effect_return_ty,
+                None,
                 handler_initial_cty,
                 c2 )
             | EffectFull (_bindings, params, op_cty) ->
@@ -1964,13 +2053,23 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
                 |> promote_cty_vars_in_cty _bindings
                 |> replace_empty_fun_capture_cty captured_set
               in
-              let return_ty, _ans_binder, _op_c1, _op_c2 = split_op_cty op_name op_cty in
+              let cty_var_default = handler_cty_var_default c2 in
+              let op_cty =
+                List.fold_left
+                  (fun acc (tv, kind) ->
+                     match kind with
+                     | KCty -> substitute_cty_var_to_cty acc tv cty_var_default
+                     | _ -> acc)
+                  op_cty _bindings
+              in
+              let return_ty, ans_binder, op_c1, op_c2 = split_op_cty op_name op_cty in
               ( _bindings,
                 params,
                 List.map erase_refinements_ty (op_param_tys params),
                 erase_refinements_ty return_ty,
-                handler_initial_cty,
-                c2 )
+                ans_binder,
+                op_c1,
+                op_c2 )
           in
           let base_param_count = List.length effect_inputs_ty in
           let expected_param_count =
@@ -2007,9 +2106,15 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
             let op_c1 = substitute_op_params_cty op_c1 in
             let op_c2 = substitute_op_params_cty op_c2 in
             let effect_return_ty = substitute_op_params_ty effect_return_ty in
+            let op_c1 =
+              if cty_contains_pred_app op_c1 then handler_initial_cty else op_c1
+            in
+            let op_c2 =
+              if cty_contains_pred_app op_c2 then c2 else op_c2
+            in
             let cont_type = TCont {
               captured_set;
-              effect_return_var = None;
+              effect_return_var;
               effect_return_ty;
               return_cty = op_c1
             } in

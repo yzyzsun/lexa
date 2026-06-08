@@ -185,16 +185,16 @@ opt_fun_region:
   | LSB region = region_lit RSB { region }
   | { RTop }
 
-(* Inner type of a refinement is restricted to the base scalar types: refinements
-   on ref/cont/function/ADT types are out of scope for this iteration. *)
 refine_base_ty:
   | TINT { TInt }
   | TBOOL { TBool }
+  | TUNIT { TUnit }
+  | pattern_name = VAR { TCon (pattern_name, []) }
+  | pattern_name = VAR COLON COLON LSB type_args = separated_list(COMMA, type_exp) RSB { TCon (pattern_name, type_args) }
 
 (* Predicate sub-grammar. A strict logical syntax for refinement predicates:
-   integer/bool literals, variables, predicate variables, linear arithmetic
-   (validated at typecheck time to avoid non-linear products), comparisons,
-   boolean connectives, parentheses. *)
+   integer/bool literals, variables, nullary constructors, predicate variables,
+   arithmetic, comparisons, boolean connectives, parentheses. *)
 pred_expr:
   | pred_atom { $1 }
   | t1 = pred_term CMPEQ t2 = pred_term { PCmp(t1, CEq, t2) }
@@ -222,6 +222,7 @@ pred_term:
 
 pred_term_atom:
   | VAR { PTVar $1 }
+  | CAPITALIZED_VAR { PTVar $1 }
   | INT { PTInt $1 }
   | SUB INT { PTInt (Int.neg $2) }
   | TRUE { PTBool true }

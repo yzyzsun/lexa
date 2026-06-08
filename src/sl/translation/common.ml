@@ -78,9 +78,26 @@ let rec pred_term_of_expr_opt (e: expr) : pred_term option =
   | Int n -> Some (PTInt n)
   | Bool b -> Some (PTBool b)
   | Var x -> Some (PTVar x)
+  | Typecon (con_name, _, _) -> Some (PTVar con_name)
   | Arith (e1, op, e2) ->
     (match pred_term_of_expr_opt e1, pred_term_of_expr_opt e2 with
      | Some t1, Some t2 -> Some (PTArith (t1, op, t2))
+     | _ -> None)
+  | _ -> None
+
+let rec pred_of_expr_opt (e: expr) : pred option =
+  match e with
+  | Bool b -> Some (PAtom (PTBool b))
+  | Var x -> Some (PAtom (PTVar x))
+  | Cmp (e1, op, e2) ->
+    (match pred_term_of_expr_opt e1, pred_term_of_expr_opt e2 with
+     | Some t1, Some t2 -> Some (PCmp (t1, op, t2))
+     | _ -> None)
+  | Neg e ->
+    Option.map (fun p -> PNeg p) (pred_of_expr_opt e)
+  | BArith (e1, op, e2) ->
+    (match pred_of_expr_opt e1, pred_of_expr_opt e2 with
+     | Some p1, Some p2 -> Some (PBArith (p1, op, p2))
      | _ -> None)
   | _ -> None
 
