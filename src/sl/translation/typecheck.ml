@@ -736,13 +736,104 @@ and answer_final_for_return seed e =
   | Some x -> substitute_term_to_cty seed.initial_cty x e
   | None -> seed.initial_cty
 
-and final_answer_of_threaded te =
+and initial_answer_family_of_threaded te =
   match te.expr_cty with
-  | CCty (_, EAns (_, _, final_cty)) -> final_cty
+  | CCty (_, EAns (binder, initial_cty, _)) -> binder, initial_cty
   | _ ->
     typing_error
       "ATC inference: expected threaded computation, got %s\n"
       (cty_to_str te.expr_cty)
+
+and instantiate_answer_binder binder initial_cty witness =
+  match binder with
+  | None -> initial_cty
+  | Some x -> substitute_term_to_cty initial_cty x witness
+
+and initial_answer_for_let_continuation te x =
+  let binder, initial_cty = initial_answer_family_of_threaded te in
+  instantiate_answer_binder binder initial_cty (Var x)
+
+and initial_answer_for_stmt_continuation te =
+  let binder, initial_cty = initial_answer_family_of_threaded te in
+  match binder with
+  | None -> initial_cty
+  | Some x when cty_mentions_term x initial_cty ->
+    typing_error
+      "Stmt: left computation's answer type depends on discarded result %s\n"
+      x
+  | Some _ -> initial_cty
+
+and compatible_answer_family rctx term_vars value_ty actual_binder actual_initial expected_binder expected_initial =
+  let binder, actual_initial, expected_initial =
+    match actual_binder, expected_binder with
+    | Some x, Some y when x <> y ->
+      Some x, actual_initial, substitute_term_to_cty expected_initial y (Var x)
+    | Some x, _ -> Some x, actual_initial, expected_initial
+    | None, Some y -> Some y, actual_initial, expected_initial
+    | None, None -> None, actual_initial, expected_initial
+  in
+  let term_vars =
+    match binder with
+    | None -> term_vars
+    | Some x -> (x, value_ty) :: term_vars
+  in
+  compatible_answer_cty rctx term_vars actual_initial expected_initial
+
+and pred_term_mentions_term x = function
+  | PTVar y -> x = y
+  | PTArith (t1, _, t2) ->
+    pred_term_mentions_term x t1 || pred_term_mentions_term x t2
+  | PTUnit | PTInt _ | PTBool _ -> false
+
+and pred_mentions_term x = function
+  | PAtom t -> pred_term_mentions_term x t
+  | PCmp (t1, _, t2) ->
+    pred_term_mentions_term x t1 || pred_term_mentions_term x t2
+  | PApp (_, args) ->
+    List.exists (pred_term_mentions_term x) args
+  | PNeg p -> pred_mentions_term x p
+  | PBArith (p1, _, p2) ->
+    pred_mentions_term x p1 || pred_mentions_term x p2
+
+and ty_mentions_term x = function
+  | TRef t
+  | TNode t
+  | TTree t
+  | TQueue t
+  | TArray t ->
+    ty_mentions_term x t
+  | TFun { params_ty; return_cty; _ } ->
+    List.exists (fun (_, ty) -> ty_mentions_term x ty) params_ty
+    || if List.exists (fun (param, _) -> param = Some x) params_ty
+       then false
+       else cty_mentions_term x return_cty
+  | TCont { effect_return_var; effect_return_ty; return_cty; _ } ->
+    ty_mentions_term x effect_return_ty
+    || (match effect_return_var with
+        | Some y when y = x -> false
+        | _ -> cty_mentions_term x return_cty)
+  | TCon (_, args) ->
+    List.exists (ty_mentions_term x) args
+  | TForall (_, _, _, body) ->
+    ty_mentions_term x body
+  | TRefine (binder, inner, pred) ->
+    ty_mentions_term x inner
+    || (binder <> x && pred_mentions_term x pred)
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> false
+
+and cty_mentions_term x = function
+  | CTyVar _ -> false
+  | CCty (t, eff) ->
+    ty_mentions_term x t || eff_mentions_term x eff
+  | CFill (_, c) ->
+    cty_mentions_term x c
+
+and eff_mentions_term x = function
+  | EPure | EEffVar _ -> false
+  | EAns (Some y, _, c2) when y = x ->
+    cty_mentions_term x c2
+  | EAns (_, c1, c2) ->
+    cty_mentions_term x c1 || cty_mentions_term x c2
 
 and peel_one_answer_layer c =
   match c with
@@ -1034,7 +1125,7 @@ and check_refinement_wellformed rctx term_vars (ty: ty) =
       go_cty term_vars c2
   in go term_vars ty
 
-and type_raise_expr ?answer_seed ?(preview_omitted_atc = false) rctx captured_vars cap_vars label_vars term_vars
+and type_raise_expr ?final_answer rctx captured_vars cap_vars label_vars term_vars
     raise_label raise_op raise_evidence raise_tylikes raise_atc_opt raise_args =
   let op_cty_info = find_op_cty raise_label raise_op captured_vars label_vars in
   let raise_evidence, raise_tylikes =
@@ -1073,30 +1164,22 @@ and type_raise_expr ?answer_seed ?(preview_omitted_atc = false) rctx captured_va
   let op_return_ty = instantiate_type op_cty_info.op_return_ty in
   let op_c1 = instantiate_cty op_cty_info.op_c1 in
   let op_c2 = instantiate_cty op_cty_info.op_c2 in
-  let infer_atc_or_error seed distance op_c1 =
-    match try_infer_atc_from_answer rctx term_vars seed.initial_cty op_c1 distance with
-    | Some inferred_atc -> inferred_atc
-    | None ->
-      let inferred_frame =
-        match normalize_distance distance, peel_one_answer_layer seed.initial_cty with
-        | DOne, Some (_, _, frame_final) ->
-          Printf.sprintf "\n\tPeeled final answer: %s" (cty_to_str frame_final)
-        | _ -> ""
-      in
-      typing_error
-        "Raise: could not infer ATC for %s.%s\n\tInitial answer: %s\n\tOperation input answer: %s\n\tDistance: %s%s\n"
-        raise_label raise_op
-        (cty_to_str seed.initial_cty)
-        (cty_to_str op_c1)
-        (distance_to_str distance)
-        inferred_frame
-  in
-  let choose_atc_and_constraints op_c1 =
-    match answer_seed, List.assoc_opt raise_label rctx.label_regions, raise_atc_opt with
-    | Some seed, Some target_region, None ->
+  let choose_atc_and_constraints op_c2 =
+    match final_answer, List.assoc_opt raise_label rctx.label_regions, raise_atc_opt with
+    | Some final_cty, Some target_region, None ->
       (match resolve_subregion_or_flex rctx rctx.current_region target_region [] with
        | Some (Complete distance) ->
-         infer_atc_or_error seed distance op_c1, []
+         (match try_infer_atc_from_answer rctx term_vars final_cty op_c2 distance with
+          | Some inferred_atc -> inferred_atc, []
+          | None ->
+            if distance_eq distance DZero then ATCHole, []
+            else
+              typing_error
+                "Raise: could not infer ATC for %s.%s from final answer\n\tFinal answer: %s\n\tOperation output answer: %s\n\tDistance: %s\n"
+                raise_label raise_op
+                (cty_to_str final_cty)
+                (cty_to_str op_c2)
+                (distance_to_str distance))
        | Some (Blocked _) ->
          typing_error
            "Raise: cannot infer ATC for %s.%s before the subregion path is resolved\n"
@@ -1105,26 +1188,19 @@ and type_raise_expr ?answer_seed ?(preview_omitted_atc = false) rctx captured_va
          typing_error
            "Raise: cannot infer ATC for %s.%s without a subregion path\n"
            raise_label raise_op)
-    | Some seed, Some target_region, Some raise_atc ->
+    | Some final_cty, Some target_region, Some raise_atc ->
       (match resolve_subregion_or_flex rctx rctx.current_region target_region [] with
        | Some (Complete distance) ->
-         (match try_infer_atc_from_answer rctx term_vars seed.initial_cty op_c1 distance with
+         (match try_infer_atc_from_answer rctx term_vars final_cty op_c2 distance with
           | Some inferred_atc ->
-            let annotation_matches =
-              atcs_eq inferred_atc raise_atc
-            in
-            if not annotation_matches then
+            if not (atcs_eq inferred_atc raise_atc) then
               typing_error
-                "Raise: supplied ATC does not match the inferred answer context for %s.%s\n\tSupplied: %s\n\tInferred: %s\n"
+                "Raise: supplied ATC does not match the final-answer-inferred context for %s.%s\n\tSupplied: %s\n\tInferred: %s\n"
                 raise_label raise_op
                 (atc_to_str raise_atc)
                 (atc_to_str inferred_atc);
             inferred_atc, []
           | None ->
-            (* Some legacy programs rely on pure-to-impure subsumption to add
-               answer layers that are not uniquely recoverable from the
-               threaded answer alone. Keep the explicit ATC path for those
-               underdetermined sites. *)
             let l_atc = check_atc rctx.kind_env term_vars raise_atc in
             raise_atc, check_subregion rctx rctx.current_region target_region l_atc)
        | _ ->
@@ -1136,7 +1212,6 @@ and type_raise_expr ?answer_seed ?(preview_omitted_atc = false) rctx captured_va
     | _, Some target_region, None ->
       (match resolve_subregion_or_flex rctx rctx.current_region target_region [] with
        | Some (Complete DZero) -> ATCHole, []
-       | _ when preview_omitted_atc -> ATCHole, []
        | _ ->
          typing_error
            "Raise: omitted ATC for %s.%s requires an expected answer context\n"
@@ -1172,7 +1247,7 @@ and type_raise_expr ?answer_seed ?(preview_omitted_atc = false) rctx captured_va
         (op_return_ty, op_c1, op_c2)
         op_cty_info.op_params raise_args
     in
-    let raise_atc, subregion_constraints = choose_atc_and_constraints op_c1 in
+    let raise_atc, subregion_constraints = choose_atc_and_constraints op_c2 in
     let kind_env = rctx.kind_env in
     let args_eff =
       List.fold_left
@@ -1195,26 +1270,32 @@ and type_raise_expr ?answer_seed ?(preview_omitted_atc = false) rctx captured_va
       subregion_constraints )
 
 (** Checks an expression against an expected computation type. For impure
-    expectations, the expected initial answer is threaded backward through the
-    expression so Raise sites can recover their ATC from the surrounding answer
-    context. Pure expressions are lifted by the algorithmic Return rule, using
-    dependent substitution when the initial answer has a binder. *)
+    expectations, the expected final answer is threaded forward through the
+    expression so Raise sites recover their ATC by factoring the final answer
+    against the operation's C2. Pure tail expressions still use the expected
+    initial answer as the return-answer family. *)
 and check_cty ?(msg = "") rctx captured_vars cap_vars label_vars term_vars (e: expr) expected =
   match expected with
   | CCty (expected_ty, EAns (initial_binder, initial_cty, expected_final)) ->
     let seed = { initial_binder; initial_cty } in
-    let te = type_expr_with_initial rctx captured_vars cap_vars label_vars term_vars e seed in
+    let te =
+      type_expr_with_final rctx captured_vars cap_vars label_vars term_vars
+        e expected_final (Some seed)
+    in
     let actual_ty = ty_of_cty te.expr_cty in
-    let actual_final = final_answer_of_threaded te in
+    let actual_initial_binder, actual_initial =
+      initial_answer_family_of_threaded te
+    in
     let value_ok =
       types_eq actual_ty expected_ty
       || refined_type_sub ~kind_env:rctx.kind_env rctx term_vars actual_ty expected_ty
       || check_refined_subtype rctx term_vars (Some e) actual_ty expected_ty
     in
-    let final_ok =
-      compatible_answer_cty rctx term_vars actual_final expected_final
+    let initial_ok =
+      compatible_answer_family rctx term_vars actual_ty
+        actual_initial_binder actual_initial initial_binder initial_cty
     in
-    if value_ok && final_ok then { te with expr_cty = expected }
+    if value_ok && initial_ok then { te with expr_cty = expected }
     else
       typing_error
         "%s\n\tExpected: %s\n\tActual: %s\n"
@@ -1244,8 +1325,9 @@ and check_cty ?(msg = "") rctx captured_vars cap_vars label_vars term_vars (e: e
           (cty_to_str actual)
     end
 
-and type_expr_with_initial rctx (captured_vars: capture_set) cap_vars label_vars
-    (term_vars: (string * ty) list) (e: expr) (seed: answer_context): typed_expr =
+and type_expr_with_final rctx (captured_vars: capture_set) cap_vars label_vars
+    (term_vars: (string * ty) list) (e: expr) (final_cty: cty)
+    (return_seed: answer_context option): typed_expr =
   let type_expr_plain = type_expr rctx in
   let check_ty ?(msg="") = check_ty ~msg rctx in
   let compose_effs ?(kind_env = []) e1 e2 =
@@ -1316,55 +1398,61 @@ and type_expr_with_initial rctx (captured_vars: capture_set) cap_vars label_vars
       label_vars;
     }
   in
-  let threaded_cty ty final_cty =
-    CCty (ty, EAns (seed.initial_binder, seed.initial_cty, final_cty))
+  let with_final ty binder initial_cty =
+    CCty (ty, EAns (binder, initial_cty, final_cty))
+  in
+  let lift_plain source_expr te =
+    match te.expr_cty with
+    | CCty (t, EPure) ->
+      (match return_seed with
+       | Some seed ->
+         let return_final = answer_final_for_return seed source_expr in
+         if compatible_answer_cty rctx term_vars return_final final_cty then
+           { te with expr_cty = with_final t seed.initial_binder seed.initial_cty }
+         else
+           { te with expr_cty = with_final t None final_cty }
+       | None ->
+         { te with expr_cty = with_final t None final_cty })
+    | CCty (t, EAns (binder, actual_initial, actual_final)) ->
+      if compatible_answer_cty rctx term_vars actual_final final_cty then
+        { te with expr_cty = with_final t binder actual_initial }
+      else
+        typing_error
+          "ATC inference: inherited final answer does not match synthesized computation\n\tInherited final: %s\n\tSynthesized final: %s\n"
+          (cty_to_str final_cty)
+          (cty_to_str actual_final)
+    | _ ->
+      typing_error
+        "ATC inference: unsupported computation type %s\n"
+        (cty_to_str te.expr_cty)
   in
   match e with
   | Let (x, e1, e2) ->
-    let e1_preview =
-      match e1 with
-      | Raise { raise_label; raise_op; raise_evidence; raise_tylikes; raise_atc = None; raise_args } ->
-        let expr_desc, expr_cty, region_constraints =
-          type_raise_expr ~preview_omitted_atc:true rctx captured_vars cap_vars label_vars term_vars
-            raise_label raise_op raise_evidence raise_tylikes None raise_args
-        in
-        mk expr_desc expr_cty region_constraints
-      | _ ->
-        type_expr_plain captured_vars cap_vars label_vars term_vars e1
-    in
-    let t1 = ty_of e1_preview in
-    let e2' =
-      type_expr_with_initial rctx captured_vars cap_vars label_vars
-        ((x, t1) :: term_vars) e2 seed
-    in
-    let link_answer = final_answer_of_threaded e2' in
-    let e1_seed = { initial_binder = Some x; initial_cty = link_answer } in
     let e1' =
-      type_expr_with_initial rctx captured_vars cap_vars label_vars
-        term_vars e1 e1_seed
+      type_expr_with_final rctx captured_vars cap_vars label_vars term_vars
+        e1 final_cty None
     in
-    let t1_actual = ty_of e1' in
-    if not (types_eq t1_actual t1
-            || refined_type_sub ~kind_env:rctx.kind_env rctx term_vars t1_actual t1)
-    then
-      typing_error
-        "Let: bound expression value type changed during ATC inference\n\tPreview: %s\n\tActual: %s\n"
-        (type_to_str t1)
-        (type_to_str t1_actual);
-    let final_answer = final_answer_of_threaded e1' in
-    mk (Let (x, e1', e2')) (threaded_cty (ty_of e2') final_answer) []
+    let link_answer = initial_answer_for_let_continuation e1' x in
+    let t1 = ty_of e1' in
+    let e2' =
+      type_expr_with_final rctx captured_vars cap_vars label_vars
+        ((x, t1) :: term_vars) e2 link_answer return_seed
+    in
+    let initial_binder, initial_answer = initial_answer_family_of_threaded e2' in
+    mk (Let (x, e1', e2')) (with_final (ty_of e2') initial_binder initial_answer) []
 
   | Stmt (e1, e2) ->
-    let e2' =
-      type_expr_with_initial rctx captured_vars cap_vars label_vars term_vars e2 seed
-    in
-    let link_answer = final_answer_of_threaded e2' in
     let e1' =
-      type_expr_with_initial rctx captured_vars cap_vars label_vars term_vars e1
-        { initial_binder = None; initial_cty = link_answer }
+      type_expr_with_final rctx captured_vars cap_vars label_vars term_vars
+        e1 final_cty None
     in
-    let final_answer = final_answer_of_threaded e1' in
-    mk (Stmt (e1', e2')) (threaded_cty (ty_of e2') final_answer) []
+    let link_answer = initial_answer_for_stmt_continuation e1' in
+    let e2' =
+      type_expr_with_final rctx captured_vars cap_vars label_vars term_vars
+        e2 link_answer return_seed
+    in
+    let initial_binder, initial_answer = initial_answer_family_of_threaded e2' in
+    mk (Stmt (e1', e2')) (with_final (ty_of e2') initial_binder initial_answer) []
 
   | If (cond, e1, e2) ->
     let cond' =
@@ -1372,10 +1460,12 @@ and type_expr_with_initial rctx (captured_vars: capture_set) cap_vars label_vars
         ~msg:"If: Expected bool as condition"
     in
     let e1' =
-      type_expr_with_initial rctx captured_vars cap_vars label_vars term_vars e1 seed
+      type_expr_with_final rctx captured_vars cap_vars label_vars term_vars
+        e1 final_cty return_seed
     in
     let e2' =
-      type_expr_with_initial rctx captured_vars cap_vars label_vars term_vars e2 seed
+      type_expr_with_final rctx captured_vars cap_vars label_vars term_vars
+        e2 final_cty return_seed
     in
     let t1 = ty_of e1' in
     let t2 = ty_of e2' in
@@ -1384,21 +1474,38 @@ and type_expr_with_initial rctx (captured_vars: capture_set) cap_vars label_vars
         "If: The two branches don't agree\n\tExpected: %s\n\tActual: %s\n"
         (type_to_str t1)
         (type_to_str t2);
-    let final1 = final_answer_of_threaded e1' in
-    let final2 = final_answer_of_threaded e2' in
-    let final_answer =
-      if ctys_eq final1 final2
-         || refined_cty_sub ~kind_env:rctx.kind_env rctx term_vars final1 final2
-      then final2
-      else if refined_cty_sub ~kind_env:rctx.kind_env rctx term_vars final2 final1
-      then final1
+    let initial_binder1, initial1 = initial_answer_family_of_threaded e1' in
+    let initial_binder2, initial2 = initial_answer_family_of_threaded e2' in
+    let initial_binder =
+      match initial_binder1 with
+      | Some _ -> initial_binder1
+      | None -> initial_binder2
+    in
+    let normalize_initial branch_binder initial =
+      match initial_binder, branch_binder with
+      | Some x, Some y when x <> y -> substitute_term_to_cty initial y (Var x)
+      | _ -> initial
+    in
+    let initial1 = normalize_initial initial_binder1 initial1 in
+    let initial2 = normalize_initial initial_binder2 initial2 in
+    let branch_term_vars =
+      match initial_binder with
+      | None -> term_vars
+      | Some x -> (x, t1) :: term_vars
+    in
+    let initial_answer =
+      if ctys_eq initial1 initial2
+         || refined_cty_sub ~kind_env:rctx.kind_env rctx branch_term_vars initial1 initial2
+      then initial2
+      else if refined_cty_sub ~kind_env:rctx.kind_env rctx branch_term_vars initial2 initial1
+      then initial1
       else
         typing_error
-          "If: The two branches don't agree on final answer type\n\tLeft: %s\n\tRight: %s\n"
-          (cty_to_str final1)
-          (cty_to_str final2)
+          "If: The two branches don't agree on initial answer type\n\tLeft: %s\n\tRight: %s\n"
+          (cty_to_str initial1)
+          (cty_to_str initial2)
     in
-    let branch_eff = EAns (seed.initial_binder, seed.initial_cty, final_answer) in
+    let branch_eff = EAns (initial_binder, initial_answer, final_cty) in
     let eff = compose_effs (eff_of cond') branch_eff in
     mk (If (cond', { e1' with expr_cty = CCty (t1, branch_eff) },
              { e2' with expr_cty = CCty (t1, branch_eff) }))
@@ -1406,14 +1513,20 @@ and type_expr_with_initial rctx (captured_vars: capture_set) cap_vars label_vars
 
   | Raise { raise_label; raise_op; raise_evidence; raise_tylikes; raise_atc; raise_args } ->
     let expr_desc, expr_cty, region_constraints =
-      type_raise_expr ~answer_seed:seed rctx captured_vars cap_vars label_vars
+      type_raise_expr ~final_answer:final_cty rctx captured_vars cap_vars label_vars
         term_vars raise_label raise_op raise_evidence raise_tylikes raise_atc raise_args
+    in
+    let expr_cty =
+      match expr_cty with
+      | CCty (t, EAns (binder, initial_cty, _actual_final)) ->
+        CCty (t, EAns (binder, initial_cty, final_cty))
+      | _ -> expr_cty
     in
     mk expr_desc expr_cty region_constraints
 
   | _ ->
     let te = type_expr_plain captured_vars cap_vars label_vars term_vars e in
-    lift_expr_to_answer rctx term_vars seed e te
+    lift_plain e te
 
 and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: (string * ty) list) (e: expr): typed_expr =
   let type_expr_with = type_expr in
@@ -1787,7 +1900,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
         | _ -> typing_error "App: Function type expected\n\tActual: %s" (type_to_str fun_type)
       )
 
-    | Handle { captured_set; region_binder; evidence_binder; handle_body; handler_label; sig_name; return_clause; handler_defs } ->
+    | Handle { captured_set; region_binder; evidence_binder; handle_body; handler_label; sig_name; handle_final; return_clause; handler_defs } ->
       let captured_vars' = check_capture_set_as_unamb captured_set captured_vars cap_vars label_vars in
       (* Use the explicit region binder for this handler's region. *)
       let handler_region = RVar region_binder in
@@ -1806,22 +1919,15 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       (* Answer-type modification: the handle body has cty T / C1 => C2 where
          - T is the body's value type (given by the return clause's annotation when present),
          - C1 is the initial answer cty (return clause's output; also continuations' return cty),
-         - C2 is the final answer cty (non-HDef op bodies' cty; also the handle expression's cty).
-         Typecheck the handler first so that per-op ATMs are registered in the label
-         binding before the body is checked. *)
+         - C2 is the handle's explicit final-answer seed.
+         The seed is not inferred from operation clauses; operation clauses and
+         the handled body are checked against this same annotated C2. *)
+      let c2 = handle_final in
       let body_ty, initial_ans_binder, initial_ans_cty, typed_return_clause =
         match return_clause with
         | None ->
-          (* No return clause. Preview the body using a placeholder ATM so that
-             `Do` nodes can still be checked while we recover the body's value
-             type. We then re-typecheck the body against the real inferred ATM. *)
-          let placeholder_cty = CTyVar ("__ans_" ^ handler_label) in
-          let preview_lb = make_label_binding ~op_captured_set:captured_set sig_name placeholder_cty placeholder_cty in
-          let hb = type_expr_with body_rctx captured_vars' []
-              [(handler_label, preview_lb)]
-              term_vars handle_body in
-          let t = ty_of hb in
-          t, None, make_pure_cty t, None
+          let t = ty_of_cty c2 in
+          t, None, c2, None
         | Some { return_var; return_var_ty; return_body } ->
           let return_body' =
             type_expr_with handler_rctx captured_vars' [] []
@@ -1840,7 +1946,6 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
           List.exists (function _, EffectFull _ -> true | _ -> false) ops
         | None -> false
       in
-      let final_ans_cty = ref None in
       let handler_defs' = List.map (fun ({ op_anno; op_name; op_params; op_body }: SLsyntax.hdl) ->
         let effect_sig = get_effect_sig sig_name op_name in
         let op_bindings, effect_inputs_ty, effect_return_ty, op_c1, op_c2 =
@@ -1878,35 +1983,25 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
               if op_anno == HDef then
                 type_expr_with op_rctx captured_vars' [] [] (handler_params@term_vars) op_body
               else
-                match op_c2 with
-                | Some c2 ->
-                  check_cty_with ~msg:"Handle: Effect body cty doesn't match the polymorphic operation signature"
-                    op_rctx captured_vars' [] [] (handler_params@term_vars) op_body c2
-                | None ->
-                  match !final_ans_cty with
-                  | None ->
-                    let te = type_expr_with op_rctx captured_vars' [] [] (handler_params@term_vars) op_body in
-                    final_ans_cty := Some te.expr_cty;
-                    te
-                  | Some c2 ->
-                    check_cty_with ~msg:"Handle: Effect body cty doesn't agree on the final answer type"
-                      op_rctx captured_vars' [] [] (handler_params@term_vars) op_body c2
+                let expected_c2 =
+                  match op_c2 with
+                  | Some op_c2 -> op_c2
+                  | None -> c2
+                in
+                check_cty_with ~msg:"Handle: Effect body cty doesn't agree with the annotated final answer type"
+                  op_rctx captured_vars' [] [] (handler_params@term_vars) op_body expected_c2
             in
             { op_anno; op_name; op_params; op_body = op_body' }
       ) handler_defs in
-      let c2 = match !final_ans_cty with
-        | Some c2 -> c2
-        | None -> initial_ans_cty
-      in
       (* Register per-op types (including the inferred ATM) in the label binding,
          so that every `Do x.op [...]` inside the body can look up its C1, C2. *)
       let lb = make_label_binding ~op_captured_set:captured_set sig_name initial_ans_cty c2 in
       let body_label_vars = [(handler_label, lb)] in
       if has_full_ops then begin
         let handle_body' =
-          type_expr_with_initial body_rctx captured_vars' []
-            body_label_vars term_vars handle_body
-            { initial_binder = initial_ans_binder; initial_cty = initial_ans_cty }
+          type_expr_with_final body_rctx captured_vars' []
+            body_label_vars term_vars handle_body c2
+            (Some { initial_binder = initial_ans_binder; initial_cty = initial_ans_cty })
         in
         if List.exists (constraint_mentions region_binder) handle_body'.region_constraints then
           typing_error
@@ -1914,22 +2009,28 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
             region_binder;
         let body_actual_ty = ty_of handle_body' in
         if not (types_sub body_actual_ty body_ty
+                || types_eq body_actual_ty (erase_refinements_ty body_ty)
                 || check_refined_subtype body_rctx term_vars (Some handle_body) body_actual_ty body_ty)
         then
           typing_error "Handle: Body value type doesn't match return clause\n\tExpected: %s\n\tActual: %s\n"
             (type_to_str body_ty) (type_to_str body_actual_ty);
-        let c2 =
-          match handle_body'.expr_cty with
-          | CCty (_, EPure) -> initial_ans_cty
-          | CCty (_, EAns (_ans_binder, c1_actual, c2_actual)) ->
-            if refined_cty_sub rctx term_vars initial_ans_cty c1_actual then c2_actual
-            else
-              typing_error
-                "Handle: Body initial answer type doesn't match return clause\n\tExpected input: %s\n\tActual input: %s\n"
-                (cty_to_str initial_ans_cty) (cty_to_str c1_actual)
-          | _ -> typing_error "Handle: Unexpected body cty %s\n" (cty_to_str handle_body'.expr_cty)
-        in
-        Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
+        (match handle_body'.expr_cty with
+         | CCty (_, EAns (_ans_binder, c1_actual, c2_actual)) ->
+           if not (refined_cty_sub rctx term_vars initial_ans_cty c1_actual) then
+             typing_error
+               "Handle: Body initial answer type doesn't match return clause\n\tExpected input: %s\n\tActual input: %s\n"
+               (cty_to_str initial_ans_cty) (cty_to_str c1_actual);
+           if not (compatible_answer_cty rctx term_vars c2_actual c2) then
+             typing_error
+               "Handle: Body final answer type doesn't match annotation\n\tExpected final: %s\n\tActual final: %s\n"
+               (cty_to_str c2) (cty_to_str c2_actual)
+         | CCty (_, EPure) ->
+           if not (compatible_answer_cty rctx term_vars initial_ans_cty c2) then
+             typing_error
+               "Handle: Pure body cannot satisfy annotated final answer\n\tInitial answer: %s\n\tAnnotated final: %s\n"
+               (cty_to_str initial_ans_cty) (cty_to_str c2)
+         | _ -> typing_error "Handle: Unexpected body cty %s\n" (cty_to_str handle_body'.expr_cty));
+        Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; handle_final; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
       end else begin
         let body_expected_cty = CCty (body_ty, EAns (initial_ans_binder, initial_ans_cty, c2)) in
         let handle_body' =
@@ -1942,7 +2043,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
           typing_error
             "Handle: residual subregion constraints cannot mention local region %s"
             region_binder;
-        Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
+        Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; handle_final; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
       end
 
     | Raise { raise_label; raise_op; raise_evidence; raise_tylikes; raise_atc; raise_args } ->

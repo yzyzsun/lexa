@@ -104,6 +104,7 @@ and expr =
     handle_body : expr;
     handler_label : var;
     sig_name : var;
+    handle_final : cty;
     return_clause : return_clause option;
     handler_defs : hdl list
   }

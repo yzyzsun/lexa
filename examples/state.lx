@@ -34,7 +34,7 @@ def main(): int / int => int {
                     r(v)
                 }
             }
-        };
+        }: <s1>(int) -> int / (<>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int) => (<>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int);
         g(0)
     } with s1: State {
         return x: { x: int | x == 3 } {
@@ -52,7 +52,7 @@ def main(): int / int => int {
                 r(v)
             }
         }
-    };
+    }: <>(int) -> { z: int | z == 3 } / int => int;
     ~printInt(f(0));
     0
 }

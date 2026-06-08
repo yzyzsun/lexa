@@ -45,6 +45,6 @@ def main(): { z: int | z == 10 } / int => int {
                 r(snapshot)
             }
         }
-    };
+    }: <>(int) -> { z: int | z == 10 } / int => int;
     run(10)
 }

@@ -45,6 +45,6 @@ def main(): { z: int | z == 42 } / int => int {
                 r(0)
             }
         }
-    };
+    }: <>(int) -> { z: int | z == 42 } / int => int;
     run(0)
 }

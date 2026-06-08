@@ -32,6 +32,6 @@ def main(): { z: int | z == 2 } / int => int {
                 r(count)
             }
         }
-    };
+    }: <>(int) -> { z: int | z == 2 } / int => int;
     run(0)
 }

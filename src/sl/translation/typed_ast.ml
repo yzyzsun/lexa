@@ -71,6 +71,7 @@ and typed_expr_desc =
     handle_body : typed_expr;
     handler_label : var;
     sig_name : var;
+    handle_final : cty;
     return_clause : typed_return_clause option;
     handler_defs : hdl list;
   }
