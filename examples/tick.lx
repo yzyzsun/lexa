@@ -17,7 +17,7 @@ def main(): { z: int | z == 2 } / int => int {
         val n = raise tick.count[top, Pred(z: Int) { z == 2 }, Pred(z: Int) { z == 2 }, int]();
         n
     } with tick: TickCount {
-        return x: { z: int | z == 2 } {
+        return x {
             fun <> (count: int): { z: int | z == 2 } { x }
         }
         hdl_1 tick(before, v, k) {

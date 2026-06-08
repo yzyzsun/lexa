@@ -37,7 +37,7 @@ and op_parameter = var option * ty
 
 and return_clause = {
   return_var : var;
-  return_var_ty : ty;
+  return_var_ty : ty option;
   return_body : expr;
 }
 

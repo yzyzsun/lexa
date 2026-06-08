@@ -24,7 +24,7 @@ def main(): { z: int | z == 10 } / int => int {
             balance
         })()
     } with tx: Transaction {
-        return x: { z: int | z == 10 } {
+        return x {
             fun <> (balance: int): { z: int | z == 10 } { x }
         }
         hdl_1 get(k) {

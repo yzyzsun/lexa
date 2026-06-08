@@ -317,8 +317,11 @@ hdl_anno:
   | HDL1 { HHdl1 }
   | HDLS { HHdls }
 
+return_type_anno:
+  | COLON return_var_ty = type_exp { return_var_ty }
+
 return_clause:
-  | RETURN return_var = VAR COLON return_var_ty = type_exp LCB return_body = expr RCB
+  | RETURN return_var = VAR return_var_ty = option(return_type_anno) LCB return_body = expr RCB
     { ({return_var; return_var_ty; return_body}: SLsyntax.return_clause) }
 
 hdl_def:

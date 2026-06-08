@@ -56,6 +56,13 @@ let fresh_function_region =
     incr counter;
     RVar name
 
+let fresh_handler_answer_var =
+  let counter = ref 0 in
+  fun () ->
+    let name = "__handler_answer_" ^ string_of_int !counter ^ "__" in
+    incr counter;
+    name
+
 let region_to_str r =
   match r with
   | RTop -> "⊤"
@@ -778,6 +785,22 @@ and compatible_answer_family rctx term_vars value_ty actual_binder actual_initia
     | Some x -> (x, value_ty) :: term_vars
   in
   compatible_answer_cty rctx term_vars actual_initial expected_initial
+
+and answer_family_sub rctx term_vars value_ty actual_binder actual_initial expected_binder expected_initial =
+  let binder, actual_initial, expected_initial =
+    match actual_binder, expected_binder with
+    | Some x, Some y when x <> y ->
+      Some x, actual_initial, substitute_term_to_cty expected_initial y (Var x)
+    | Some x, _ -> Some x, actual_initial, expected_initial
+    | None, Some y -> Some y, actual_initial, expected_initial
+    | None, None -> None, actual_initial, expected_initial
+  in
+  let term_vars =
+    match binder with
+    | None -> term_vars
+    | Some x -> (x, value_ty) :: term_vars
+  in
+  refined_cty_sub ~kind_env:rctx.kind_env rctx term_vars actual_initial expected_initial
 
 and pred_term_mentions_term x = function
   | PTVar y -> x = y
@@ -1916,92 +1939,149 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
          handler's inner region. Only the handled body M is typed at the
          handler region. *)
       let handler_rctx = rctx in
-      (* Answer-type modification: the handle body has cty T / C1 => C2 where
-         - T is the body's value type (given by the return clause's annotation when present),
-         - C1 is the initial answer cty (return clause's output; also continuations' return cty),
-         - C2 is the handle's explicit final-answer seed.
-         The seed is not inferred from operation clauses; operation clauses and
-         the handled body are checked against this same annotated C2. *)
       let c2 = handle_final in
-      let body_ty, initial_ans_binder, initial_ans_cty, typed_return_clause =
-        match return_clause with
-        | None ->
-          let t = ty_of_cty c2 in
-          t, None, c2, None
-        | Some { return_var; return_var_ty; return_body } ->
-          let return_body' =
-            type_expr_with handler_rctx captured_vars' [] []
-              ((return_var, return_var_ty) :: term_vars) return_body
-          in
-          let c1 = return_body'.expr_cty in
-          ( return_var_ty,
-            Some return_var,
-            c1,
-            Some ({ return_var; return_var_ty; return_cty = c1; return_body = return_body' }
-              : Typed_ast.typed_return_clause) )
-      in
       let has_full_ops =
         match List.assoc_opt sig_name !effect_sigs_context with
         | Some ops ->
           List.exists (function _, EffectFull _ -> true | _ -> false) ops
         | None -> false
       in
-      let handler_defs' = List.map (fun ({ op_anno; op_name; op_params; op_body }: SLsyntax.hdl) ->
-        let effect_sig = get_effect_sig sig_name op_name in
-        let op_bindings, effect_inputs_ty, effect_return_ty, op_c1, op_c2 =
-          match effect_sig with
-          | EffectSimple (effect_inputs_ty, effect_return_ty) ->
-            [], effect_inputs_ty, effect_return_ty, initial_ans_cty, None
-          | EffectFull (_bindings, params, op_cty) ->
-            let op_cty =
-              op_cty
-              |> promote_cty_vars_in_cty _bindings
-              |> replace_empty_fun_capture_cty captured_set
-            in
-            let return_ty, _ans_binder, _c1, _c2 = split_op_cty op_name op_cty in
-            (* Full operation signatures describe the capability introduced
-               for the handled body. Handler clauses are still checked through
-               the implementation view used by the existing surface language:
-               operation arguments plus a continuation into the handler's
-               initial answer type. *)
-            [], List.map erase_refinements_ty (op_param_tys params),
-            erase_refinements_ty return_ty, initial_ans_cty, None
-        in
-        let cont_type = TCont {
-          captured_set;
-          effect_return_var = None;
-          effect_return_ty;
-          return_cty = op_c1
-        } in
-        let effect_inputs_ty = if (op_anno = HHdl1) || (op_anno = HHdls) then effect_inputs_ty@[cont_type] else effect_inputs_ty in
-        if (List.length op_params) != (List.length effect_inputs_ty)
-          then typing_error "Handle: Incorrect numbers of handler arguments\n\tExpected: %d\n\tActual: %d" (List.length effect_inputs_ty) (List.length op_params)
+      let type_handler_defs handler_initial_cty =
+        List.map (fun ({ op_anno; op_name; op_params; op_body }: SLsyntax.hdl) ->
+          let effect_sig = get_effect_sig sig_name op_name in
+          let op_bindings, effect_params, effect_inputs_ty, effect_return_ty, op_c1, op_c2 =
+            match effect_sig with
+            | EffectSimple (effect_inputs_ty, effect_return_ty) ->
+              ( [],
+                List.map (fun ty -> (None, ty)) effect_inputs_ty,
+                effect_inputs_ty,
+                effect_return_ty,
+                handler_initial_cty,
+                c2 )
+            | EffectFull (_bindings, params, op_cty) ->
+              let op_cty =
+                op_cty
+                |> promote_cty_vars_in_cty _bindings
+                |> replace_empty_fun_capture_cty captured_set
+              in
+              let return_ty, _ans_binder, _op_c1, _op_c2 = split_op_cty op_name op_cty in
+              ( _bindings,
+                params,
+                List.map erase_refinements_ty (op_param_tys params),
+                erase_refinements_ty return_ty,
+                handler_initial_cty,
+                c2 )
+          in
+          let base_param_count = List.length effect_inputs_ty in
+          let expected_param_count =
+            base_param_count
+            + if (op_anno = HHdl1) || (op_anno = HHdls) then 1 else 0
+          in
+          if List.length op_params <> expected_param_count then
+            typing_error "Handle: Incorrect numbers of handler arguments\n\tExpected: %d\n\tActual: %d"
+              expected_param_count (List.length op_params)
           else
+            let rec take n xs =
+              match n, xs with
+              | 0, _ -> []
+              | _, x :: rest -> x :: take (n - 1) rest
+              | _ -> []
+            in
+            let op_arg_names = take base_param_count op_params in
+            let substitute_op_params_cty c =
+              List.fold_left2
+                (fun acc (param_name, _) arg_name ->
+                   match param_name with
+                   | None -> acc
+                   | Some x -> substitute_term_to_cty acc x (Var arg_name))
+                c effect_params op_arg_names
+            in
+            let substitute_op_params_ty t =
+              List.fold_left2
+                (fun acc (param_name, _) arg_name ->
+                   match param_name with
+                   | None -> acc
+                   | Some x -> substitute_term_to_type acc x (Var arg_name))
+                t effect_params op_arg_names
+            in
+            let op_c1 = substitute_op_params_cty op_c1 in
+            let op_c2 = substitute_op_params_cty op_c2 in
+            let effect_return_ty = substitute_op_params_ty effect_return_ty in
+            let cont_type = TCont {
+              captured_set;
+              effect_return_var = None;
+              effect_return_ty;
+              return_cty = op_c1
+            } in
+            let effect_inputs_ty =
+              if (op_anno = HHdl1) || (op_anno = HHdls)
+              then effect_inputs_ty @ [cont_type]
+              else effect_inputs_ty
+            in
             let handler_params = List.map2 (fun x y -> (x, y)) op_params effect_inputs_ty in
             let op_rctx = { handler_rctx with kind_env = op_bindings @ handler_rctx.kind_env } in
             let op_body' =
-              if op_anno == HDef then
+              if op_anno = HDef then
                 type_expr_with op_rctx captured_vars' [] [] (handler_params@term_vars) op_body
               else
-                let expected_c2 =
-                  match op_c2 with
-                  | Some op_c2 -> op_c2
-                  | None -> c2
-                in
-                check_cty_with ~msg:"Handle: Effect body cty doesn't agree with the annotated final answer type"
-                  op_rctx captured_vars' [] [] (handler_params@term_vars) op_body expected_c2
+                check_cty_with ~msg:"Handle: Effect body cty doesn't agree with the operation final answer type"
+                  op_rctx captured_vars' [] [] (handler_params@term_vars) op_body op_c2
             in
             { op_anno; op_name; op_params; op_body = op_body' }
-      ) handler_defs in
-      (* Register per-op types (including the inferred ATM) in the label binding,
-         so that every `Do x.op [...]` inside the body can look up its C1, C2. *)
-      let lb = make_label_binding ~op_captured_set:captured_set sig_name initial_ans_cty c2 in
-      let body_label_vars = [(handler_label, lb)] in
+        ) handler_defs
+      in
       if has_full_ops then begin
-        let handle_body' =
+        (* Forward seeding: the handle annotation supplies C2. The handled body
+           is typed first under C2 and synthesizes both its value type T and
+           initial answer C1'. The return clause is typed afterwards using the
+           synthesized T, producing C1. We then check that C1 is admissible
+           for the body's synthesized initial answer under this checker's
+           existing pure-to-impure answer subtyping. *)
+        let provisional_c1 = CTyVar (fresh_handler_answer_var ()) in
+        let body_label_vars =
+          [(handler_label, make_label_binding ~op_captured_set:captured_set sig_name provisional_c1 c2)]
+        in
+        let preliminary_body =
           type_expr_with_final body_rctx captured_vars' []
-            body_label_vars term_vars handle_body c2
-            (Some { initial_binder = initial_ans_binder; initial_cty = initial_ans_cty })
+            body_label_vars term_vars handle_body c2 None
+        in
+        let body_ty = ty_of preliminary_body in
+        let preliminary_initial_binder, preliminary_initial_cty =
+          initial_answer_family_of_threaded preliminary_body
+        in
+        let typed_return_clause, return_binder, return_cty =
+          match return_clause with
+          | None -> None, preliminary_initial_binder, preliminary_initial_cty
+          | Some { return_var; return_var_ty; return_body } ->
+            let return_var_ty =
+              match return_var_ty with
+              | None -> body_ty
+              | Some annotated_ty ->
+                if types_sub body_ty annotated_ty
+                   || types_eq body_ty (erase_refinements_ty annotated_ty)
+                   || check_refined_subtype body_rctx term_vars (Some handle_body) body_ty annotated_ty
+                then annotated_ty
+                else
+                  typing_error "Handle: Body value type doesn't match return clause\n\tExpected: %s\n\tActual: %s\n"
+                    (type_to_str annotated_ty) (type_to_str body_ty)
+            in
+            let return_body' =
+              type_expr_with handler_rctx captured_vars' [] []
+                ((return_var, return_var_ty) :: term_vars) return_body
+            in
+            let c1 = return_body'.expr_cty in
+            ( Some ({ return_var; return_var_ty; return_cty = c1; return_body = return_body' }
+                : Typed_ast.typed_return_clause),
+              Some return_var,
+              c1 )
+        in
+        let handle_body' =
+          match return_clause with
+          | None -> preliminary_body
+          | Some _ ->
+            type_expr_with_final body_rctx captured_vars' []
+              body_label_vars term_vars handle_body c2
+              (Some { initial_binder = return_binder; initial_cty = return_cty })
         in
         if List.exists (constraint_mentions region_binder) handle_body'.region_constraints then
           typing_error
@@ -2012,38 +2092,57 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
                 || types_eq body_actual_ty (erase_refinements_ty body_ty)
                 || check_refined_subtype body_rctx term_vars (Some handle_body) body_actual_ty body_ty)
         then
-          typing_error "Handle: Body value type doesn't match return clause\n\tExpected: %s\n\tActual: %s\n"
+          typing_error "Handle: Body value type changed after inferring return clause\n\tExpected: %s\n\tActual: %s\n"
             (type_to_str body_ty) (type_to_str body_actual_ty);
-        (match handle_body'.expr_cty with
-         | CCty (_, EAns (_ans_binder, c1_actual, c2_actual)) ->
-           if not (refined_cty_sub rctx term_vars initial_ans_cty c1_actual) then
-             typing_error
-               "Handle: Body initial answer type doesn't match return clause\n\tExpected input: %s\n\tActual input: %s\n"
-               (cty_to_str initial_ans_cty) (cty_to_str c1_actual);
-           if not (compatible_answer_cty rctx term_vars c2_actual c2) then
-             typing_error
-               "Handle: Body final answer type doesn't match annotation\n\tExpected final: %s\n\tActual final: %s\n"
-               (cty_to_str c2) (cty_to_str c2_actual)
-         | CCty (_, EPure) ->
-           if not (compatible_answer_cty rctx term_vars initial_ans_cty c2) then
-             typing_error
-               "Handle: Pure body cannot satisfy annotated final answer\n\tInitial answer: %s\n\tAnnotated final: %s\n"
-               (cty_to_str initial_ans_cty) (cty_to_str c2)
-         | _ -> typing_error "Handle: Unexpected body cty %s\n" (cty_to_str handle_body'.expr_cty));
+        let body_initial_binder, body_initial_cty = initial_answer_family_of_threaded handle_body' in
+        if not (answer_family_sub rctx term_vars body_ty
+                  return_binder return_cty body_initial_binder body_initial_cty)
+        then
+          typing_error
+            "Handle: Body initial answer type doesn't match return clause\n\tBody input: %s\n\tReturn answer: %s\n"
+            (cty_to_str body_initial_cty)
+            (cty_to_str return_cty);
+        let handler_defs' = type_handler_defs return_cty in
         Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; handle_final; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
       end else begin
-        let body_expected_cty = CCty (body_ty, EAns (initial_ans_binder, initial_ans_cty, c2)) in
-        let handle_body' =
-          check_cty_with ~msg:"Handle: Body doesn't match the handler's declared ATM"
-            body_rctx captured_vars' []
-            body_label_vars term_vars
-            handle_body body_expected_cty
-        in
-        if List.exists (constraint_mentions region_binder) handle_body'.region_constraints then
+      let body_ty, initial_ans_binder, initial_ans_cty, typed_return_clause =
+        match return_clause with
+        | None ->
+          let t = ty_of_cty c2 in
+          t, None, c2, None
+        | Some { return_var; return_var_ty = Some return_var_ty; return_body } ->
+          let return_body' =
+            type_expr_with handler_rctx captured_vars' [] []
+              ((return_var, return_var_ty) :: term_vars) return_body
+          in
+          let c1 = return_body'.expr_cty in
+          ( return_var_ty,
+            Some return_var,
+            c1,
+            Some ({ return_var; return_var_ty; return_cty = c1; return_body = return_body' }
+              : Typed_ast.typed_return_clause) )
+        | Some { return_var; return_var_ty = None; _ } ->
           typing_error
-            "Handle: residual subregion constraints cannot mention local region %s"
-            region_binder;
-        Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; handle_final; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
+            "Handle: cannot infer return type for simple-effect handler return variable %s\n"
+            return_var
+      in
+      let handler_defs' = type_handler_defs initial_ans_cty in
+      (* Register per-op types (including the inferred ATM) in the label binding,
+         so that every `Do x.op [...]` inside the body can look up its C1, C2. *)
+      let lb = make_label_binding ~op_captured_set:captured_set sig_name initial_ans_cty c2 in
+      let body_label_vars = [(handler_label, lb)] in
+      let body_expected_cty = CCty (body_ty, EAns (initial_ans_binder, initial_ans_cty, c2)) in
+      let handle_body' =
+        check_cty_with ~msg:"Handle: Body doesn't match the handler's declared ATM"
+          body_rctx captured_vars' []
+          body_label_vars term_vars
+          handle_body body_expected_cty
+      in
+      if List.exists (constraint_mentions region_binder) handle_body'.region_constraints then
+        typing_error
+          "Handle: residual subregion constraints cannot mention local region %s"
+          region_binder;
+      Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; handle_final; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
       end
 
     | Raise { raise_label; raise_op; raise_evidence; raise_tylikes; raise_atc; raise_args } ->

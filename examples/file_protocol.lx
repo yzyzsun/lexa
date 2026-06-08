@@ -24,7 +24,7 @@ def main(): { z: int | z == 42 } / int => int {
             n
         })()
     } with file: File {
-        return x: { z: int | z == 42 } {
+        return x {
             fun <> (st: int): { z: int | z == 42 } { x }
         }
         hdl_1 fopen(k) {
