@@ -832,6 +832,22 @@ and compatible_answer_cty rctx term_vars c1 c2 =
   ctys_eq c1 c2
   || refined_cty_sub ~kind_env:rctx.kind_env rctx term_vars c1 c2
   || refined_cty_sub ~kind_env:rctx.kind_env rctx term_vars c2 c1
+  || compatible_pure_function_answer rctx term_vars c1 c2
+  || compatible_pure_function_final rctx term_vars c1 c2
+  || compatible_pure_function_final rctx term_vars c2 c1
+
+and compatible_pure_function_answer rctx term_vars c1 c2 =
+  match c1, c2 with
+  | ( CCty (TFun { return_cty = rc1; _ }, EPure),
+      CCty (TFun { return_cty = rc2; _ }, EPure) ) ->
+    compatible_answer_cty rctx term_vars rc1 rc2
+  | _ -> false
+
+and compatible_pure_function_final rctx term_vars inner outer =
+  match outer with
+  | CCty (TFun { return_cty = CCty (_, EAns (_, _, return_final)); _ }, EPure) ->
+    compatible_answer_cty rctx term_vars inner return_final
+  | _ -> false
 
 and answer_final_for_return seed e =
   match seed.initial_binder with
@@ -896,6 +912,7 @@ and answer_family_sub rctx term_vars value_ty actual_binder actual_initial expec
     | Some x -> (x, value_ty) :: term_vars
   in
   refined_cty_sub ~kind_env:rctx.kind_env rctx term_vars actual_initial expected_initial
+  || compatible_answer_cty rctx term_vars actual_initial expected_initial
 
 and pred_term_mentions_term x = function
   | PTVar y -> x = y
@@ -958,30 +975,45 @@ and peel_one_answer_layer c =
   | CCty (t, EAns (_, c1, c2)) -> Some (t, c1, c2)
   | _ -> None
 
+and peel_pure_function_answer_layer c =
+  match c with
+  | CCty ((TFun { return_cty = CCty (_, EAns (_, c1, c2)); _ } as t), EPure) ->
+    Some (t, c1, c2)
+  | _ -> None
+
+and pop_one_distance distance =
+  match distance_atoms (normalize_distance distance) with
+  | DOne :: rest -> Some (distance_of_atoms rest)
+  | _ -> None
+
 and try_infer_atc_from_answer rctx term_vars inherited op_c1 distance =
   let rec go inherited distance =
     match normalize_distance distance with
     | DZero ->
       if compatible_answer_cty rctx term_vars inherited op_c1 then Some ATCHole
       else None
-    | DOne ->
-      (match peel_one_answer_layer inherited with
-       | Some (t, frame_initial, frame_final) ->
-         Option.map
-           (fun rest -> ATCAns (t, frame_initial, rest))
-           (go frame_final DZero)
-       | None ->
-         (match inherited with
-          | CCty (t, EPure) -> Some (ATCAns (t, op_c1, ATCHole))
-          | _ -> None))
-    | DPlus (DOne, rest) ->
-      (match peel_one_answer_layer inherited with
-       | Some (t, frame_initial, frame_final) ->
-         Option.map
-           (fun rest_atc -> ATCAns (t, frame_initial, rest_atc))
-           (go frame_final rest)
-       | None -> None)
-    | _ -> None
+    | distance ->
+      (match pop_one_distance distance with
+       | None -> None
+       | Some rest ->
+         let continue_with_frame t frame_initial frame_final =
+           Option.map
+             (fun rest_atc -> ATCAns (t, frame_initial, rest_atc))
+             (go frame_final rest)
+         in
+         match peel_one_answer_layer inherited with
+         | Some (t, frame_initial, frame_final) ->
+           continue_with_frame t frame_initial frame_final
+         | None ->
+           if distance_eq rest DZero then
+             match inherited with
+             | CCty (t, EPure) -> Some (ATCAns (t, op_c1, ATCHole))
+             | _ -> None
+           else
+             match peel_pure_function_answer_layer inherited with
+             | Some (t, frame_initial, frame_final) ->
+               continue_with_frame t frame_initial frame_final
+             | _ -> None)
   in
   go inherited distance
 
