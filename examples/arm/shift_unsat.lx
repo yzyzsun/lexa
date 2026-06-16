@@ -1,22 +1,22 @@
 // Migrated from arm/shift-UNSAT.ml  (NEGATIVE TEST: must FAIL)
 //
-// The three continuation applications compute 8*n + 7; this file asks for
-// the one-fewer-application result 4*n + 3.
+// Three continuation applications compute 8*n + 7, not 4*n + 3.
 
 effect Delim {
-    shift: () -> int
+    shift: forall 'dummy. (n: int) ->
+        int / (s. { z: int | z == 2 * s + 1 }) => { z: int | z == 8 * n + 7 }
 }
 
 def reset_(n: int): { z: int | z == 4 * n + 3 } {
     handle <> { [r, e] =>
-        val s = raise d.shift();
-        (fun <> (): int { s * 2 + 1 })()
+        val s = raise d.shift[int](n);
+        (fun <> (): { z: int | z == 2 * s + 1 } { s * 2 + 1 })()
     } with d: Delim {
-        hdl_s shift(k) {
-            val a = resume k n;
+        hdl_s shift(n0, k) {
+            val a = resume k n0;
             val b = resume k a;
             val c = resume_final k b;
-            c
+            (fun <> (): { z: int | z == 8 * n0 + 7 } { c })()
         }
-    }: int
+    }: { z: int | z == 8 * n + 7 }
 }

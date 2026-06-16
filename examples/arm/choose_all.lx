@@ -1,34 +1,52 @@
 // Migrated from arm/choose-all-SAT.ml
 //
-// `choose_all` collects *every* outcome of the choice tree into a list: the
-// handler appends the results of resuming with true and with false, and the
-// return clause injects each leaf value as a singleton.  The original asserts
-// the collected list equals [0; x-y; y-x; 0].
-//
-// NOTE: the result is an `int list`; list contents are not refinable in Lexa,
-// so this is a structural migration with the plain list type (the exact list
-// value is not expressible).
+// Exact collected list for the two-choice tree:
+//   [0; x-y; y-x; 0]
+// encoded as a monomorphic list refinement.
 
 type ilist = | Nil | Cons of int * ilist
 
-effect Decide { decide: () -> bool }
+effect Decide {
+    first: forall 'dummy. (x: int, y: int) ->
+        bool
+            / (b. { z: ilist |
+                (b == true && z == Cons(0, Cons(x - y, Nil))) ||
+                (b == false && z == Cons(y - x, Cons(0, Nil))) })
+            => { z: ilist | z == Cons(0, Cons(x - y, Cons(y - x, Cons(0, Nil)))) }
 
-def append(l1: ilist, l2: ilist): ilist {
-    match l1 with
-    | Nil -> { l2 }
-    | Cons (h, t) -> { Cons(h, append(t, l2)) }
+    second: forall 'dummy. (lhs: int, x: int, y: int) ->
+        bool
+            / (b. { z: ilist |
+                (b == true && z == Cons(lhs - x, Nil)) ||
+                (b == false && z == Cons(lhs - y, Nil)) })
+            => { z: ilist | z == Cons(lhs - x, Cons(lhs - y, Nil)) }
 }
 
-def choose_all(x: int, y: int): ilist {
+def choose_all(x: int, y: int):
+    { z: ilist | z == Cons(0, Cons(x - y, Cons(y - x, Cons(0, Nil)))) } {
     handle <> { [r, e] =>
-        val d1 = raise dec.decide();
-        val d2 = raise dec.decide();
-        (fun <> (): ilist { Cons((if d1 then x else y) - (if d2 then x else y), Nil) })()
+        val d1 = raise dec.first[int](x, y);
+        val lhs = if d1 then x else y;
+        val d2 = raise dec.second[int](lhs, x, y);
+        (fun <> (): { z: ilist |
+            (d2 == true && z == Cons(lhs - x, Nil)) ||
+            (d2 == false && z == Cons(lhs - y, Nil)) } {
+            if d2 then Cons(lhs - x, Nil) else Cons(lhs - y, Nil)
+        })()
     } with dec: Decide {
-        hdl_s decide(k) {
+        hdl_s first(x0, y0, k) {
             val a = resume k true;
             val b = resume_final k false;
-            append(a, b)
+            (fun <> (): { z: ilist | z == Cons(0, Cons(x0 - y0, Cons(y0 - x0, Cons(0, Nil)))) } {
+                Cons(0, Cons(x0 - y0, Cons(y0 - x0, Cons(0, Nil))))
+            })()
         }
-    }: ilist
+        hdl_s second(lhs, x0, y0, k) {
+            val a = resume k true;
+            val b = resume_final k false;
+            (fun <> (): { z: ilist | z == Cons(lhs - x0, Cons(lhs - y0, Nil)) } {
+                Cons(lhs - x0, Cons(lhs - y0, Nil))
+            })()
+        }
+    }: { z: ilist | z == Cons(0, Cons(x - y, Cons(y - x, Cons(0, Nil)))) }
 }

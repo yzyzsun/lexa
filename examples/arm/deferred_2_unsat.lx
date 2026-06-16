@@ -1,15 +1,37 @@
-// Migrated from arm/deferred-2-UNSAT.ml  (NEGATIVE TEST: must FAIL)
-// Forcing the thunk yields n, but the answer type wrongly claims n - 1.
+// Negative counterpart for arm/deferred-2-SAT.ml.
+
+type deferred = | Value of int | Thunk of int * (<> () -> int)
 
 effect Deferred {
-    force: () -> { z: int | z == n }
+    force: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. (r: int) ->
+        { z: int | z == r }
+            / ((<>(deferred) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>(deferred) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
 }
 
-def lazy_(n: int): { z: int | z == n - 1 } {
-    handle <> { [reg, e] =>
-        val v = raise d.force();
-        (fun <> (): { z: int | z == n - 1 } { v })()
+def test(n: int): { z: int | z == n + 1 } / int => int {
+    val thunk = fun <> (): { z: int | z == n } { n };
+    val run = handle <> { [reg, e] =>
+        val res = raise d.force[top, Pred(z: Int) { z == n }, int](n);
+        (fun <> (): { z: int | z == n } { res })()
     } with d: Deferred {
-        hdl_1 force(k) { resume_final k n }
-    }: { z: int | z == n - 1 }
+        return x {
+            fun <> (st: deferred): { z: int | z == n } { x }
+        }
+        hdl_1 force(expected, k) {
+            fun <> (st: deferred): { z: int | z == n } / int => int {
+                match st with
+                | Value (v) -> {
+                    val next = resume_final k v;
+                    next(Value(v))
+                }
+                | Thunk (ctx, t) -> {
+                    val v = t();
+                    val next = resume_final k v;
+                    next(Value(v))
+                }
+            }
+        }
+    }: <>(deferred) -> { z: int | z == n } / int => int;
+    run(Thunk(n, thunk))
 }

@@ -1,37 +1,41 @@
 // Migrated from arm/distribution-UNSAT.ml  (NEGATIVE TEST: must FAIL)
 //
-// The structural distribution handler returns a non-empty distribution for one
-// Pick.  This file wrongly claims the result is Nil.
+// A distribution with one pick is not empty.
 
 type pair = | P of int * int
 type plist = | Nil | Cons of pair * plist
 
-effect Pick { pick: () -> bool }
-
-def scale(p: int, d: plist): plist {
-    match d with
-    | Nil -> { Nil }
-    | Cons (hd, tl) -> {
-        match hd with
-        | P (x, q) -> { Cons(P(x, p * q / 100), scale(p, tl)) }
-    }
+effect Pick {
+    pick: forall 'dummy. (p: int, a: int, b: int) ->
+        bool
+            / (choice. { z: plist |
+                (choice == true && z == Cons(P(a, 100), Nil)) ||
+                (choice == false && z == Cons(P(b, 100), Nil)) })
+            => { z: plist |
+                (a == b && z == Cons(P(a, 100), Nil)) ||
+                (a != b && z == Cons(P(a, p), Cons(P(b, 100 - p), Nil))) }
 }
 
-def concat(d1: plist, d2: plist): plist {
-    match d1 with
-    | Nil -> { d2 }
-    | Cons (hd, tl) -> { Cons(hd, concat(tl, d2)) }
-}
-
-def distribution(p: int, a: int, b: int): { z: plist | z == Nil } {
+def distribution(p: { z: int | 0 <= z && z <= 100 }, a: int, b: int): { z: plist | z == Nil } {
     handle <> { [r, e] =>
-        val d = raise pk.pick();
-        (fun <> (): plist { Cons(P(if d then a else b, 100), Nil) })()
+        val d = raise pk.pick[int](p, a, b);
+        (fun <> (): { z: plist |
+            (d == true && z == Cons(P(a, 100), Nil)) ||
+            (d == false && z == Cons(P(b, 100), Nil)) } {
+            if d then Cons(P(a, 100), Nil) else Cons(P(b, 100), Nil)
+        })()
     } with pk: Pick {
-        hdl_s pick(k) {
+        hdl_s pick(p0, a0, b0, k) {
             val d1 = resume k true;
             val d2 = resume_final k false;
-            concat(scale(p, d1), scale(100 - p, d2))
+            (fun <> (): { z: plist |
+                (a0 == b0 && z == Cons(P(a0, 100), Nil)) ||
+                (a0 != b0 && z == Cons(P(a0, p0), Cons(P(b0, 100 - p0), Nil))) } {
+                if a0 == b0 then Cons(P(a0, 100), Nil)
+                else Cons(P(a0, p0), Cons(P(b0, 100 - p0), Nil))
+            })()
         }
-    }: plist
+    }: { z: plist |
+        (a == b && z == Cons(P(a, 100), Nil)) ||
+        (a != b && z == Cons(P(a, p), Cons(P(b, 100 - p), Nil))) }
 }

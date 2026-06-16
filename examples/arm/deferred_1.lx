@@ -1,26 +1,44 @@
 // Migrated from arm/deferred-1-SAT.ml
 //
-// `deferred` / lazy evaluation: `force` evaluates a thunk on first use.
-// The handler is a forward-threading (hdl_1) handler; here the thunk yields a
-// fixed value r, so forcing it returns exactly r.  This is the *faithful*
-// assertion: thunk () = r  ==>  force result = r.
-//
-// SIMPLIFICATION: the original caches the thunk via a  deferred = Value of int
-// | Thunk of int * (unit -> int)  state (Force evaluates the thunk on first
-// use, then stores Value).  That first-class-thunk state is not migrated; this
-// models the observable result: forcing the thunk yields its value r.
+// Faithful deferred/lazy handler.  The handler state is the original
+// Value | Thunk(ctx, thunk) cache; Force either reads the cached value or runs
+// the stored thunk once and resumes with Value(v) as the new cache state.
+
+type deferred = | Value of int | Thunk of int * (<> () -> int)
 
 effect Deferred {
-    force: () -> { z: int | z == r }
+    force: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. (r: int) ->
+        { z: int | z == r }
+            / ((<>(deferred) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>(deferred) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
 }
 
-def lazy_(r: int): { z: int | z == r } {
-    handle <> { [reg, e] =>
-        val v = raise d.force();
-        (fun <> (): { z: int | z == r } { v })()
+def lazy_(r: int, thunk: <> () -> { z: int | z == r }): { z: int | z == r } / int => int {
+    val run = handle <> { [reg, e] =>
+        val res = raise d.force[top, Pred(z: Int) { z == r }, int](r);
+        (fun <> (): { z: int | z == r } { res })()
     } with d: Deferred {
-        hdl_1 force(k) {
-            resume_final k r
+        return x {
+            fun <> (st: deferred): { z: int | z == r } { x }
         }
-    }: { z: int | z == r }
+        hdl_1 force(expected, k) {
+            fun <> (st: deferred): { z: int | z == r } / int => int {
+                match st with
+                | Value (v) -> {
+                    val next = resume_final k v;
+                    next(Value(v))
+                }
+                | Thunk (ctx, t) -> {
+                    val v = t();
+                    val next = resume_final k v;
+                    next(Value(v))
+                }
+            }
+        }
+    }: <>(deferred) -> { z: int | z == r } / int => int;
+    run(Thunk(r, thunk))
+}
+
+def test(r: int, thunk: <> () -> { z: int | z == r }): { z: int | z == r } / int => int {
+    lazy_(r, thunk)
 }

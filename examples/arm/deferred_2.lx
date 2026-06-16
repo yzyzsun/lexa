@@ -1,24 +1,40 @@
 // Migrated from arm/deferred-2-SAT.ml
 //
-// `deferred` / lazy evaluation: `force` evaluates a thunk on first use.
-// The handler is a forward-threading (hdl_1) handler; here the thunk yields a
-// fixed value r, so forcing it returns exactly r.  This is the *faithful*
-// assertion: thunk () = r  ==>  force result = r.
-//
-// SIMPLIFICATION: see deferred_1 -- the Value/Thunk caching state is not
-// migrated; this models forcing yielding the thunk value n.
+// Same faithful deferred/lazy handler as deferred_1, with the thunk constructed
+// inline from the input n.
+
+type deferred = | Value of int | Thunk of int * (<> () -> int)
 
 effect Deferred {
-    force: () -> { z: int | z == r }
+    force: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. (r: int) ->
+        { z: int | z == r }
+            / ((<>(deferred) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>(deferred) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
 }
 
-def lazy_(r: int): { z: int | z == r } {
-    handle <> { [reg, e] =>
-        val v = raise d.force();
-        (fun <> (): { z: int | z == r } { v })()
+def test(n: int): { z: int | z == n } / int => int {
+    val thunk = fun <> (): { z: int | z == n } { n };
+    val run = handle <> { [reg, e] =>
+        val res = raise d.force[top, Pred(z: Int) { z == n }, int](n);
+        (fun <> (): { z: int | z == n } { res })()
     } with d: Deferred {
-        hdl_1 force(k) {
-            resume_final k r
+        return x {
+            fun <> (st: deferred): { z: int | z == n } { x }
         }
-    }: { z: int | z == r }
+        hdl_1 force(expected, k) {
+            fun <> (st: deferred): { z: int | z == n } / int => int {
+                match st with
+                | Value (v) -> {
+                    val next = resume_final k v;
+                    next(Value(v))
+                }
+                | Thunk (ctx, t) -> {
+                    val v = t();
+                    val next = resume_final k v;
+                    next(Value(v))
+                }
+            }
+        }
+    }: <>(deferred) -> { z: int | z == n } / int => int;
+    run(Thunk(n, thunk))
 }

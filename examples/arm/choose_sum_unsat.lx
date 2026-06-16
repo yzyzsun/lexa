@@ -1,20 +1,27 @@
 // Migrated from arm/choose-sum-UNSAT.ml  (NEGATIVE TEST: must FAIL)
 //
-// Same summing choice handler as choose_sum.lx, but the result is wrongly
-// claimed to be x + y.
+// The sum over all four leaves is 0, not x + y.
 
-effect Decide { decide: () -> bool }
+effect Decide {
+    decide: forall 'dummy. (on_true: int, on_false: int) ->
+        bool
+            / (b. { z: int | (b == true && z == on_true) || (b == false && z == on_false) })
+            => { z: int | z == on_true + on_false }
+}
 
 def choose_sum(x: int, y: int): { z: int | z == x + y } {
     handle <> { [r, e] =>
-        val d1 = raise dec.decide();
-        val d2 = raise dec.decide();
-        (fun <> (): int { (if d1 then x else y) - (if d2 then x else y) })()
+        val d1 = raise dec.decide[int](x - y, y - x);
+        val lhs = if d1 then x else y;
+        val d2 = raise dec.decide[int](lhs - x, lhs - y);
+        (fun <> (): { z: int | (d2 == true && z == lhs - x) || (d2 == false && z == lhs - y) } {
+            if d2 then lhs - x else lhs - y
+        })()
     } with dec: Decide {
-        hdl_s decide(k) {
+        hdl_s decide(on_true, on_false, k) {
             val a = resume k true;
             val b = resume_final k false;
-            a + b
+            (fun <> (): { z: int | z == on_true + on_false } { a + b })()
         }
-    }: int
+    }: { z: int | z == 0 }
 }

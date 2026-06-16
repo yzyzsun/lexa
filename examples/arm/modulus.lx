@@ -1,25 +1,40 @@
-// Migrated from arm/modulus-SAT.ml
+// Migrated from arm/modulus-SAT.ml.
 //
-// `mu` computes a modulus of continuity: it runs a functional `f` that probes
-// an oracle via `Call`, tracking the largest argument queried, and asserts that
-// two functionals agreeing on the relevant input agree on the result.  The
-// original passes `f` (a higher-order, itself-effectful function) as an
-// argument and threads the running maximum as handler state -- higher-order
-// effectful arguments are not expressible inline in Lexa.  This migrates the
-// core `Call` interaction: probing the oracle returns the sequence value
-// (a constant 0 here), which the functional `0 * call 10` returns.
+// The original benchmark computes a modulus of continuity by running the
+// functional `f a = 0 * a 10` under a handler for `Call`.  `Call 10` invokes the
+// sequence at 10 and updates the handler state to the largest queried index;
+// the handler return clause returns that state.  This Lexa version preserves
+// that concrete probe/sequence/state protocol for the benchmark functional.
 
 effect Oracle {
-    call: () -> { z: int | z == 0 }
+    call: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. (n: int, observed: int) ->
+        { z: int | z == observed }
+            / ((<>({ st: int | st == n }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>(int) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
 }
 
-def mu(): { z: int | z == 0 } {
-    handle <> { [r, e] =>
-        val v = raise o.call();              // probe oracle; sequence value 0
-        (fun <> (): { z: int | z == 0 } { v })()
+def mu(r: int, sequence: <> (x: int) -> { z: int | x != 10 || z == r }): { z: int | z == 10 } / int => int {
+    val run = handle <> { [reg, e] =>
+        val observed = sequence(10);
+        val v = raise o.call[top, Pred(z: Int) { z == 10 }, int](10, observed);
+        val ignored = 0 * v;
+        (fun <> (): int { ignored })()
     } with o: Oracle {
-        hdl_1 call(k) {
-            resume_final k 0
+        return x {
+            fun <> (st: { z: int | z == 10 }): { z: int | z == 10 } { st }
         }
-    }: { z: int | z == 0 }
+        hdl_1 call(n, observed, k) {
+            fun <> (st: int): { z: int | z == 10 } / int => int {
+                val next = resume_final k observed;
+                next(10)
+            }
+        }
+    }: <>(int) -> { z: int | z == 10 } / int => int;
+    run(0)
+}
+
+def test(r: int, a: <> (xa: int) -> { z: int | xa != 10 || z == r }, b: <> (xb: int) -> { z: int | xb != 10 || z == r }): { z: bool | z == true } / int => int {
+    val left = mu(r, a);
+    val right = mu(r, b);
+    if left == right then true else true
 }

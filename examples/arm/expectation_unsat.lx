@@ -1,19 +1,28 @@
 // Migrated from arm/expectation-UNSAT.ml  (NEGATIVE TEST: must FAIL)
 //
-// The weighted handler computes p*x + (100-p)*y; this asks for the swapped
+// The handler computes p*x + (100-p)*y; this file asks for the swapped
 // weighting.
 
-effect Pick { pick: () -> bool }
+effect Pick {
+    pick: forall 'dummy. (p: int, x: int, y: int) ->
+        bool
+            / (b. { z: int | (b == true && z == x) || (b == false && z == y) })
+            => { z: int | z == p * x + (100 - p) * y }
+}
 
 def expectation(p: int, x: int, y: int): { z: int | z == (100 - p) * x + p * y } {
     handle <> { [r, e] =>
-        val b = raise pick.pick();
-        (fun <> (): int { if b then x else y })()
+        val b = raise pick.pick[int](p, x, y);
+        (fun <> (): { z: int | (b == true && z == x) || (b == false && z == y) } {
+            if b then x else y
+        })()
     } with pick: Pick {
-        hdl_s pick(k) {
+        hdl_s pick(p0, x0, y0, k) {
             val ra = resume k true;
             val rb = resume_final k false;
-            p * ra + (100 - p) * rb
+            (fun <> (): { z: int | z == p0 * x0 + (100 - p0) * y0 } {
+                p0 * ra + (100 - p0) * rb
+            })()
         }
-    }: int
+    }: { z: int | z == p * x + (100 - p) * y }
 }

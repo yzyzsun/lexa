@@ -1,7 +1,53 @@
-// Migrated from arm/transaction-UNSAT.ml  (NEGATIVE TEST: must FAIL)
-//
-// The transaction never exposes the intermediate value 2 as its final result.
+// Migrated from arm/transaction-UNSAT.ml.
 
-def main(b: bool): { z: int | z == 2 } {
-    if b then 0 else 42
+effect Transaction {
+    lookup: forall 'rho: Reg, 'alpha: Pred[int], 'gamma: Cty. () ->
+        { st: int | 'alpha(st) }
+            / ((<>({ st: int | 'alpha(st) }) ->['rho] { z: int | z != 2 && (z == 0 || z == 42) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ st: int | 'alpha(st) }) ->['rho] { z: int | z != 2 && (z == 0 || z == 42) } / 'gamma => 'gamma)
+
+    update: forall 'rho: Reg, 'gamma: Cty. (v: int) ->
+        unit
+            / ((<>({ st: int | st == v }) ->['rho] { z: int | z != 2 && (z == 0 || z == 42) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>(int) ->['rho] { z: int | z != 2 && (z == 0 || z == 42) } / 'gamma => 'gamma)
+
+    abort: forall 'rho: Reg, 'gamma: Cty. (snapshot: int) ->
+        unit
+            / ((<>(int) ->['rho] { z: int | z != 2 && (z == 0 || z == 42) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>(int) ->['rho] { z: int | z != 2 && (z == 0 || z == 42) } / 'gamma => 'gamma)
+}
+
+def main(b: bool): { z: int | z == 2 } / int => int {
+    val run = handle <> { [r, e] =>
+        raise tx.update[top, int](1);
+        raise tx.update[top, int](2);
+        if b then raise tx.abort[top, int](0) else ();
+        val two = raise tx.lookup[top, Pred(st: Int) { st == 2 }, int]();
+        raise tx.update[top, int](3);
+        raise tx.update[top, int](40 + two);
+        val result = raise tx.lookup[top, Pred(st: Int) { st == 42 }, int]();
+        (fun <> (): { z: int | z != 2 && (z == 0 || z == 42) } { result })()
+    } with tx: Transaction {
+        return x {
+            fun <> (st: int): { z: int | z != 2 && (z == 0 || z == 42) } { x }
+        }
+        hdl_1 lookup(k) {
+            fun <> (st: int): { z: int | z != 2 && (z == 0 || z == 42) } / int => int {
+                val next = resume_final k st;
+                next(st)
+            }
+        }
+        hdl_1 update(v, k) {
+            fun <> (st: int): { z: int | z != 2 && (z == 0 || z == 42) } / int => int {
+                val next = resume_final k (());
+                next(v)
+            }
+        }
+        hdl_1 abort(snapshot, k) {
+            fun <> (st: int): { z: int | z != 2 && (z == 0 || z == 42) } / int => int {
+                0
+            }
+        }
+    }: <>(int) -> { z: int | z != 2 && (z == 0 || z == 42) } / int => int;
+    run(0)
 }

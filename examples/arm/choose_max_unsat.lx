@@ -1,22 +1,29 @@
 // Migrated from arm/choose-max-UNSAT.ml  (NEGATIVE TEST: must FAIL)
 //
-// Same two-choice max program as choose_max.lx, but with the original
-// contradictory postcondition `u - y`.
+// The maximum path is v - x, not u - y.
 
-effect Decide { decide: () -> bool }
+effect Decide {
+    decide: forall 'dummy. (on_true: int, on_false: int) ->
+        bool
+            / (b. { z: int | (b == true && z == on_true) || (b == false && z == on_false) })
+            => { z: int | z >= on_true && z >= on_false && (z == on_true || z == on_false) }
+}
 
 def main(u: int, v: { z: int | z >= u }, x: int, y: { z: int | z >= x }): { z: int | z == u - y } {
     handle <> { [r, e] =>
-        val d1 = raise dec.decide();
+        val d1 = raise dec.decide[int](u - x, v - x);
         val a = if d1 then u else (fun <> (): int { v })();
-        val d2 = raise dec.decide();
-        val b = if d2 then x else (fun <> (): int { y })();
-        (fun <> (): int { a - b })()
+        val d2 = raise dec.decide[int](a - x, a - y);
+        (fun <> (): { z: int | (d2 == true && z == a - x) || (d2 == false && z == a - y) } {
+            if d2 then a - x else a - y
+        })()
     } with dec: Decide {
-        hdl_s decide(k) {
+        hdl_s decide(on_true, on_false, k) {
             val t = resume k true;
             val f = resume_final k false;
-            if t >= f then t else f
+            (fun <> (): { z: int | z >= on_true && z >= on_false && (z == on_true || z == on_false) } {
+                if t >= f then t else f
+            })()
         }
-    }: int
+    }: { z: int | z == v - x }
 }

@@ -2,28 +2,27 @@
 //
 // The original is a ref-based cooperative scheduler: Spawn enqueues a thread's
 // continuation and Yield round-robins between them, all over a mutable work
-// queue.  Lexa cannot store continuations in a mutable queue, so this migrates
-// the observable effect of the program -- a shared counter that each scheduled
-// step only ever increments -- via Yield-driven increments.
-//
-// The original asserts result >= init.  The increment counter is realised with
-// a multi-shot handler whose `+1` combiner does not propagate an answer-type
-// refinement to the body (cf. expectation/choose_sum), so the strongest
-// checkable form here is plain `int`.
+// queue.  Lexa still cannot store continuations in that queue, so this keeps
+// the observable scheduled counter effect for this benchmark: four yielded
+// steps increment the initial counter.  Answer-type modification proves the
+// original assertion result >= init.
 
-effect Sched { yield: () -> unit }
+effect Sched {
+    yield: forall 'dummy. (after: int) ->
+        unit / (u. { z: int | z == after }) => { z: int | z == after + 1 }
+}
 
-def round_robin(init: int): int {
+def round_robin(init: int): { z: int | z >= init } {
     handle <> { [r, e] =>
-        raise s.yield();
-        raise s.yield();
-        raise s.yield();
-        raise s.yield();
-        (fun <> (): int { init })()
+        raise s.yield[int](init + 3);
+        raise s.yield[int](init + 2);
+        raise s.yield[int](init + 1);
+        raise s.yield[int](init);
+        (fun <> (): { z: int | z == init } { init })()
     } with s: Sched {
-        hdl_s yield(k) {
+        hdl_s yield(after, k) {
             val c = resume_final k (());
-            c + 1
+            (fun <> (): { z: int | z == after + 1 } { c + 1 })()
         }
-    }: int
+    }: { z: int | z == init + 4 }
 }

@@ -1,26 +1,30 @@
 // Migrated from arm/expectation-SAT.ml
 //
-// The handler computes a weighted average over the two outcomes of `pick`:
-//   p * (continue k true) + (100 - p) * (continue k false)
-// The original asserts the result equals  p*x + (100-p)*y.
-//
-// NOTE: this is a *non-endomorphic* multi-shot handler -- the value it returns
-// (a weighted sum) is not in the same refinement as the per-branch results
-// (x or y).  Lexa propagates an answer-type refinement to the body only for
-// endomorphic combiners (cf. choose_max's `max`), so the exact assertion is
-// not expressible here.  Strongest checkable form: plain `int`.
+// `pick` is answer-modifying: if the operation returns true, the continuation
+// must produce x; if it returns false, it must produce y.  The handler combines
+// those two continuation answers into the weighted expectation
+// p*x + (100-p)*y, matching the original assertion.
 
-effect Pick { pick: () -> bool }
+effect Pick {
+    pick: forall 'dummy. (p: int, x: int, y: int) ->
+        bool
+            / (b. { z: int | (b == true && z == x) || (b == false && z == y) })
+            => { z: int | z == p * x + (100 - p) * y }
+}
 
-def expectation(p: int, x: int, y: int): int {
+def expectation(p: int, x: int, y: int): { z: int | z == p * x + (100 - p) * y } {
     handle <> { [r, e] =>
-        val b = raise pick.pick();
-        (fun <> (): int { if b then x else y })()
+        val b = raise pick.pick[int](p, x, y);
+        (fun <> (): { z: int | (b == true && z == x) || (b == false && z == y) } {
+            if b then x else y
+        })()
     } with pick: Pick {
-        hdl_s pick(k) {
+        hdl_s pick(p0, x0, y0, k) {
             val ra = resume k true;
             val rb = resume_final k false;
-            p * ra + (100 - p) * rb
+            (fun <> (): { z: int | z == p0 * x0 + (100 - p0) * y0 } {
+                p0 * ra + (100 - p0) * rb
+            })()
         }
-    }: int
+    }: { z: int | z == p * x + (100 - p) * y }
 }

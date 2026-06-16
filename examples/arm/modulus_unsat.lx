@@ -1,12 +1,34 @@
-// Migrated from arm/modulus-UNSAT.ml  (NEGATIVE TEST: must FAIL)
-// The oracle probe returns 0, but the answer type wrongly claims 1.
+// Migrated from arm/modulus-UNSAT.ml.
 
-effect Oracle { call: () -> { z: int | z == 0 } }
-def mu(): { z: int | z == 1 } {
-    handle <> { [r, e] =>
-        val v = raise o.call();
-        (fun <> (): { z: int | z == 1 } { v })()
+effect Oracle {
+    call: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. (n: int, observed: int) ->
+        { z: int | z == observed }
+            / ((<>({ st: int | st == n }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>(int) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+}
+
+def mu(r: int, sequence: <> (x: int) -> { z: int | x != 10 || z == r }): { z: int | z == 10 } / int => int {
+    val run = handle <> { [reg, e] =>
+        val observed = sequence(10);
+        val v = raise o.call[top, Pred(z: Int) { z == 10 }, int](10, observed);
+        val ignored = 0 * v;
+        (fun <> (): int { ignored })()
     } with o: Oracle {
-        hdl_1 call(k) { resume_final k 0 }
-    }: { z: int | z == 1 }
+        return x {
+            fun <> (st: { z: int | z == 10 }): { z: int | z == 10 } { st }
+        }
+        hdl_1 call(n, observed, k) {
+            fun <> (st: int): { z: int | z == 10 } / int => int {
+                val next = resume_final k observed;
+                next(10)
+            }
+        }
+    }: <>(int) -> { z: int | z == 10 } / int => int;
+    run(0)
+}
+
+def test(r: int, a: <> (xa: int) -> { z: int | xa != 10 || z == r }, b: <> (xb: int) -> { z: int | xb != 10 || z == r }): { z: bool | z == false } / int => int {
+    val left = mu(r, a);
+    val right = mu(r, b);
+    if left == right then true else true
 }
