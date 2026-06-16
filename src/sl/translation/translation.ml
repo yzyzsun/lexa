@@ -32,6 +32,9 @@ let rec gen_top_level_types (tls : top_level list) =
         check_type_defs type_defs;
         let type_defs_assoc = List.map (fun ({ type_name; type_params; type_cons }: SLsyntax.typedef) -> (type_name, (type_params, type_cons))) type_defs in
         type_defs_context := !type_defs_context@type_defs_assoc;
+        (* Mirror datatype definitions to the SMT encoder so refinements can
+           reason about constructors. *)
+        Refinement.adt_defs := !type_defs_context;
         gen_top_level_types rest
 
       | _ -> gen_top_level_types rest

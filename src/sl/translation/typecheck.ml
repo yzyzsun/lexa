@@ -647,6 +647,16 @@ let nullary_constructor_type con_name =
        | _ -> None)
     !type_defs_context
 
+(** Look up a data constructor: returns its owning type name, the type
+    parameters of that type, and the declared field types of the constructor. *)
+let constructor_def con_name =
+  List.find_map
+    (fun (type_name, (type_params, type_cons)) ->
+       match List.assoc_opt con_name type_cons with
+       | Some field_tys -> Some (type_name, type_params, field_tys)
+       | None -> None)
+    !type_defs_context
+
 let handler_cty_var_default handle_final =
   match handle_final with
   | CCty (TFun { return_cty = CCty (_, EAns (_, _, final_cty)); _ }, EPure) ->
@@ -918,6 +928,7 @@ and pred_term_mentions_term x = function
   | PTVar y -> x = y
   | PTArith (t1, _, t2) ->
     pred_term_mentions_term x t1 || pred_term_mentions_term x t2
+  | PTCon (_, args) -> List.exists (pred_term_mentions_term x) args
   | PTUnit | PTInt _ | PTBool _ -> false
 
 and pred_mentions_term x = function
@@ -1059,6 +1070,7 @@ and validate_pred (p: SLsyntax.pred) =
   let rec go_term t =
     match t with
     | PTUnit | PTInt _ | PTBool _ | PTVar _ -> ()
+    | PTCon (_, args) -> List.iter go_term args
     | PTArith (t1, _, t2) -> go_term t1; go_term t2
   in
   let rec go p =
@@ -1115,6 +1127,24 @@ and pred_term_type rctx term_vars (t: pred_term) : ty =
     check_pred_term_expected rctx term_vars t1 TInt;
     check_pred_term_expected rctx term_vars t2 TInt;
     TInt
+  | PTCon (con, args) ->
+    (match constructor_def con with
+     | None -> typing_error "Refinement predicate: constructor %s not found\n" con
+     | Some (type_name, type_params, field_tys) ->
+       if List.length args <> List.length field_tys then
+         typing_error
+           "Refinement predicate: constructor %s expects %d argument(s), got %d\n"
+           con (List.length field_tys) (List.length args);
+       if type_params = [] then begin
+         List.iter2
+           (fun a fty -> check_pred_term_expected rctx term_vars a (strip_outer_refinement fty))
+           args field_tys;
+         TCon (type_name, [])
+       end else
+         (* Parametric constructors: keep the type-variable shape; argument
+            checking against instantiated fields is left to the value-level
+            typechecker. *)
+         TCon (type_name, List.map (fun tv -> TVar tv) type_params))
 
 and pred_type rctx term_vars (p: pred) : ty =
   match p with
@@ -1381,6 +1411,144 @@ and type_raise_expr ?final_answer rctx captured_vars cap_vars label_vars term_va
     against the operation's C2. Pure tail expressions still use the expected
     initial answer as the return-answer family. *)
 and check_cty ?(msg = "") rctx captured_vars cap_vars label_vars term_vars (e: expr) expected =
+  match e with
+  (* Push the full expected computation type (value refinement *and* answer)
+     into both branches of a conditional, under the branch path conditions.
+     This lets a refined value (e.g. a data constructor [Some(n/m)]) be checked
+     leaf-by-leaf against the expected refinement even when the handler's answer
+     type is impure -- the branch leaf becomes the witness for the SMT check. *)
+  | If (cond, e1, e2) ->
+    let cond' =
+      check_ty rctx captured_vars cap_vars label_vars term_vars cond TBool
+        ~msg:"If: Expected bool as condition"
+    in
+    let then_vars = branch_term_vars term_vars cond true in
+    let else_vars = branch_term_vars term_vars cond false in
+    let e1' = check_cty ~msg rctx captured_vars cap_vars label_vars then_vars e1 expected in
+    let e2' = check_cty ~msg rctx captured_vars cap_vars label_vars else_vars e2 expected in
+    let eff =
+      compose_effs_refined ~kind_env:rctx.kind_env rctx term_vars
+        (eff_of_cty cond'.expr_cty) (eff_of_cty expected)
+    in
+    let actual = CCty (ty_of_cty expected, eff) in
+    if refined_cty_sub rctx term_vars actual expected then
+      {
+        expr_desc = If (cond', e1', e2');
+        expr_cty = expected;
+        region_constraints =
+          constraints_unions
+            [cond'.region_constraints; e1'.region_constraints; e2'.region_constraints];
+        captured_vars;
+        cap_vars;
+        label_vars;
+      }
+    else
+      typing_error "%s\n\tExpected: %s\n\tActual: %s\n" msg
+        (cty_to_str expected) (cty_to_str actual)
+  (* Checking-mode for the value-binding / matching forms: thread the effectful
+     prefix's answer and *check* the tail / branches against the expected
+     computation type, rather than synthesising and comparing.  This lets a
+     refined data value flow through a handler's control flow (e.g. proving the
+     empty-list scan in `select_from` yields None, so amb returns Failure). *)
+  | Match { match_expr; pattern_matching } ->
+    let match_expr' = type_expr rctx captured_vars cap_vars label_vars term_vars match_expr in
+    let match_expr_ty = strip_outer_refinement (ty_of_cty match_expr'.expr_cty) in
+    (match match_expr_ty with
+     | TCon (t, t_args) ->
+       let type_params, type_cons = List.assoc t !type_defs_context in
+       let type_subs = List.map2 (fun tv ta -> (tv, ta)) type_params t_args in
+       let scrut_term = pred_term_of_expr_opt match_expr in
+       let branch_hyp_vars con args =
+         match scrut_term with
+         | Some s ->
+           [ (fresh_refinement_witness (),
+              TRefine ("__match", TBool,
+                       PCmp (s, CEq, PTCon (con, List.map (fun a -> PTVar a) args)))) ]
+         | None -> []
+       in
+       let branches' =
+         List.map
+           (fun (pt, res) ->
+              match pt with
+              | Syntax__Common.PTypecon (con, args) ->
+                let params_type =
+                  List.map (fun ty -> substitute_ty ty type_subs) (List.assoc con type_cons)
+                in
+                let arg_vars = List.map2 (fun a ty -> (a, ty)) args params_type in
+                let bvars = arg_vars @ branch_hyp_vars con args @ term_vars in
+                let res' = check_cty ~msg rctx captured_vars cap_vars label_vars bvars res expected in
+                (pt, res'))
+           pattern_matching
+       in
+       let eff =
+         compose_effs_refined ~kind_env:rctx.kind_env rctx term_vars
+           (eff_of_cty match_expr'.expr_cty) (eff_of_cty expected)
+       in
+       {
+         expr_desc = Match { match_expr = match_expr'; pattern_matching = branches' };
+         expr_cty = CCty (ty_of_cty expected, eff);
+         region_constraints =
+           constraints_unions
+             (match_expr'.region_constraints
+              :: List.map (fun (_, r) -> r.region_constraints) branches');
+         captured_vars; cap_vars; label_vars;
+       }
+     | _ -> typing_error "Match: Pattern type expected, got %s instead\n" (type_to_str match_expr_ty))
+  | Let (x, e1, e2) when (match expected with CCty (_, EAns _) -> true | _ -> false) ->
+    let expected_ty, initial_binder, initial_cty, final_e =
+      match expected with
+      | CCty (expected_ty, EAns (initial_binder, initial_cty, c2)) ->
+        expected_ty, initial_binder, initial_cty, c2
+      | _ -> typing_error "Let: impure expected cty required"
+    in
+    let e1' =
+      type_expr_with_final rctx captured_vars cap_vars label_vars term_vars
+        e1 final_e None
+    in
+    let link_answer = initial_answer_for_let_continuation e1' x in
+    let t1 = ty_of_cty e1'.expr_cty in
+    let e2_expected = CCty (expected_ty, EAns (initial_binder, initial_cty, link_answer)) in
+    let e2' =
+      check_cty ~msg rctx captured_vars cap_vars label_vars
+        ((x, t1) :: term_vars) e2 e2_expected
+    in
+    let eff =
+      compose_effs_refined ~kind_env:rctx.kind_env rctx term_vars
+        (eff_of_cty e1'.expr_cty) (eff_of_cty e2'.expr_cty)
+    in
+    {
+      expr_desc = Let (x, e1', e2');
+      expr_cty = CCty (ty_of_cty expected, eff);
+      region_constraints = constraints_unions [e1'.region_constraints; e2'.region_constraints];
+      captured_vars; cap_vars; label_vars;
+    }
+  | Stmt (e1, e2) when (match expected with CCty (_, EAns _) -> true | _ -> false) ->
+    let expected_ty, initial_binder, initial_cty, final_e =
+      match expected with
+      | CCty (expected_ty, EAns (initial_binder, initial_cty, c2)) ->
+        expected_ty, initial_binder, initial_cty, c2
+      | _ -> typing_error "Stmt: impure expected cty required"
+    in
+    let e1' =
+      type_expr_with_final rctx captured_vars cap_vars label_vars term_vars
+        e1 final_e None
+    in
+    let link_answer = initial_answer_for_stmt_continuation e1' in
+    let e2_expected = CCty (expected_ty, EAns (initial_binder, initial_cty, link_answer)) in
+    let e2' =
+      check_cty ~msg rctx captured_vars cap_vars label_vars term_vars e2 e2_expected
+    in
+    let eff =
+      compose_effs_refined ~kind_env:rctx.kind_env rctx term_vars
+        (eff_of_cty e1'.expr_cty) (eff_of_cty e2'.expr_cty)
+    in
+    {
+      expr_desc = Stmt (e1', e2');
+      expr_cty = CCty (ty_of_cty expected, eff);
+      region_constraints = constraints_unions [e1'.region_constraints; e2'.region_constraints];
+      captured_vars; cap_vars; label_vars;
+    }
+  | _ ->
   match expected with
   | CCty (expected_ty, EAns (initial_binder, initial_cty, expected_final)) ->
     let seed = { initial_binder; initial_cty } in
@@ -1651,6 +1819,91 @@ and type_expr_with_final rctx (captured_vars: capture_set) cap_vars label_vars
     mk (If (cond', { e1' with expr_cty = CCty (t1, branch_eff) },
              { e2' with expr_cty = CCty (t1, branch_eff) }))
       (CCty (t1, eff)) []
+
+  | Match { match_expr; pattern_matching } ->
+    (* Checking-mode match: thread the expected final answer into every branch
+       body so that effect operations performed inside a branch (e.g. a [select]
+       inside [select_from]'s [Cons] case) recover their ATC, exactly as the
+       If case does.  Each branch also learns [scrutinee == C(args)] so the
+       scrutinee's refinement propagates onto the payload variables. *)
+    let match_expr' = type_expr rctx captured_vars cap_vars label_vars term_vars match_expr in
+    let match_expr_ty = strip_outer_refinement (ty_of match_expr') in
+    (match match_expr_ty with
+     | TCon (t, t_args) ->
+       let type_params, type_cons = List.assoc t !type_defs_context in
+       let type_subs = List.map2 (fun tv ta -> (tv, ta)) type_params t_args in
+       let scrut_term = pred_term_of_expr_opt match_expr in
+       let branch_hyp_vars con args =
+         match scrut_term with
+         | Some s ->
+           [ (fresh_refinement_witness (),
+              TRefine ("__match", TBool,
+                       PCmp (s, CEq, PTCon (con, List.map (fun a -> PTVar a) args)))) ]
+         | None -> []
+       in
+       let branches' =
+         List.map
+           (fun (pt, res) ->
+              match pt with
+              | Syntax__Common.PTypecon (con, args) ->
+                let params_type =
+                  List.map (fun ty -> substitute_ty ty type_subs) (List.assoc con type_cons)
+                in
+                let arg_vars = List.map2 (fun a ty -> (a, ty)) args params_type in
+                let bvars = arg_vars @ branch_hyp_vars con args @ term_vars in
+                let res' =
+                  type_expr_with_final rctx captured_vars cap_vars label_vars bvars
+                    res final_cty return_seed
+                in
+                (pt, res'))
+           pattern_matching
+       in
+       let value_ty =
+         match branches' with
+         | (_, r) :: _ -> ty_of r
+         | [] -> typing_error "Match: no branches\n"
+       in
+       List.iter
+         (fun (_, r) ->
+            if not (types_eq (ty_of r) value_ty) then
+              typing_error "Match: The types of clauses don't match\n\tExpected: %s\n\tActual: %s\n"
+                (type_to_str value_ty) (type_to_str (ty_of r)))
+         branches';
+       (* Combine the per-branch initial answer families into one. *)
+       let combine (b1, i1) (b2, i2) =
+         let binder = match b1 with Some _ -> b1 | None -> b2 in
+         let norm bb i =
+           match binder, bb with
+           | Some x, Some y when x <> y -> substitute_term_to_cty i y (Var x)
+           | _ -> i
+         in
+         let i1 = norm b1 i1 and i2 = norm b2 i2 in
+         let btv = match binder with None -> term_vars | Some x -> (x, value_ty) :: term_vars in
+         let i =
+           if ctys_eq i1 i2
+              || refined_cty_sub ~kind_env:rctx.kind_env rctx btv i1 i2 then i2
+           else if refined_cty_sub ~kind_env:rctx.kind_env rctx btv i2 i1 then i1
+           else
+             typing_error
+               "Match: branches don't agree on initial answer type\n\tLeft: %s\n\tRight: %s\n"
+               (cty_to_str i1) (cty_to_str i2)
+         in
+         (binder, i)
+       in
+       let initials = List.map (fun (_, r) -> initial_answer_family_of_threaded r) branches' in
+       let initial_binder, initial_answer =
+         match initials with
+         | first :: rest -> List.fold_left combine first rest
+         | [] -> (None, final_cty)
+       in
+       let branch_eff = EAns (initial_binder, initial_answer, final_cty) in
+       let eff = compose_effs (eff_of match_expr') branch_eff in
+       let branches'' =
+         List.map (fun (pt, r) -> (pt, { r with expr_cty = CCty (value_ty, branch_eff) })) branches'
+       in
+       mk (Match { match_expr = match_expr'; pattern_matching = branches'' })
+         (CCty (value_ty, eff)) []
+     | _ -> typing_error "Match: Pattern type expected, got %s instead\n" (type_to_str match_expr_ty))
 
   | Raise { raise_label; raise_op; raise_evidence; raise_tylikes; raise_atc; raise_args } ->
     let expr_desc, expr_cty, region_constraints =
@@ -2367,7 +2620,23 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
 
     | Match { match_expr; pattern_matching } ->
       let match_expr' = type_expr captured_vars cap_vars label_vars term_vars match_expr in
-      let match_expr_ty = ty_of match_expr' in
+      (* A refined scrutinee (e.g. the result of a [resume] whose answer type
+         carries a refinement) is matched on its underlying datatype. *)
+      let match_expr_ty = strip_outer_refinement (ty_of match_expr') in
+      (* Encodable form of the scrutinee value, used to relate the bound pattern
+         variables to the scrutinee's refinement: inside the [C(y..)] branch we
+         learn [scrutinee == C(y..)], so the SMT can propagate the scrutinee's
+         refinement onto the payload variables (e.g. matching [Success y] on a
+         scrutinee refined to [Success 5] yields [y == 5]). *)
+      let scrut_term = pred_term_of_expr_opt match_expr in
+      let branch_hyp_vars type_con arg_names =
+        match scrut_term with
+        | Some s ->
+          let rhs = PTCon (type_con, List.map (fun a -> PTVar a) arg_names) in
+          [ (fresh_refinement_witness (),
+             TRefine ("__match", TBool, PCmp (s, CEq, rhs))) ]
+        | None -> []
+      in
       (match match_expr_ty with
         | TCon (t, t_args) ->
           let type_params, type_cons = List.assoc t !type_defs_context in
@@ -2381,13 +2650,15 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
                     | PTypecon (type_con, args) ->
                       let params_type = List.map (fun ty -> substitute_ty ty type_subs) (List.assoc type_con type_cons) in
                       let arg_vars = List.map2 (fun arg ty -> (arg, ty)) args params_type in
-                      let res' = type_expr captured_vars cap_vars label_vars (arg_vars@term_vars) res in
+                      let branch_vars = arg_vars @ branch_hyp_vars type_con args @ term_vars in
+                      let res' = type_expr captured_vars cap_vars label_vars branch_vars res in
                       let res_ty = ty_of res' in
                       let pattern_matching_rest' = List.map (fun (pt, res) -> (match pt with
                       | Syntax__Common.PTypecon (type_con, args) ->
                         let params_type = List.map (fun ty -> substitute_ty ty type_subs) (List.assoc type_con type_cons) in
                         let arg_vars = List.map2 (fun arg ty -> (arg, ty)) args params_type in
-                        let res' = check_ty captured_vars cap_vars label_vars (arg_vars@term_vars) res res_ty ~msg:"Match: The types of clauses don't match" in
+                        let branch_vars = arg_vars @ branch_hyp_vars type_con args @ term_vars in
+                        let res' = check_ty captured_vars cap_vars label_vars branch_vars res res_ty ~msg:"Match: The types of clauses don't match" in
                         (pt, res')
                       )) pattern_matching_rest in
                       let eff = compose_effs (eff_of match_expr') (eff_of res') in

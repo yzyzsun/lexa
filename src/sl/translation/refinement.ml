@@ -14,15 +14,55 @@ open Common
 
 type smt_result = Sat | Unsat | Unknown
 
-(** SMT-LIB sort for a Lexa value type, if encodable. We only encode the two
-    scalar theories we have axioms for. Refinement-wrapped base types collapse
-    to the underlying base. Anything else is None and the caller should treat
-    it as an opaque (uninterpreted) symbol — sound but coarse. *)
+(** Algebraic data type definitions, mirrored from the typechecker's
+    [type_defs_context] so the SMT encoder can declare them as SMT-LIB
+    datatypes. Each entry is [(type_name, (type_params, constructors))] where a
+    constructor is [(con_name, field_types)]. Populated by [Translation]. *)
+let adt_defs : (string * (string list * (string * ty list) list)) list ref =
+  ref []
+
+(** The set of non-parametric datatypes whose fields are all encodable
+    (Int / Bool / another encodable datatype). Computed as a fixpoint so that
+    a datatype with a field of an un-encodable type is excluded. Parametric
+    datatypes (e.g. [list::['a]]) are not encoded and stay opaque. *)
+let emittable_datatypes () : string list =
+  let candidates =
+    List.filter_map
+      (fun (name, (params, cons)) -> if params = [] then Some (name, cons) else None)
+      !adt_defs
+  in
+  let rec field_ok ok ty =
+    match ty with
+    | TInt | TBool -> true
+    | TRefine (_, inner, _) -> field_ok ok inner
+    | TCon (n, []) -> List.mem n ok
+    | _ -> false
+  in
+  let rec fixpoint ok =
+    let ok' =
+      List.filter_map
+        (fun (name, cons) ->
+           if List.for_all
+                (fun (_, fields) -> List.for_all (field_ok ok) fields)
+                cons
+           then Some name else None)
+        candidates
+    in
+    if List.length ok' = List.length ok then ok' else fixpoint ok'
+  in
+  fixpoint (List.map fst candidates)
+
+(** SMT-LIB sort for a Lexa value type, if encodable. Scalars map to their
+    theory sorts; non-parametric encodable datatypes map to their own sort.
+    Refinement-wrapped types collapse to the underlying base. Anything else is
+    None and the caller should treat it as an opaque symbol — sound but coarse. *)
 let rec smt_sort_of_ty (ty: ty) : string option =
   match ty with
   | TInt -> Some "Int"
   | TBool -> Some "Bool"
   | TRefine (_, inner, _) -> smt_sort_of_ty inner
+  | TCon (name, []) ->
+    if List.mem name (emittable_datatypes ()) then Some name else None
   | _ -> None
 
 (** Translate refinement logic terms and formulas into SMT-LIB. Unsupported
@@ -42,6 +82,10 @@ let rec pred_term_to_smt (t: pred_term) : string =
       | ADiv -> "div" | AMod -> "mod"
     in
     Printf.sprintf "(%s %s %s)" s (pred_term_to_smt t1) (pred_term_to_smt t2)
+  | PTCon (con, []) -> con
+  | PTCon (con, args) ->
+    Printf.sprintf "(%s %s)" con
+      (String.concat " " (List.map pred_term_to_smt args))
   | PTUnit ->
     failwith
       (Printf.sprintf "pred_term_to_smt: unsupported unit term: %s" (pred_term_to_str t))
@@ -69,6 +113,18 @@ and pred_to_smt (p: pred) : string =
 let rec pred_term_to_smt_opt (t: pred_term) : string option =
   match t with
   | PTInt _ | PTBool _ | PTVar _ -> Some (pred_term_to_smt t)
+  | PTCon (con, []) -> Some con
+  | PTCon (con, args) ->
+    let rec all_some acc = function
+      | [] -> Some (List.rev acc)
+      | a :: rest ->
+        (match pred_term_to_smt_opt a with
+         | Some s -> all_some (s :: acc) rest
+         | None -> None)
+    in
+    (match all_some [] args with
+     | Some ss -> Some (Printf.sprintf "(%s %s)" con (String.concat " " ss))
+     | None -> None)
   | PTArith (t1, op, t2) ->
     (match pred_term_to_smt_opt t1, pred_term_to_smt_opt t2 with
      | Some s1, Some s2 ->
@@ -135,6 +191,44 @@ let build_script
   let buf = Buffer.create 256 in
   Buffer.add_string buf "(set-logic ALL)\n";
   Buffer.add_string buf "(set-option :produce-models true)\n";
+  (* Declare every encodable non-parametric datatype as an SMT-LIB datatype,
+     all in one block so mutually/self-recursive references resolve. This gives
+     constructor distinctness, injectivity and selectors for free. *)
+  let emittable = emittable_datatypes () in
+  if emittable <> [] then begin
+    let sorts =
+      String.concat " " (List.map (fun n -> Printf.sprintf "(%s 0)" n) emittable)
+    in
+    let bodies =
+      String.concat " "
+        (List.map
+           (fun name ->
+              let _, cons = List.assoc name !adt_defs in
+              let con_strs =
+                List.map
+                  (fun (con, fields) ->
+                     if fields = [] then Printf.sprintf "(%s)" con
+                     else
+                       let field_strs =
+                         List.mapi
+                           (fun i fty ->
+                              let sort =
+                                match smt_sort_of_ty fty with
+                                | Some s -> s
+                                | None -> "Int" (* unreachable: emittable guard *)
+                              in
+                              Printf.sprintf "(sel_%s_%d %s)" con i sort)
+                           fields
+                       in
+                       Printf.sprintf "(%s %s)" con (String.concat " " field_strs))
+                  cons
+              in
+              Printf.sprintf "(%s)" (String.concat " " con_strs))
+           emittable)
+    in
+    Buffer.add_string buf
+      (Printf.sprintf "(declare-datatypes (%s) (%s))\n" sorts bodies)
+  end;
   List.iter (fun (x, sort) ->
     Buffer.add_string buf (Printf.sprintf "(declare-const %s %s)\n" x sort)
   ) decls;

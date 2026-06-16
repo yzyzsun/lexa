@@ -133,6 +133,7 @@ and pred_term =
   | PTInt of int
   | PTBool of bool
   | PTArith of pred_term * arith * pred_term
+  | PTCon of var * pred_term list  (* data constructor applied to arguments *)
 
 and pred =
   | PAtom of pred_term

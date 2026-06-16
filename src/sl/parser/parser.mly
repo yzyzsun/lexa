@@ -222,7 +222,8 @@ pred_term:
 
 pred_term_atom:
   | VAR { PTVar $1 }
-  | CAPITALIZED_VAR { PTVar $1 }
+  | CAPITALIZED_VAR { PTCon ($1, []) }
+  | con = CAPITALIZED_VAR LPAREN args = separated_list(COMMA, pred_term) RPAREN { PTCon (con, args) }
   | INT { PTInt $1 }
   | SUB INT { PTInt (Int.neg $2) }
   | TRUE { PTBool true }

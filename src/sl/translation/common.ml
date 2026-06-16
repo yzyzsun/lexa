@@ -57,6 +57,9 @@ let rec pred_term_to_str (t: pred_term) =
     let s = match op with
       | AAdd -> "+" | ASub -> "-" | AMult -> "*" | ADiv -> "/" | AMod -> "%"
     in Printf.sprintf "(%s %s %s)" (pred_term_to_str t1) s (pred_term_to_str t2)
+  | PTCon (con, []) -> con
+  | PTCon (con, args) ->
+    Printf.sprintf "%s(%s)" con (String.concat ", " (List.map pred_term_to_str args))
 
 and pred_to_str (p: pred) =
   match p with
@@ -78,7 +81,20 @@ let rec pred_term_of_expr_opt (e: expr) : pred_term option =
   | Int n -> Some (PTInt n)
   | Bool b -> Some (PTBool b)
   | Var x -> Some (PTVar x)
-  | Typecon (con_name, _, _) -> Some (PTVar con_name)
+  | Typecon (con_name, _, args) ->
+    (* Keep constructor arguments so refinements can mention payloads
+       (e.g. [Success(v)]); fall back to a nullary term when an argument is
+       outside the logical term syntax. *)
+    let rec all_some acc = function
+      | [] -> Some (List.rev acc)
+      | a :: rest ->
+        (match pred_term_of_expr_opt a with
+         | Some t -> all_some (t :: acc) rest
+         | None -> None)
+    in
+    (match all_some [] args with
+     | Some arg_terms -> Some (PTCon (con_name, arg_terms))
+     | None -> None)
   | Arith (e1, op, e2) ->
     (match pred_term_of_expr_opt e1, pred_term_of_expr_opt e2 with
      | Some t1, Some t2 -> Some (PTArith (t1, op, t2))
@@ -107,6 +123,8 @@ let rec rename_var_in_pred_term (t: pred_term) (old_v: string) (new_v: string) :
   | PTUnit | PTInt _ | PTBool _ -> t
   | PTArith (t1, op, t2) ->
     PTArith (rename_var_in_pred_term t1 old_v new_v, op, rename_var_in_pred_term t2 old_v new_v)
+  | PTCon (con, args) ->
+    PTCon (con, List.map (fun a -> rename_var_in_pred_term a old_v new_v) args)
 
 and rename_var_in_pred (p: pred) (old_v: string) (new_v: string) : pred =
   match p with
@@ -125,6 +143,8 @@ let rec subst_var_in_pred_term (t: pred_term) (old_v: string) (witness: pred_ter
   | PTUnit | PTInt _ | PTBool _ -> t
   | PTArith (t1, op, t2) ->
     PTArith (subst_var_in_pred_term t1 old_v witness, op, subst_var_in_pred_term t2 old_v witness)
+  | PTCon (con, args) ->
+    PTCon (con, List.map (fun a -> subst_var_in_pred_term a old_v witness) args)
 
 and subst_var_in_pred (p: pred) (old_v: string) (witness: pred_term) : pred =
   match p with
@@ -149,6 +169,7 @@ let rec subst_expr_in_pred (p: pred) (old_v: string) (witness: expr) : pred opti
         match t with
         | PTVar x -> x = old_v
         | PTArith (t1, _, t2) -> occurs t1 || occurs t2
+        | PTCon (_, args) -> List.exists occurs args
         | PTUnit | PTInt _ | PTBool _ -> false
       in
       if occurs t then None else Some t
@@ -1082,6 +1103,8 @@ let rec substitute_pred_in_term pred_name pred_params pred_body t =
   | PTArith (t1, op, t2) ->
     PTArith (substitute_pred_in_term pred_name pred_params pred_body t1, op,
              substitute_pred_in_term pred_name pred_params pred_body t2)
+  | PTCon (con, args) ->
+    PTCon (con, List.map (substitute_pred_in_term pred_name pred_params pred_body) args)
 
 and substitute_pred_in_pred pred_name pred_params pred_body p =
   match p with
