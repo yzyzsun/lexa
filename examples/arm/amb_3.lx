@@ -1,0 +1,42 @@
+// Migrated from arm/amb-3-SAT.ml
+//
+// Faithful backtracking search (see amb_2), with the target e appearing after
+// another element: the scan runs over Cons(ep, Cons(e, l)), so the search must
+// backtrack past ep before it can succeed.  Invariant: Failure or Success(e).
+
+type ilist  = | Nil | Cons of int * ilist
+type opt_i  = | NoneI | SomeI of int
+type result = | Failure | Success of int
+
+effect Amb {
+    select: () -> bool
+}
+
+def amb_find(ep: int, e: int, l: ilist): { z: result | z == Failure || z == Success(e) } {
+    handle <> { [r, ev] =>
+        rec def select_from <amb> (xs: ilist):
+            opt_i
+            / { z: result | z == Failure || z == Success(e) }
+           => { z: result | z == Failure || z == Success(e) } {
+            match xs with
+            | Nil -> { NoneI }
+            | Cons (x, rest) -> {
+                val chosen = raise amb.select[[]]();
+                if chosen then SomeI(x) else select_from(rest)
+            }
+        };
+        val found = select_from(Cons(ep, Cons(e, l)));
+        (fun <> (): { z: result | z == Failure || z == Success(e) } {
+            match found with
+            | NoneI -> { Failure }
+            | SomeI (x) -> { if x == e then Success(x) else Failure }
+        })()
+    } with amb: Amb {
+        hdl_s select(k) {
+            val res = resume k true;
+            match res with
+            | Failure -> { resume_final k false }
+            | Success (y) -> { Success(y) }
+        }
+    }: { z: result | z == Failure || z == Success(e) }
+}

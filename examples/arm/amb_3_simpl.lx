@@ -1,0 +1,41 @@
+// Migrated from arm/amb-3-simpl-SAT.ml
+//
+//   let amb_find e l = amb (fun () ->
+//     let rec select_from e l = match l with
+//       | []      -> false
+//       | x :: xs -> if perform Select then x = e else select_from e xs
+//     in select_from e l)
+//   let test e' e = amb_find e (e' :: e :: [])     assert: = true
+//
+// The bool variant of amb: the real recursive `select_from` scan is preserved
+// (testing `x = e` on each element under the backtracking handler).
+//
+// The original asserts the result is `true`; that is an operational
+// backtracking outcome (the body returns `false` while probing e', which is
+// not the target), so it is not true on every handler branch and is not
+// expressible per-branch.  Strongest checkable form: plain `bool`.  (The
+// int-encoded amb_1/2/3 capture the meaningful Failure/Success(e) invariant.)
+
+type ilist = | Nil | Cons of int * ilist
+
+effect Amb { select: () -> bool }
+
+def amb_find(ep: int, e: int): bool {
+    handle <> { [r, ev] =>
+        rec def select_from <amb> (xs: ilist): bool / bool => bool {
+            match xs with
+            | Nil -> { false }
+            | Cons (x, rest) -> {
+                val c = raise amb.select[[]]();
+                if c then x == e else select_from(rest)
+            }
+        };
+        val res = select_from(Cons(ep, Cons(e, Nil)));
+        (fun <> (): bool { res })()
+    } with amb: Amb {
+        hdl_s select(k) {
+            val r = resume k true;
+            if r then true else resume_final k false
+        }
+    }: bool
+}

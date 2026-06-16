@@ -1,0 +1,31 @@
+// Migrated from arm/select-SAT.ml
+//
+//   let main x = selection_collector true (fun () ->
+//     let a = perform (Select_int [x; -x]) in  a * a = x * x)
+//   assert: main x = Success [x]
+//
+// `Select_int [x; -x]` chooses a candidate; the body tests `a * a = x * x`.
+// The chosen candidate is preserved as a real variable and the test is the real
+// `cand * cand == x * x`.  Invariant: Failure, or Success of a value whose
+// square is x*x (i.e. x or -x).
+
+type result = | Failure | Success of int
+
+effect Select { choose: () -> bool }
+
+def selection(x: int): { z: result | z == Failure || z == Success(x) || z == Success(0 - x) } {
+    handle <> { [r, e] =>
+        val b = raise s.choose();
+        val cand = if b then x else (0 - x);
+        (fun <> (): { z: result | z == Failure || z == Success(x) || z == Success(0 - x) } {
+            if cand * cand == x * x then Success(cand) else Failure
+        })()
+    } with s: Select {
+        hdl_s choose(k) {
+            val r = resume k true;
+            match r with
+            | Failure -> { resume_final k false }
+            | Success (y) -> { Success(y) }
+        }
+    }: { z: result | z == Failure || z == Success(x) || z == Success(0 - x) }
+}

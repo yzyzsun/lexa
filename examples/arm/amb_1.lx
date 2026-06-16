@@ -1,0 +1,56 @@
+// Migrated from arm/amb-1-SAT.ml
+//
+//   let amb_find e l = amb (fun () ->
+//     let rec select_from l = match l with
+//       | []      -> None
+//       | x :: xs -> if perform Select then Some x else select_from xs
+//     in
+//     match select_from l with
+//     | Some x -> if x = e then Success x else Failure
+//     | None   -> Failure)
+//   assert: amb_find e []  =  Failure
+//
+// Faithful migration: the recursive list scan `select_from` is preserved (it
+// performs `select` on each element under the backtracking handler).  Its
+// refined result type records that scanning the *empty* list yields None
+// without performing any selection, so for l = Nil the search is Failure --
+// proved from the program, not hard-coded.
+//
+// The `[[]]` on the raise is the identity answer-type conversion: `amb` is an
+// endomorphic handler (answer type `result` throughout), and the annotation
+// resolves the region path from inside `select_from` to the handler.
+
+type ilist  = | Nil | Cons of int * ilist
+type opt_i  = | NoneI | SomeI of int
+type result = | Failure | Success of int
+
+effect Amb {
+    select: () -> bool
+}
+
+def amb_find(e: int, l: { z: ilist | z == Nil }): { z: result | z == Failure } {
+    handle <> { [r, ev] =>
+        rec def select_from <amb> (xs: ilist):
+            { z: opt_i | xs != Nil || z == NoneI } / { z: result | z == Failure } => { z: result | z == Failure } {
+            match xs with
+            | Nil -> { NoneI }
+            | Cons (x, rest) -> {
+                val chosen = raise amb.select[[]]();
+                if chosen then SomeI(x) else select_from(rest)
+            }
+        };
+        val found = select_from(l);
+        (fun <> (): { z: result | z == Failure } {
+            match found with
+            | NoneI -> { Failure }
+            | SomeI (x) -> { if x == e then Success(x) else Failure }
+        })()
+    } with amb: Amb {
+        hdl_s select(k) {
+            val res = resume k true;
+            match res with
+            | Failure -> { resume_final k false }
+            | Success (y) -> { Success(y) }
+        }
+    }: { z: result | z == Failure }
+}

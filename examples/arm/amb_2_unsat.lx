@@ -1,0 +1,35 @@
+// Migrated from arm/amb-2-UNSAT.ml  (NEGATIVE TEST: must FAIL)
+// The search returns Failure or Success(e); the answer type wrongly claims the
+// success carries a wrong element (e + 1).
+type ilist  = | Nil | Cons of int * ilist
+type opt_i  = | NoneI | SomeI of int
+type result = | Failure | Success of int
+effect Amb { select: () -> bool }
+def amb_find(e: int, l: ilist): { z: result | z == Failure || z == Success(e + 1) } {
+    handle <> { [r, ev] =>
+        rec def select_from <amb> (xs: ilist):
+            opt_i
+            / { z: result | z == Failure || z == Success(e + 1) }
+           => { z: result | z == Failure || z == Success(e + 1) } {
+            match xs with
+            | Nil -> { NoneI }
+            | Cons (x, rest) -> {
+                val chosen = raise amb.select[[]]();
+                if chosen then SomeI(x) else select_from(rest)
+            }
+        };
+        val found = select_from(Cons(e, l));
+        (fun <> (): { z: result | z == Failure || z == Success(e + 1) } {
+            match found with
+            | NoneI -> { Failure }
+            | SomeI (x) -> { if x == e then Success(x) else Failure }
+        })()
+    } with amb: Amb {
+        hdl_s select(k) {
+            val res = resume k true;
+            match res with
+            | Failure -> { resume_final k false }
+            | Success (y) -> { Success(y) }
+        }
+    }: { z: result | z == Failure || z == Success(e + 1) }
+}

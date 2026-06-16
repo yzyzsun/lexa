@@ -1,0 +1,51 @@
+// Migrated from arm/state-UNSAT.ml  (NEGATIVE TEST: must FAIL)
+//
+// Same recursive countdown as state.lx, but the original negative assertion
+// claims the result is not init.
+
+effect State {
+    lookup: forall 'rho: Reg, 'alpha: Pred[int], 'beta: Pred[int], 'gamma: Cty. (ctx: int) ->
+        { st: int | 'alpha(st) }
+            / ((<>({ st: int | 'alpha(st) }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ st: int | 'alpha(st) }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+
+    update: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. (ctx: int, v: int) ->
+        unit
+            / ((<>({ st: int | st == v }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>(int) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+}
+
+def main(init: { z: int | z >= 0 }): { z: int | z != init } / int => int {
+    val run = handle <> { [r, e] =>
+        rec def counter <s> (c: { z: int | z >= 0 }):
+            { z: int | z == init }
+            / (<>(int) -> { z: int | z == init } / int => int)
+            => (<>({ st: int | st >= 0 && c + st == init }) -> { z: int | z == init } / int => int) {
+            val i = raise s.lookup[[]; top, Pred(st: Int) { st >= 0 && c + st == init }, Pred(z: Int) { z == init }, int](c);
+            if i == 0 then c
+            else (
+                raise s.update[[]; top, Pred(z: Int) { z == init }, int](c, i - 1);
+                val next = (fun <> (): { z: int | z == c + 1 } { c + 1 })();
+                counter(next)
+            )
+        };
+        counter(0)
+    } with s: State {
+        return x {
+            fun <> (st: int): { z: int | z == init } { x }
+        }
+        hdl_1 lookup(ctx, k) {
+            fun <> (st: int): { z: int | z == init } / int => int {
+                val r = resume_final k st;
+                r(st)
+            }
+        }
+        hdl_1 update(ctx, v, k) {
+            fun <> (st: int): { z: int | z == init } / int => int {
+                val r = resume_final k (());
+                r(v)
+            }
+        }
+    }: <>(int) -> { z: int | z == init } / int => int;
+    run(init)
+}

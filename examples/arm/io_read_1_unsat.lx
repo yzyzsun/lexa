@@ -1,0 +1,18 @@
+// Migrated from arm/io-read-1-UNSAT (NEGATIVE TEST: must FAIL).ml -- read_n 0 over any list: the read loop runs zero times, result Ok.
+type ioresult = | Ok | Err
+effect IO { read: () -> int }
+// read_n n l: the recursive read loop  go m = if m<=0 then Ok else (perform Read; go (m-1))
+// run under read_from_list.  Reading a non-empty list succeeds; the result is Ok.
+def read_n(n: { z: int | z == 0 }): { z: ioresult | z == Err } {
+    handle <> { [reg, e] =>
+        rec def go <io> (m: int): { z: ioresult | z == Err }
+            / { z: ioresult | z == Err } => { z: ioresult | z == Err } {
+            if m <= 0 then Ok
+            else (val v = raise io.read[[]](); go(m - 1))
+        };
+        val res = go(n);
+        (fun <> (): { z: ioresult | z == Err } { res })()
+    } with io: IO {
+        hdl_1 read(k) { resume_final k 0 }
+    }: { z: ioresult | z == Err }
+}

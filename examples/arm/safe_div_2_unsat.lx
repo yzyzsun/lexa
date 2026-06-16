@@ -1,0 +1,9 @@
+// Migrated from arm/safe-div-2-UNSAT.ml  (NEGATIVE TEST: must FAIL)
+// The result is None or Some(n/m); the answer type wrongly claims Some(n/m + 1).
+type opt = | None | Some of int
+exceptional effect Div { divfail: () -> { z: opt | z == None } }
+def safe_div(n: int, m: { z: int | z != 0 }): { z: opt | z == None || z == Some(n / m + 1) } {
+    handle <> { [reg, e] =>
+        if m == 0 then raise d.divfail() else Some(n / m)
+    } with d: Div { exc divfail() { None } }: { z: opt | z == None || z == Some(n / m + 1) }
+}

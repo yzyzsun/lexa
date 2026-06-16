@@ -1,0 +1,30 @@
+// Migrated from arm/shift-SAT.ml
+//
+// Delimited control (shift/reset).  The body  `let s = shift() in s*2+1`  has
+// continuation  k = (s |-> s*2+1).  The original `shift` receives f and runs
+// `reset (f (continue k))` with  f = (k |-> k (k (k n))), applying k three
+// times; the result is 8n+7.  Composing three `resume`s realises k(k(k n)):
+//   resume k n = k n,  resume k (k n) = k(k n),  resume_final = k(k(k n)).
+//
+// NOTE: this is a non-endomorphic multi-shot handler (each resume yields an
+// intermediate 2x+1, not the final 8n+7), so the answer-type refinement does
+// not propagate to the body and `{z == 8n+7}` is not provable.  Strongest
+// checkable form: plain `int`.
+
+effect Delim {
+    shift: () -> int
+}
+
+def reset_(n: int): int {
+    handle <> { [r, e] =>
+        val s = raise d.shift();
+        (fun <> (): int { s * 2 + 1 })()
+    } with d: Delim {
+        hdl_s shift(k) {
+            val a = resume k n;        // k(n)
+            val b = resume k a;        // k(k(n))
+            val c = resume_final k b;  // k(k(k(n)))
+            c
+        }
+    }: int
+}

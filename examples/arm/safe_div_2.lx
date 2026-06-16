@@ -1,0 +1,20 @@
+// Migrated from arm/safe-div-2-SAT.ml
+//
+// Same `optionize` handler, but the divisor is nonzero so the division
+// succeeds with Some (n / m).  Since the handler can in general abort to None,
+// the faithful checkable invariant is: the result is None or exactly Some(n/m).
+
+type opt = | None | Some of int
+
+exceptional effect Div {
+    divfail: () -> { z: opt | z == None }
+}
+
+def safe_div(n: int, m: { z: int | z != 0 }): { z: opt | z == None || z == Some(n / m) } {
+    handle <> { [reg, e] =>
+        if m == 0 then raise d.divfail()
+        else Some(n / m)
+    } with d: Div {
+        exc divfail() { None }
+    }: { z: opt | z == None || z == Some(n / m) }
+}

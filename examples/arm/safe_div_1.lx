@@ -1,0 +1,21 @@
+// Migrated from arm/safe-div-1-SAT.ml
+//
+// `optionize` turns an exception-raising computation into an option via an
+// exceptional-effect handler.  safe_div raises on a zero divisor; with m = 0
+// it aborts, so the result is None -- the faithful original assertion, over
+// the real `int option` datatype.
+
+type opt = | None | Some of int
+
+exceptional effect Div {
+    divfail: () -> { z: opt | z == None }
+}
+
+def safe_div(n: int, m: { z: int | z == 0 }): { z: opt | z == None } {
+    handle <> { [reg, e] =>
+        if m == 0 then raise d.divfail()       // None
+        else Some(n / m)                       // (unreachable: m == 0)
+    } with d: Div {
+        exc divfail() { None }
+    }: { z: opt | z == None }
+}

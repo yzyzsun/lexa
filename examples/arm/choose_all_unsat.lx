@@ -1,0 +1,29 @@
+// Migrated from arm/choose-all-UNSAT.ml  (NEGATIVE TEST: must FAIL)
+//
+// The faithful handler structure collects all leaves.  Exact OCaml list order
+// is not refinable here, so this negative test asks for the impossible empty
+// result list.
+
+type ilist = | Nil | Cons of int * ilist
+
+effect Decide { decide: () -> bool }
+
+def append(l1: ilist, l2: ilist): ilist {
+    match l1 with
+    | Nil -> { l2 }
+    | Cons (h, t) -> { Cons(h, append(t, l2)) }
+}
+
+def choose_all(x: int, y: int): { z: ilist | z == Nil } {
+    handle <> { [r, e] =>
+        val d1 = raise dec.decide();
+        val d2 = raise dec.decide();
+        (fun <> (): ilist { Cons((if d1 then x else y) - (if d2 then x else y), Nil) })()
+    } with dec: Decide {
+        hdl_s decide(k) {
+            val a = resume k true;
+            val b = resume_final k false;
+            append(a, b)
+        }
+    }: ilist
+}

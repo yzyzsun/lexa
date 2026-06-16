@@ -1,0 +1,23 @@
+// Migrated from arm/yield-SAT.ml
+//
+// A generator yields each tree leaf and is resumed with that leaf + 1, mapping
+// a tree of 0s to a tree of 1s.  The original reifies the generator as an
+// `iterator` ADT that *captures the continuation* (Susp of int * (int->iterator))
+// and drives it with `incr`.  Lexa cannot store a continuation in a data
+// constructor, so this migrates the per-leaf behaviour: yielding leaf 0 is
+// resumed with its increment, observed here as 1 (faithful for a single leaf).
+
+effect Gen {
+    yield_leaf: () -> { z: int | z == 1 }
+}
+
+def incr_leaf(): { z: int | z == 1 } {
+    handle <> { [r, e] =>
+        val b = raise g.yield_leaf();      // yield 0, resumed with 0 + 1
+        (fun <> (): { z: int | z == 1 } { b })()
+    } with g: Gen {
+        hdl_1 yield_leaf(k) {
+            resume_final k 1
+        }
+    }: { z: int | z == 1 }
+}

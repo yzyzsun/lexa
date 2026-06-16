@@ -1,0 +1,7 @@
+// Migrated from arm/transaction-UNSAT.ml  (NEGATIVE TEST: must FAIL)
+//
+// The transaction never exposes the intermediate value 2 as its final result.
+
+def main(b: bool): { z: int | z == 2 } {
+    if b then 0 else 42
+}

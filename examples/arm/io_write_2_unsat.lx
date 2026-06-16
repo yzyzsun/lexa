@@ -1,0 +1,59 @@
+// Migrated from arm/io-write-2-UNSAT.ml  (NEGATIVE TEST: must FAIL)
+//
+// Non-empty input performs at least one write, so the final count is >= 1.
+// This file wrongly claims it is 0.
+
+type ilist = | Nil | Cons of int * ilist
+
+effect Writer {
+    write: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. (before: { b: int | b >= 0 }, v: int) ->
+        unit
+            / ((<>({ count: int | count == before + 1 }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ count: int | count == before }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+
+    total: forall 'rho: Reg, 'alpha: Pred[int], 'beta: Pred[int], 'gamma: Cty. () ->
+        { count: int | 'alpha(count) }
+            / ((<>({ count: int | 'alpha(count) }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ count: int | 'alpha(count) }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+}
+
+def write_all_any(l: ilist): { z: int | (l == Nil && z == 0) || (l != Nil && z >= 1) } / int => int {
+    val run = handle <> { [r, e] =>
+        rec def go <w> (li: ilist, before: { b: int | b >= 0 }):
+            unit
+            / (<>({ count: int | (li == Nil && count == before) || (li != Nil && count >= before + 1) }) -> { z: int | (l == Nil && z == 0) || (l != Nil && z >= 1) } / int => int)
+            => (<>({ count: int | count == before }) -> { z: int | (l == Nil && z == 0) || (l != Nil && z >= 1) } / int => int) {
+            match li with
+            | Nil -> { () }
+            | Cons (h, t) -> {
+                raise w.write[[]; top, Pred(z: Int) { (l == Nil && z == 0) || (l != Nil && z >= 1) }, int](before, h);
+                val next = (fun <> (): { z: int | z == before + 1 } { before + 1 })();
+                go(t, next)
+            }
+        };
+        go(l, 0);
+        val n = raise w.total[top, Pred(count: Int) { (l == Nil && count == 0) || (l != Nil && count >= 1) }, Pred(z: Int) { (l == Nil && z == 0) || (l != Nil && z >= 1) }, int]();
+        n
+    } with w: Writer {
+        return x {
+            fun <> (count: int): { z: int | (l == Nil && z == 0) || (l != Nil && z >= 1) } { x }
+        }
+        hdl_1 write(before, v, k) {
+            fun <> (count: int): { z: int | (l == Nil && z == 0) || (l != Nil && z >= 1) } / int => int {
+                val r = resume_final k (());
+                r(before + 1)
+            }
+        }
+        hdl_1 total(k) {
+            fun <> (count: int): { z: int | (l == Nil && z == 0) || (l != Nil && z >= 1) } / int => int {
+                val r = resume_final k count;
+                r(count)
+            }
+        }
+    }: <>(int) -> { z: int | (l == Nil && z == 0) || (l != Nil && z >= 1) } / int => int;
+    run(0)
+}
+
+def write_all(l: { z: ilist | z != Nil }): { z: int | z == 0 } / int => int {
+    write_all_any(l)
+}

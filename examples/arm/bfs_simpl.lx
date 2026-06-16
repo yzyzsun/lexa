@@ -1,0 +1,34 @@
+// Migrated from arm/bfs-simpl-SAT.ml
+//
+//   let sqrt a = bfs (fun () ->
+//     let cand = if perform Select then a else -a in
+//     if cand * cand = a * a then Success cand else Failure)
+//   assert: sqrt a = Success b  ==>  b = a || b = -a
+//
+// BFS nondeterministic search for a square root of a*a.  The original keeps a
+// ref-based queue of continuations; Lexa cannot store a continuation in a
+// mutable queue, so the breadth-first scheduling is modelled by the multi-shot
+// backtracking handler (as in amb).  The *computation* is preserved verbatim:
+// a candidate (a or -a) is chosen and tested with `cand * cand == a * a`.
+// Invariant: Failure, or Success of a genuine square root of a*a (a or -a).
+
+type result = | Failure | Success of int
+
+effect Select { select: () -> bool }
+
+def sqrt(a: int): { z: result | z == Failure || z == Success(a) || z == Success(0 - a) } {
+    handle <> { [r, e] =>
+        val b = raise sel.select();
+        val cand = if b then a else (0 - a);
+        (fun <> (): { z: result | z == Failure || z == Success(a) || z == Success(0 - a) } {
+            if cand * cand == a * a then Success(cand) else Failure
+        })()
+    } with sel: Select {
+        hdl_s select(k) {
+            val r = resume k true;
+            match r with
+            | Failure -> { resume_final k false }
+            | Success (y) -> { Success(y) }
+        }
+    }: { z: result | z == Failure || z == Success(a) || z == Success(0 - a) }
+}

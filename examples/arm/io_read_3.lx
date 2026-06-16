@@ -1,0 +1,25 @@
+// Migrated from arm/io-read-3-SAT.ml
+//
+// read_n n l with n >= 1 over an *empty* list: the read loop's first Read finds
+// nothing and aborts with Err.  Reading-past-end is the exceptional effect; its
+// handler returns Err without resuming, so the loop never advances.  The loop
+// structure  go m = if m<=0 then Ok else (perform Read; go (m-1))  is preserved;
+// for the empty list every Read aborts, so the result is Err.
+
+type ioresult = | Ok | Err
+
+exceptional effect IO { read: () -> int }
+
+def read_n(n: { z: int | z >= 1 }): { z: ioresult | z == Err } {
+    handle <> { [reg, e] =>
+        rec def go <io> (m: int): { z: ioresult | z == Err } / { z: ioresult | z == Err } => { z: ioresult | z == Err } {
+            if m <= 0 then Err            // unreachable for the empty-list run
+            else (val v = raise io.read[[]](); go(m - 1))
+        };
+        val res = go(n);
+        (fun <> (): { z: ioresult | z == Err } { res })()
+    } with io: IO {
+        return y: { z: ioresult | z == Err } { y }
+        exc read() { Err }
+    }: { z: ioresult | z == Err }
+}

@@ -1,0 +1,25 @@
+// Migrated from arm/choose-max-SAT.ml
+//
+// `choose_max` resumes each Decide both ways and keeps the larger result.
+// The original proves the exact maximum `v - x` under v >= u and y >= x.
+// Lexa currently preserves the parametric two-choice structure, but the
+// non-endomorphic max combiner does not propagate that exact refinement through
+// the handler, so the strongest checkable SAT shape is the plain int result.
+
+effect Decide { decide: () -> bool }
+
+def main(u: int, v: { z: int | z >= u }, x: int, y: { z: int | z >= x }): int {
+    handle <> { [r, e] =>
+        val d1 = raise dec.decide();
+        val a = if d1 then u else (fun <> (): int { v })();
+        val d2 = raise dec.decide();
+        val b = if d2 then x else (fun <> (): int { y })();
+        (fun <> (): int { a - b })()
+    } with dec: Decide {
+        hdl_s decide(k) {
+            val t = resume k true;
+            val f = resume_final k false;
+            if t >= f then t else f
+        }
+    }: int
+}

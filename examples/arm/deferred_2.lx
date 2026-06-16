@@ -1,0 +1,24 @@
+// Migrated from arm/deferred-2-SAT.ml
+//
+// `deferred` / lazy evaluation: `force` evaluates a thunk on first use.
+// The handler is a forward-threading (hdl_1) handler; here the thunk yields a
+// fixed value r, so forcing it returns exactly r.  This is the *faithful*
+// assertion: thunk () = r  ==>  force result = r.
+//
+// SIMPLIFICATION: see deferred_1 -- the Value/Thunk caching state is not
+// migrated; this models forcing yielding the thunk value n.
+
+effect Deferred {
+    force: () -> { z: int | z == r }
+}
+
+def lazy_(r: int): { z: int | z == r } {
+    handle <> { [reg, e] =>
+        val v = raise d.force();
+        (fun <> (): { z: int | z == r } { v })()
+    } with d: Deferred {
+        hdl_1 force(k) {
+            resume_final k r
+        }
+    }: { z: int | z == r }
+}

@@ -1,0 +1,36 @@
+// Migrated from arm/bfs-SAT.ml
+//
+// `bfs` is breadth-first nondeterministic search; the original keeps a
+// ref-based queue of continuations.  Lexa cannot store a continuation in a
+// mutable queue, so this migrates the observable behaviour with the multi-shot
+// backtracking handler (as in amb), over the real `result` datatype.
+//
+// sqrt_for_4_or_9 searches cand in {2,3} for cand*cand = squared (a parameter,
+// = n*n for n in {2,3}).  Select chooses between the two candidates (the two
+// `if b` branches); each branch tests its candidate's square against the real
+// `squared`.  The candidates are kept inline rather than bound to a variable so
+// the result stays in {Success 2, Success 3} (a bound `cand : int` would lose
+// that it is positive).  Invariant: Failure, or Success of a candidate whose
+// square is `squared`.
+
+type result = | Failure | Success of int
+
+effect Select { select: () -> bool }
+
+def bfs(squared: { z: int | z == 4 || z == 9 }):
+    { z: result | z == Failure || z == Success(2) || z == Success(3) } {
+    handle <> { [r, e] =>
+        val b = raise sel.select();
+        (fun <> (): { z: result | z == Failure || z == Success(2) || z == Success(3) } {
+            if b then (if 2 * 2 == squared then Success(2) else Failure)
+            else (if 3 * 3 == squared then Success(3) else Failure)
+        })()
+    } with sel: Select {
+        hdl_s select(k) {
+            val r = resume k true;
+            match r with
+            | Failure -> { resume_final k false }
+            | Success (y) -> { Success(y) }
+        }
+    }: { z: result | z == Failure || z == Success(2) || z == Success(3) }
+}

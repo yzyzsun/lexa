@@ -1,0 +1,12 @@
+// Migrated from arm/yield-UNSAT.ml  (NEGATIVE TEST: must FAIL)
+// The yielded leaf is incremented to 1, but the answer type wrongly claims 0.
+
+effect Gen { yield_leaf: () -> { z: int | z == 1 } }
+def incr_leaf(): { z: int | z == 0 } {
+    handle <> { [r, e] =>
+        val b = raise g.yield_leaf();
+        (fun <> (): { z: int | z == 0 } { b })()
+    } with g: Gen {
+        hdl_1 yield_leaf(k) { resume_final k 1 }
+    }: { z: int | z == 0 }
+}

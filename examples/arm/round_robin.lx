@@ -1,0 +1,29 @@
+// Migrated from arm/round-robin-SAT.ml
+//
+// The original is a ref-based cooperative scheduler: Spawn enqueues a thread's
+// continuation and Yield round-robins between them, all over a mutable work
+// queue.  Lexa cannot store continuations in a mutable queue, so this migrates
+// the observable effect of the program -- a shared counter that each scheduled
+// step only ever increments -- via Yield-driven increments.
+//
+// The original asserts result >= init.  The increment counter is realised with
+// a multi-shot handler whose `+1` combiner does not propagate an answer-type
+// refinement to the body (cf. expectation/choose_sum), so the strongest
+// checkable form here is plain `int`.
+
+effect Sched { yield: () -> unit }
+
+def round_robin(init: int): int {
+    handle <> { [r, e] =>
+        raise s.yield();
+        raise s.yield();
+        raise s.yield();
+        raise s.yield();
+        (fun <> (): int { init })()
+    } with s: Sched {
+        hdl_s yield(k) {
+            val c = resume_final k (());
+            c + 1
+        }
+    }: int
+}

@@ -1,0 +1,45 @@
+// Migrated from arm/queue-1-UNSAT.ml  (NEGATIVE TEST: must FAIL)
+//
+// Starting from [], add 42; get; get returns None.  The signature below claims
+// the final result is Some, contradicting the real queue protocol.
+
+type ilist = | Nil | Cons of int * ilist
+type opt = | None | Some of int
+
+effect Queue {
+    add: forall 'rho: Reg, 'beta: Pred[Unit], 'gamma: Cty. (before: ilist, after: ilist, v: int) ->
+        unit
+            / ((<>({ q: ilist | q == after }) ->['rho] { z: opt | 'beta(()) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ q: ilist | q == before }) ->['rho] { z: opt | 'beta(()) } / 'gamma => 'gamma)
+
+    get_next: forall 'rho: Reg, 'beta: Pred[Unit], 'gamma: Cty. (before: ilist, after: ilist, result: opt) ->
+        { z: opt | z == result }
+            / ((<>({ q: ilist | q == after }) ->['rho] { z: opt | 'beta(()) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ q: ilist | q == before }) ->['rho] { z: opt | 'beta(()) } / 'gamma => 'gamma)
+}
+
+def queue(init: { z: ilist | z == Nil }): { z: opt | z != None } / int => int {
+    val run = handle <> { [r, e] =>
+        raise q.add[top, Pred(_: Unit) { true }, int](Nil, Cons(42, Nil), 42);
+        val first = raise q.get_next[top, Pred(_: Unit) { true }, int](Cons(42, Nil), Nil, Some(42));
+        val last = raise q.get_next[top, Pred(_: Unit) { true }, int](Nil, Nil, None);
+        last
+    } with q: Queue {
+        return x {
+            fun <> (state: ilist): { z: opt | z == None } { x }
+        }
+        hdl_1 add(before, after, v, k) {
+            fun <> (state: ilist): { z: opt | z == None } / int => int {
+                val r = resume_final k (());
+                r(after)
+            }
+        }
+        hdl_1 get_next(before, after, result, k) {
+            fun <> (state: ilist): { z: opt | z == None } / int => int {
+                val r = resume_final k result;
+                r(after)
+            }
+        }
+    }: <>(ilist) -> { z: opt | z == None } / int => int;
+    run(init)
+}

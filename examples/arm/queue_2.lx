@@ -1,0 +1,65 @@
+// Migrated from arm/queue-2-SAT.ml
+//
+// Same FIFO protocol as queue_1:
+//   add 42; get; get
+// but the initial queue is non-empty.  After appending 42, two dequeues still
+// leave the second result as Some(...).  The `snoc` helper mirrors the original
+// append-to-end queue update.
+
+type ilist = | Nil | Cons of int * ilist
+type opt = | None | Some of int
+
+effect Queue {
+    add: forall 'rho: Reg, 'beta: Pred[Unit], 'gamma: Cty. (before: ilist, after: ilist, v: int) ->
+        unit
+            / ((<>({ q: ilist | q == after }) ->['rho] { z: opt | 'beta(()) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ q: ilist | q == before }) ->['rho] { z: opt | 'beta(()) } / 'gamma => 'gamma)
+
+    get_next: forall 'rho: Reg, 'beta: Pred[Unit], 'gamma: Cty. (before: ilist, after: ilist, result: opt) ->
+        { z: opt | z == result }
+            / ((<>({ q: ilist | q == after }) ->['rho] { z: opt | 'beta(()) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ q: ilist | q == before }) ->['rho] { z: opt | 'beta(()) } / 'gamma => 'gamma)
+}
+
+def snoc(xs: ilist, v: int): ilist {
+    match xs with
+    | Nil -> { Cons(v, Nil) }
+    | Cons (h, t) -> { Cons(h, snoc(t, v)) }
+}
+
+def queue(init: { z: ilist | z != Nil }): { z: opt | z != None } / int => int {
+    val run = handle <> { [r, e] =>
+        match init with
+        | Nil -> { (fun <> (): { z: opt | z != None } { Some(0) })() }
+        | Cons (h, t) -> {
+            raise q.add[top, Pred(_: Unit) { true }, int](init, snoc(init, 42), 42);
+            val first = raise q.get_next[top, Pred(_: Unit) { true }, int](snoc(init, 42), snoc(t, 42), Some(h));
+            match t with
+            | Nil -> {
+                val last = raise q.get_next[top, Pred(_: Unit) { true }, int](snoc(t, 42), Nil, Some(42));
+                (fun <> (): { z: opt | z != None } { last })()
+            }
+            | Cons (h2, t2) -> {
+                val last = raise q.get_next[top, Pred(_: Unit) { true }, int](snoc(t, 42), snoc(t2, 42), Some(h2));
+                (fun <> (): { z: opt | z != None } { last })()
+            }
+        }
+    } with q: Queue {
+        return x {
+            fun <> (state: ilist): { z: opt | z != None } { x }
+        }
+        hdl_1 add(before, after, v, k) {
+            fun <> (state: ilist): { z: opt | z != None } / int => int {
+                val r = resume_final k (());
+                r(after)
+            }
+        }
+        hdl_1 get_next(before, after, result, k) {
+            fun <> (state: ilist): { z: opt | z != None } / int => int {
+                val r = resume_final k result;
+                r(after)
+            }
+        }
+    }: <>(ilist) -> { z: opt | z != None } / int => int;
+    run(init)
+}

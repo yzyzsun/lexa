@@ -1,0 +1,12 @@
+// Migrated from arm/modulus-UNSAT.ml  (NEGATIVE TEST: must FAIL)
+// The oracle probe returns 0, but the answer type wrongly claims 1.
+
+effect Oracle { call: () -> { z: int | z == 0 } }
+def mu(): { z: int | z == 1 } {
+    handle <> { [r, e] =>
+        val v = raise o.call();
+        (fun <> (): { z: int | z == 1 } { v })()
+    } with o: Oracle {
+        hdl_1 call(k) { resume_final k 0 }
+    }: { z: int | z == 1 }
+}

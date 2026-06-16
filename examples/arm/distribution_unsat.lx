@@ -1,0 +1,37 @@
+// Migrated from arm/distribution-UNSAT.ml  (NEGATIVE TEST: must FAIL)
+//
+// The structural distribution handler returns a non-empty distribution for one
+// Pick.  This file wrongly claims the result is Nil.
+
+type pair = | P of int * int
+type plist = | Nil | Cons of pair * plist
+
+effect Pick { pick: () -> bool }
+
+def scale(p: int, d: plist): plist {
+    match d with
+    | Nil -> { Nil }
+    | Cons (hd, tl) -> {
+        match hd with
+        | P (x, q) -> { Cons(P(x, p * q / 100), scale(p, tl)) }
+    }
+}
+
+def concat(d1: plist, d2: plist): plist {
+    match d1 with
+    | Nil -> { d2 }
+    | Cons (hd, tl) -> { Cons(hd, concat(tl, d2)) }
+}
+
+def distribution(p: int, a: int, b: int): { z: plist | z == Nil } {
+    handle <> { [r, e] =>
+        val d = raise pk.pick();
+        (fun <> (): plist { Cons(P(if d then a else b, 100), Nil) })()
+    } with pk: Pick {
+        hdl_s pick(k) {
+            val d1 = resume k true;
+            val d2 = resume_final k false;
+            concat(scale(p, d1), scale(100 - p, d2))
+        }
+    }: plist
+}

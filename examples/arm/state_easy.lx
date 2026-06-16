@@ -1,0 +1,53 @@
+// Migrated from arm/state-easy-SAT.ml
+//
+// Faithful structure: a recursive counter repeatedly Lookup's the current
+// state; if it is nonzero, it Update's the state to i-1 and recurs with c+1.
+// For init >= 0 the result is nonnegative, matching the original assertion.
+// The `[]` ATCs on Lookup/Update state that the recursive function is invoked
+// in the same handler region.
+
+effect State {
+    lookup: forall 'rho: Reg, 'alpha: Pred[int], 'beta: Pred[int], 'gamma: Cty. () ->
+        { st: int | 'alpha(st) }
+            / ((<>({ st: int | 'alpha(st) }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ st: int | 'alpha(st) }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+
+    update: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. (v: int) ->
+        unit
+            / ((<>({ st: int | st == v }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>(int) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+}
+
+def main(init: { z: int | z >= 0 }): { z: int | z >= 0 } / int => int {
+    val run = handle <> { [r, e] =>
+        rec def counter <s> (c: { z: int | z >= 0 }):
+            { z: int | z >= 0 }
+            / (<>({ st: int | st >= 0 }) -> { z: int | z >= 0 } / int => int)
+            => (<>({ st: int | st >= 0 }) -> { z: int | z >= 0 } / int => int) {
+            val i = raise s.lookup[[]; top, Pred(st: Int) { st >= 0 }, Pred(z: Int) { z >= 0 }, int]();
+            if i == 0 then c
+            else (
+                raise s.update[[]; top, Pred(z: Int) { z >= 0 }, int](i - 1);
+                counter(c + 1)
+            )
+        };
+        counter(0)
+    } with s: State {
+        return x {
+            fun <> (st: int): { z: int | z >= 0 } { x }
+        }
+        hdl_1 lookup(k) {
+            fun <> (st: int): { z: int | z >= 0 } / int => int {
+                val r = resume_final k st;
+                r(st)
+            }
+        }
+        hdl_1 update(v, k) {
+            fun <> (st: int): { z: int | z >= 0 } / int => int {
+                val r = resume_final k (());
+                r(v)
+            }
+        }
+    }: <>(int) -> { z: int | z >= 0 } / int => int;
+    run(init)
+}

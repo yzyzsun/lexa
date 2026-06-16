@@ -1,0 +1,17 @@
+// Migrated from arm/deferred-1-UNSAT.ml  (NEGATIVE TEST: must FAIL)
+// Forcing the thunk yields r, but the answer type wrongly claims r + 1.
+
+effect Deferred {
+    force: () -> { z: int | z == r }
+}
+
+def lazy_(r: int): { z: int | z == r + 1 } {
+    handle <> { [reg, e] =>
+        val v = raise d.force();
+        (fun <> (): { z: int | z == r + 1 } { v })()
+    } with d: Deferred {
+        hdl_1 force(k) {
+            resume_final k r
+        }
+    }: { z: int | z == r + 1 }
+}

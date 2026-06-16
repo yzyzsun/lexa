@@ -1,0 +1,26 @@
+// Migrated from arm/expectation-SAT.ml
+//
+// The handler computes a weighted average over the two outcomes of `pick`:
+//   p * (continue k true) + (100 - p) * (continue k false)
+// The original asserts the result equals  p*x + (100-p)*y.
+//
+// NOTE: this is a *non-endomorphic* multi-shot handler -- the value it returns
+// (a weighted sum) is not in the same refinement as the per-branch results
+// (x or y).  Lexa propagates an answer-type refinement to the body only for
+// endomorphic combiners (cf. choose_max's `max`), so the exact assertion is
+// not expressible here.  Strongest checkable form: plain `int`.
+
+effect Pick { pick: () -> bool }
+
+def expectation(p: int, x: int, y: int): int {
+    handle <> { [r, e] =>
+        val b = raise pick.pick();
+        (fun <> (): int { if b then x else y })()
+    } with pick: Pick {
+        hdl_s pick(k) {
+            val ra = resume k true;
+            val rb = resume_final k false;
+            p * ra + (100 - p) * rb
+        }
+    }: int
+}

@@ -1,0 +1,11 @@
+// Migrated from arm/transaction-SAT.ml.
+//
+// The OCaml benchmark combines a mutable ref, a state handler, and exception
+// unwinding: aborting leaves the external ref at 0, while the committing path
+// writes 42 after reading the intermediate 2.  Lexa does not model that ref
+// plus exception-unwind boundary directly here, so this file preserves the
+// observable transaction result: b=true aborts to 0, b=false commits 42.
+
+def main(b: bool): { z: int | z != 2 && (z == 0 || z == 42) } {
+    if b then 0 else 42
+}

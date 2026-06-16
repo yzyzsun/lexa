@@ -1,0 +1,20 @@
+// Migrated from arm/choose-sum-UNSAT.ml  (NEGATIVE TEST: must FAIL)
+//
+// Same summing choice handler as choose_sum.lx, but the result is wrongly
+// claimed to be x + y.
+
+effect Decide { decide: () -> bool }
+
+def choose_sum(x: int, y: int): { z: int | z == x + y } {
+    handle <> { [r, e] =>
+        val d1 = raise dec.decide();
+        val d2 = raise dec.decide();
+        (fun <> (): int { (if d1 then x else y) - (if d2 then x else y) })()
+    } with dec: Decide {
+        hdl_s decide(k) {
+            val a = resume k true;
+            val b = resume_final k false;
+            a + b
+        }
+    }: int
+}

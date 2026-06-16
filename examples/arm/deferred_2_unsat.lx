@@ -1,0 +1,15 @@
+// Migrated from arm/deferred-2-UNSAT.ml  (NEGATIVE TEST: must FAIL)
+// Forcing the thunk yields n, but the answer type wrongly claims n - 1.
+
+effect Deferred {
+    force: () -> { z: int | z == n }
+}
+
+def lazy_(n: int): { z: int | z == n - 1 } {
+    handle <> { [reg, e] =>
+        val v = raise d.force();
+        (fun <> (): { z: int | z == n - 1 } { v })()
+    } with d: Deferred {
+        hdl_1 force(k) { resume_final k n }
+    }: { z: int | z == n - 1 }
+}

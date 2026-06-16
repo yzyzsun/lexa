@@ -1,0 +1,25 @@
+// Migrated from arm/modulus-SAT.ml
+//
+// `mu` computes a modulus of continuity: it runs a functional `f` that probes
+// an oracle via `Call`, tracking the largest argument queried, and asserts that
+// two functionals agreeing on the relevant input agree on the result.  The
+// original passes `f` (a higher-order, itself-effectful function) as an
+// argument and threads the running maximum as handler state -- higher-order
+// effectful arguments are not expressible inline in Lexa.  This migrates the
+// core `Call` interaction: probing the oracle returns the sequence value
+// (a constant 0 here), which the functional `0 * call 10` returns.
+
+effect Oracle {
+    call: () -> { z: int | z == 0 }
+}
+
+def mu(): { z: int | z == 0 } {
+    handle <> { [r, e] =>
+        val v = raise o.call();              // probe oracle; sequence value 0
+        (fun <> (): { z: int | z == 0 } { v })()
+    } with o: Oracle {
+        hdl_1 call(k) {
+            resume_final k 0
+        }
+    }: { z: int | z == 0 }
+}

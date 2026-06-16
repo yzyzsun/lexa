@@ -1,0 +1,22 @@
+// Migrated from arm/round-robin-UNSAT.ml  (NEGATIVE TEST: must FAIL)
+//
+// The scheduler model performs four yielded increments, so the final value is
+// not equal to init.  The continuation queue from OCaml is still a genuine
+// Lexa limitation; see round_robin.lx.
+
+effect Sched { yield: () -> unit }
+
+def round_robin(init: int): { z: int | z == init } {
+    handle <> { [r, e] =>
+        raise s.yield();
+        raise s.yield();
+        raise s.yield();
+        raise s.yield();
+        (fun <> (): int { init })()
+    } with s: Sched {
+        hdl_s yield(k) {
+            val c = resume_final k (());
+            c + 1
+        }
+    }: int
+}

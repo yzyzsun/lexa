@@ -1,0 +1,27 @@
+// Migrated from arm/choose-sum-SAT.ml
+//
+// The handler sums the two outcomes of each `decide`:
+//   (continue k true) + (continue k false)
+// The body returns a - b with a, b chosen from {x, y}; summed over the whole
+// choice tree this is 0, which the original asserts.
+//
+// NOTE: like expectation, this is a non-endomorphic multi-shot handler (the
+// intermediate sums are not 0), so the answer-type refinement does not
+// propagate to the body and `{z == 0}` is not provable.  Strongest checkable
+// form: plain `int`.
+
+effect Decide { decide: () -> bool }
+
+def choose_sum(x: int, y: int): int {
+    handle <> { [r, e] =>
+        val d1 = raise dec.decide();
+        val d2 = raise dec.decide();
+        (fun <> (): int { (if d1 then x else y) - (if d2 then x else y) })()
+    } with dec: Decide {
+        hdl_s decide(k) {
+            val a = resume k true;
+            val b = resume_final k false;
+            a + b
+        }
+    }: int
+}

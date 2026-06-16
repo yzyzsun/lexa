@@ -1,0 +1,45 @@
+// Migrated from arm/distribution-SAT.ml
+//
+// `distribution` interprets a probabilistic program as a distribution over
+// outcomes: each `Pick p` resumes both ways and the handler `combine`s the two
+// sub-distributions, scaling by p% and (100-p)% and merging equal outcomes.
+// The original asserts every resulting probability stays in [0,100].
+//
+// NOTE: the result is a `(value, prob) list`; list contents are not refinable
+// in Lexa and the combine/merge is a non-endomorphic multi-shot combiner, so
+// the probability-range assertion is not expressible.  This is a structural
+// migration with the plain pair-list type; `combine` is simplified to scaling
+// and concatenation (no equal-outcome merge).
+
+type pair = | P of int * int
+type plist = | Nil | Cons of pair * plist
+
+effect Pick { pick: () -> bool }
+
+def scale(p: int, d: plist): plist {
+    match d with
+    | Nil -> { Nil }
+    | Cons (hd, tl) -> {
+        match hd with
+        | P (x, q) -> { Cons(P(x, p * q / 100), scale(p, tl)) }
+    }
+}
+
+def concat(d1: plist, d2: plist): plist {
+    match d1 with
+    | Nil -> { d2 }
+    | Cons (hd, tl) -> { Cons(hd, concat(tl, d2)) }
+}
+
+def distribution(p: int, a: int, b: int): plist {
+    handle <> { [r, e] =>
+        val d = raise pk.pick();
+        (fun <> (): plist { Cons(P(if d then a else b, 100), Nil) })()
+    } with pk: Pick {
+        hdl_s pick(k) {
+            val d1 = resume k true;
+            val d2 = resume_final k false;
+            concat(scale(p, d1), scale(100 - p, d2))
+        }
+    }: plist
+}

@@ -1,0 +1,34 @@
+// Migrated from arm/choose-all-SAT.ml
+//
+// `choose_all` collects *every* outcome of the choice tree into a list: the
+// handler appends the results of resuming with true and with false, and the
+// return clause injects each leaf value as a singleton.  The original asserts
+// the collected list equals [0; x-y; y-x; 0].
+//
+// NOTE: the result is an `int list`; list contents are not refinable in Lexa,
+// so this is a structural migration with the plain list type (the exact list
+// value is not expressible).
+
+type ilist = | Nil | Cons of int * ilist
+
+effect Decide { decide: () -> bool }
+
+def append(l1: ilist, l2: ilist): ilist {
+    match l1 with
+    | Nil -> { l2 }
+    | Cons (h, t) -> { Cons(h, append(t, l2)) }
+}
+
+def choose_all(x: int, y: int): ilist {
+    handle <> { [r, e] =>
+        val d1 = raise dec.decide();
+        val d2 = raise dec.decide();
+        (fun <> (): ilist { Cons((if d1 then x else y) - (if d2 then x else y), Nil) })()
+    } with dec: Decide {
+        hdl_s decide(k) {
+            val a = resume k true;
+            val b = resume_final k false;
+            append(a, b)
+        }
+    }: ilist
+}
