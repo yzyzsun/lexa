@@ -1,0 +1,42 @@
+// Faithful port of Koka samples/handlers/named/file.kk.
+//
+// Koka:
+//   named effect file
+//     fun read-line() : string
+//   fun file(fname, action)
+//     var content := read-text-file(fname.path).lines
+//     with f <- named handler { fun read-line() match content { Nil->""; Cons(x,xx)->{content:=xx; x} } }
+//     action(f)
+//   with f1 <- file("package.yaml");  with f2 <- file("stack.yaml")
+//   println( f1.read-line() ++ "\n" ++ f2.read-line() )
+//
+// The point: two coexisting file instances, each owning a PRIVATE mutable cursor; reads on f1
+// and f2 advance independently. Handlers are tail-resumptive (`def read_line`, = Koka's `fun
+// read-line`) over a `newref` cursor (= Koka's `var content`). No refinement types and no
+// open/close protocol (file.kk has neither). Cursors yield successive `int` line numbers
+// instead of `string` lines (the multiple-instance / private-state point is unchanged).
+// Here f1 is read twice (cursor 1, 2) and f2 once (cursor 1): 1 + 2 + 1 = 4.
+//
+// typecheck-only (lexac does not execute).
+effect File { read_line: () -> int }
+
+def main(): int {
+    val cursor1 = newref {0};
+    val cursor2 = newref {0};
+    val res = handle <> { [r1] =>
+        handle <file1> { [r2] =>
+            val a = raise file1.read_line();    // file1 (outer): cursor -> 1
+            val b = raise file1.read_line();    // file1 again:    cursor -> 2
+            val c = raise file2.read_line();    // file2 (inner):  cursor -> 1, independent
+            a + b + c
+        } with file2: File {
+            return x : int { x }
+            def read_line() { cursor2[0] := cursor2[0] + 1; cursor2[0] }
+        }: int
+    } with file1: File {
+        return x : int { x }
+        def read_line() { cursor1[0] := cursor1[0] + 1; cursor1[0] }
+    }: int ;
+    ~printInt(res);
+    0
+}

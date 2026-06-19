@@ -1,0 +1,46 @@
+// Faithful port of effect-bench counter1.kk: the `counter` count-down loop, but with ONE
+// unused intervening handler installed between the state handler and the loop. The loop's
+// state operations are dispatched to the (outer) State handler ACROSS the unused `Ask`
+// handler -- counter1's whole point (under lexical/evidence dispatch the intervening handler
+// is free). Same faithful core as counter (tail-resumptive `def get/set` + `newref` state +
+// a real loop, no refinements).
+//
+// Evidence is INFERRED -- the crossing call sites write only the answer-type context `[]`,
+// not the subregion evidence (which lexa elaborates from the region structure); and the
+// handle binders are just `[r1]` / `[r2]` (the evidence binder is optional).
+//
+// One structural addition vs counter1.kk: the loop's get/set are wrapped in non-recursive
+// helpers `do_get`/`do_set`. A *recursive* function cannot directly perform an op that crosses
+// an intervening handler in lexac (region inference fails: "inferred region r2 does not satisfy
+// residual requirement r1"); a *non-recursive* one can, so the recursive loop calls the
+// helpers. (This is a region-inference limitation, independent of evidence.)
+//
+// NOTE: typecheck-only (lexac does not execute); the loop count is irrelevant to typing.
+effect St  { get: () -> int  set: (int) -> unit }
+effect Ask { ask: () -> int }
+
+def main(): int {
+    val s = newref {100100100};
+    val res = handle <> { [r1] =>
+        handle <c_st> { [r2] =>                           // unused intervening handler (region r2)
+            rec def do_get <c_st> [;] (dummy: int): int / int => int { raise c_st.get[[]]() } ;
+            rec def do_set <c_st> [;] (v: int): unit / int => int { raise c_st.set[[]](v) } ;
+            rec def counter <c_st> [;] (acc: int): int / int => int {
+                val i = do_get:[;](0);
+                if i == 0 then
+                    acc
+                else
+                    (do_set:[;](i - 1); counter:[;](acc + 1))
+            } ;
+            counter:[;](0)
+        } with a: Ask {
+            return x : int { x }
+            def ask() { 0 }
+        }: int
+    } with c_st: St {
+        return x : int { x }
+        def get() { s[0] }
+        def set(x) { s[0] := x; () }
+    }: int ;
+    res
+}

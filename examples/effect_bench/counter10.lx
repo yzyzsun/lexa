@@ -1,0 +1,49 @@
+// counter10, REFACTORED to use a reusable handler-install function (cf. Koka's `reader`,
+// defined once and applied 10x). Here `add_readers` is a recursive handler-installer: it
+// installs `n` unused `Ask` handlers (ONE handler definition, applied recursively) and then
+// runs the loop. The handler logic is written once and the count is a parameter -- DRYer than
+// the flat `main.lx` (10 copied blocks) and even than Koka (10 `with reader(i)` lines).
+//
+// *** IMPORTANT -- this version is DRY but NOT crossing-faithful. ***
+// In the flat `main.lx` the loop is defined INSIDE the innermost handler, so its state ops
+// genuinely dispatch ACROSS all 10 unused handlers (counter10's actual point). Here `counter`
+// is defined at the OUTER State region, so it runs there (distance 0) -- the installed `Ask`
+// handlers sit below it and are not crossed by the loop.
+//
+// A factoring that is BOTH reusable AND crossing-faithful is not expressible here: the loop
+// would have to run at each install's freshly-introduced inner region, i.e. the reusable
+// installer would need region polymorphism over that region, which `rec def` lacks. Verified:
+//   - callback style (loop passed to `with_ask`): "cannot choose a single invocation region
+//     from incomparable requirements r1 and __fun_region__";
+//   - loop defined inside the recursion (to cross): region mismatch ([r1] vs [__fun_region__]).
+//
+// So: use `main.lx` for the faithful crossing; use this file to see the reusable
+// handler-install structure. typecheck-only (lexac does not execute).
+effect St  { get: () -> int  set: (int) -> unit }
+effect Ask { ask: () -> int }
+
+def main(): int {
+    val s = newref {100100100};
+    val res = handle <> { [r1] =>
+        rec def do_get <c_st> [;] (d: int): int / int => int { raise c_st.get[[]]() } ;
+        rec def do_set <c_st> [;] (v: int): unit / int => int { raise c_st.set[[]](v) } ;
+        rec def counter <c_st> [;] (acc: int): int / int => int {
+            val i = do_get:[;](0);
+            if i == 0 then acc else (do_set:[;](i - 1); counter:[;](acc + 1))
+        } ;
+        // reusable: recursively install `n` unused Ask handlers, then run the loop.
+        rec def add_readers <c_st> [;] (n: int): int / int => int {
+            if n == 0 then
+                counter:[;](0)
+            else
+                handle <c_st> { [r] => add_readers:[;](n - 1) }
+                with a: Ask { return x : int { x }  def ask() { 0 } }: int
+        } ;
+        add_readers:[;](10)
+    } with c_st: St {
+        return x : int { x }
+        def get() { s[0] }
+        def set(x) { s[0] := x; () }
+    }: int ;
+    res
+}

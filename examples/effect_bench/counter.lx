@@ -1,0 +1,41 @@
+// Faithful port of effect-bench counter.kk.
+//
+// counter.kk is a TAIL-RESUMPTIVE get/set state handler (Koka `fun get(){s}` / `fun set(x){s:=x}`
+// over a mutable `var s`), driven by a count-down LOOP: counter reads the state, and while it
+// is non-zero, decrements the state and recurses with an incremented accumulator. Starting from
+// 100100100 it returns 100100100 (the number of steps).
+//
+// This port mirrors that directly:
+//   - tail-resumptive `def get`/`def set` clauses  (= Koka `fun get/set`),
+//   - state held in a `newref` cell                (= Koka `var s`),
+//   - a recursive `counter` performing get/set     (= Koka's recursive `counter`),
+//   - NO refinements and NO invented constants     (counter.kk has none; plain int state).
+//
+// (An earlier version of this file used a fixed `set(1); set(2); get()` sequence and a
+// `{z | z == 2}` refinement -- both carried over from the paper's tick.lx/state.lx examples,
+// neither present in counter.kk. That was not a port of counter.kk and has been replaced.)
+//
+// NOTE: typecheck-only (lexac does not execute); the loop count is irrelevant to typing.
+effect St {
+    get: () -> int
+    set: (int) -> unit
+}
+
+def main(): int {
+    val s = newref {100100100};
+    val res = handle <> { [r1] =>
+        rec def counter <c> [;] (acc: int): int / int => int {
+            val i = raise c.get[[]]();
+            if i == 0 then
+                acc
+            else
+                (raise c.set[[]](i - 1); counter:[;](acc + 1))
+        } ;
+        counter:[;](0)
+    } with c: St {
+        return x : int { x }
+        def get() { s[0] }
+        def set(x) { s[0] := x; () }
+    }: int ;
+    res
+}

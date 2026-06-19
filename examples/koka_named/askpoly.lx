@@ -1,0 +1,46 @@
+// Faithful port of Koka samples/handlers/named/ask-poly.kk.
+//
+// Koka:
+//   named effect reader<a> { fun ask() : a }
+//   fun reader(x, action)  with r <- named handler { fun ask() x }; action(r)
+//   pub fun read2files(r1, r2 : ev<reader<a>>, ?show : a -> string)
+//     println(r1.ask() ++ " " ++ r2.ask().show)
+//   with r1 <- reader("hello"); with r2 <- reader(42); read2files(r1,r2)
+//
+// Lexa does not write `Reader<a>` at the effect declaration, so the payload type is the
+// operation's type parameter. The Koka evidence value `ev<reader<a>>` is modeled by a
+// capability/label parameter (`[; r: Reader]`). `reader` installs a fresh handler and calls
+// its action with that fresh capability; the extra capability parameter `c` lets an action
+// close over ambient capabilities such as the outer reader in the nested call below.
+//
+// typecheck-only (lexac does not execute).
+effect Reader {
+    ask: forall 'a, 'gamma: Cty. () -> 'a / 'gamma => 'gamma
+}
+
+def read2files :: ['a] [; r1: Reader, r2: Reader] (show: <> ('a) -> string): int / int => int {
+    val first = raise r1.ask[[]; string, int]();
+    val second = raise r2.ask[[]; 'a, int]();
+    ~strPrint(~strConcat(~strConcat(~strConcat(first, " "), show(second)), "\n"))
+}
+
+def reader :: ['a, 'b] [c;] (x: 'a, action: <c;> [; h: Reader] () -> 'b / 'b => 'b): 'b {
+    handle <c;> { [r] =>
+        action:[; h]()
+    } with h: Reader {
+        return y : 'b { y }
+        def ask() { x }
+    }: 'b
+}
+
+def showInt(x: int): string {
+    if x == 42 then "42" else "?"
+}
+
+def main(): int {
+    reader::[string, int]:[();]("hello", fun <> [; r1: Reader] (): int / int => int {
+        reader::[int, int]:[(r1);](42, fun <r1> [; r2: Reader] (): int / int => int {
+            read2files::[int]:[; r1, r2](showInt)
+        })
+    })
+}

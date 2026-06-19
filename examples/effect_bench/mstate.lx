@@ -1,0 +1,45 @@
+// Port of effect-bench `mstate.kk` into the Lexa ATM/refinement dialect.
+//
+// In this dialect EVERY state handler is already the non-tail-resumptive, state-passing form
+// mstate exercises (each clause returns a (state -> result) function; resume is not in tail
+// position). So mstate and counter share the same handler shape here; this file uses a
+// read-modify-write sequence (set; get; set(+1); get) to make the data dependence explicit.
+
+effect State {
+    get: forall 'rho: Reg, 'alpha: Pred[int], 'beta: Pred[int], 'gamma: Cty. () ->
+        { z: int | 'alpha(z) }
+            / ((<>({ z: int | 'alpha(z) }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ z: int | 'alpha(z) }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+
+    set: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. (v: int) ->
+        unit
+            / ((<>({ z: int | z == v }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>(int) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+}
+
+def main(): { z: int | z == 6 } / int => int {
+    val run = handle <> { [r1] =>
+        raise st.set[top, Pred(z: Int) { z == 6 }, int](5);
+        val a = raise st.get[top, Pred(z: Int) { z == 5 }, Pred(z: Int) { z == 6 }, int]();
+        raise st.set[top, Pred(z: Int) { z == 6 }, int](a + 1);
+        val b = raise st.get[top, Pred(z: Int) { z == 6 }, Pred(z: Int) { z == 6 }, int]();
+        b
+    } with st: State {
+        return x {
+            fun <> (s_st: int): { z: int | z == 6 } { x }
+        }
+        hdl_1 get(k) {
+            fun <> (s_st: int): { z: int | z == 6 } / int => int {
+                val r = resume_final k s_st;
+                r(s_st)
+            }
+        }
+        hdl_1 set(v, k) {
+            fun <> (s_st: int): { z: int | z == 6 } / int => int {
+                val r = resume_final k (());
+                r(v)
+            }
+        }
+    }: <>(int) -> { z: int | z == 6 } / int => int;
+    run(0)
+}

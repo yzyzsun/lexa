@@ -1,0 +1,29 @@
+// Faithful port of Koka samples/handlers/named/ask.kk.
+//
+// Koka:
+//   named effect reader
+//     fun ask() : string
+//   fun reader(msg, action)  with r <- named handler { fun ask() msg };  action(r)
+//   pub fun read2files(r1, r2)  println(r1.ask() ++ " " ++ r2.ask())
+//   with r1 <- reader("hello");  with r2 <- reader("world");  read2files(r1, r2)
+//
+// The point: two coexisting reader instances, each addressed by its own capability;
+// read2files reads from BOTH specific instances. Here reader1 (outer) is reached from inside
+// reader2's region; reader2 is local. Handlers are tail-resumptive (`def ask`, = Koka's `fun
+// ask`) and return a constant. No refinement types (ask.kk has none). The payload is `int`
+// rather than `string` (the multi-instance point is unchanged); 1 + 20 = 21.
+//
+// typecheck-only (lexac does not execute).
+effect Reader { ask: () -> int }
+
+def main(): int {
+    val res = handle <> { [r1] =>
+        handle <reader1> { [r2] =>
+            val a = raise reader1.ask();        // the OUTER reader, reached across reader2
+            val b = raise reader2.ask();        // the inner reader, local
+            a + b
+        } with reader2: Reader { return x : int { x }  def ask() { 20 } }: int
+    } with reader1: Reader { return x : int { x }  def ask() { 1 } }: int ;
+    ~printInt(res);
+    0
+}
