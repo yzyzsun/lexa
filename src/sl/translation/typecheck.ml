@@ -2179,16 +2179,24 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
        | CCty (rty, _) -> check_refinement_wellformed rctx (params @ term_vars) rty
        | _ -> ());
       (* The function body is typechecked at the annotated return_cty.
-         The label_params are introduced with empty-op bindings (effectful function
-         bodies that do-invoke label params are not yet supported).
+         Label parameters are abstract capabilities, so expose the operations
+         from their declared effect signature under this function's answer
+         context. This lets capability-parametric functions perform operations
+         through a label parameter such as [r.ask].
 
          Outer cap_vars / label_vars are inherited so that the body can reference
          capabilities and labels that are lexically in scope (matching the Ott
          T_Abs rule, which checks the body under the full outer typing context).
          The function's own cap_params / label_params shadow outer entries with
          the same name. *)
+      let label_param_answer =
+        match return_cty with
+        | CCty (_, EAns (_, c1, c2)) -> c1, c2
+        | _ -> return_cty, return_cty
+      in
       let inner_label_vars = List.map (fun (label, eff) ->
-        (label, { lb_effect_name = eff; lb_op_ctys = [] })
+        let c1, c2 = label_param_answer in
+        (label, make_label_binding ~op_captured_set:captured_set eff c1 c2)
       ) label_params in
       let body_cap_vars = cap_params @ cap_vars in
       let body_label_vars = inner_label_vars @ label_vars in

@@ -1,0 +1,76 @@
+// Port of nqueens (effect-bench `nqueens.kk` / lexa `benchmarks/koka_named/nqueens`) into
+// the Lexa ATM/refinement dialect accepted by `lexac`.  ✅ Typechecking passed.
+//
+// This is the example I previously thought was "not portable." It IS portable — the calculus
+// supports effectful recursion (paper: `fix`/T_Fix, §4.4 recursive effectful interactor,
+// §5.1 modular effectful functions) and multi-shot resumption. The cost is purely the manual
+// annotation the algorithmic system requires (paper §6). The recipe used here:
+//
+//   1. A function that PERFORMS an effect must be a `fun <c>` literal or a `rec def` that
+//      CAPTURES the capability in its `<...>` set (here: `rec def place <s>`). A plain
+//      top-level `def` cannot — it reports `Operation c.op not defined by the binding handler`.
+//   2. Each effect invocation inside such a function must write the answer-type context (the
+//      algorithmic system does not infer it there); here `[]` (identity). The subregion
+//      EVIDENCE is inferred -- not written. So a call is `[ATC; tylikes]`, e.g. `[[]; int]`
+//      for pick and `[[]; queens, int]` for fail (the `tylikes` are the op's forall arguments).
+//   3. A function that performs effects has an ATM computation type `T / C1 => C2`, not a bare
+//      `T`. `place` returns a board but its answer type is the solution COUNT, so its type is
+//      `queens / int => int` (value type `queens`, answer type `int`).
+//   4. Multi-shot `pick` uses an `hdl_s` clause; `fail` (never resumes) uses `exc`; the
+//      `return` clause maps a completed board to the count 1. `resume`/`resume_final` work in
+//      an ordinary `def` helper (`pick_loop`), which sums one resume per candidate column.
+//
+// The handler counts solutions: a completed placement returns 1 (return clause), `pick` sums
+// the counts of all candidate columns, and a conflict aborts that branch with `fail` -> 0.
+
+effect Search {
+    pick: forall 'gamma: Cty. (size: int) -> int / 'gamma => 'gamma
+    fail: forall 'a, 'gamma: Cty. () -> 'a / 'gamma => 'gamma
+}
+
+type queens = | QNil | QCons of int * queens
+
+// does placing a queen at `queen` conflict with the already-placed `xs`?
+def safe(queen: int, diag: int, xs: queens): bool {
+    match xs with
+    | QNil -> { true }
+    | QCons(q, qs) -> {
+        if queen != q && queen != q + diag && queen != q - diag then
+            safe(queen, diag + 1, qs)
+        else
+            false
+    }
+}
+
+// sum one resume per candidate column i = 1..size (the multi-shot fan-out).
+def pick_loop(i: int, a: int, size: int, k: cont <> int -> int): int {
+    if i == size then a + resume k i
+    else pick_loop(i + 1, a + resume k i, size, k)
+}
+
+def main(): int {
+    val run = handle <> { [r1] =>
+        // place one queen per column, backtracking via pick/fail.
+        // (evidence is inferred; call sites write only the ATC `[]` and the operation's
+        //  forall type arguments -- `int` for pick, `queens, int` for fail.)
+        rec def place <s> [;] (size: int, column: int): queens / int => int {
+            if column == 0 then
+                QNil
+            else (
+                val rest = place:[;](size, column - 1);
+                val next = raise s.pick[[]; int](size);
+                if safe(next, 1, rest) then
+                    QCons(next, rest)
+                else
+                    raise s.fail[[]; queens, int]()
+            )
+        } ;
+        place:[;](8, 8)
+    } with s: Search {
+        return x : queens { 1 }                              // a complete board = 1 solution
+        hdl_s pick(size, k) { pick_loop(1, 0, size, k) }     // multi-shot: sum over columns
+        exc  fail() { 0 }                                    // conflict: 0 solutions on this branch
+    }: int ;
+    ~printInt(run);                                          // # solutions to 8-queens (= 92)
+    0
+}
