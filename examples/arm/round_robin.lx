@@ -1,28 +1,68 @@
 // Migrated from arm/round-robin-SAT.ml
 //
-// The original is a ref-based cooperative scheduler: Spawn enqueues a thread's
-// continuation and Yield round-robins between them, all over a mutable work
-// queue.  Lexa still cannot store continuations in that queue, so this keeps
-// the observable scheduled counter effect for this benchmark: four yielded
-// steps increment the initial counter.  Answer-type modification proves the
-// original assertion result >= init.
+// Faithful cooperative scheduler shape.  Spawned thread bodies and yielded
+// continuations are wrapped in ordinary thunks and stored in the standard
+// mutable queue.  The shared counter is a refined ref, so every scheduled
+// increment preserves the original result >= init assertion.
+
+open "../../stdlib/queue.lx"
+
+type thread = | Thread of <> () -> unit
 
 effect Sched {
-    yield: forall 'dummy. (after: int) ->
-        unit / (u. { z: int | z == after }) => { z: int | z == after + 1 }
+    yield: () -> unit
+    spawn: (<> [; h: Sched] () -> unit / unit => unit) -> unit
+}
+
+def lower_bound(init: int): { v: int | v >= init } {
+    init
+}
+
+def make_counter(init: int): ref { v: int | v >= init } {
+    newref { lower_bound(init) }
+}
+
+def inc(init: int, x: { v: int | v >= init }): { v: int | v >= init } {
+    x + 1
 }
 
 def round_robin(init: int): { z: int | z >= init } {
-    handle <> { [r, e] =>
-        raise s.yield[int](init + 3);
-        raise s.yield[int](init + 2);
-        raise s.yield[int](init + 1);
-        raise s.yield[int](init);
-        (fun <> (): { z: int | z == init } { init })()
-    } with s: Sched {
-        hdl_s yield(after, k) {
-            val c = resume_final k (());
-            (fun <> (): { z: int | z == after + 1 } { c + 1 })()
-        }
-    }: { z: int | z == init + 4 }
+    val q = queue_make::[thread]();
+    val c = make_counter(init);
+    rec def dequeue <> (): unit {
+        if queue_is_empty::[thread](q) then ()
+        else
+            match queue_dequeue::[thread](q) with
+            | Thread (t) -> { t() }
+    }
+    and rr_handler <> (body: <> [; h: Sched] () -> unit / unit => unit): unit {
+        handle <> { [r, e] =>
+            body:[; s]()
+        } with s: Sched {
+            return x: unit { dequeue() }
+            hdl_1 yield(k) {
+                queue_enqueue::[thread](q, Thread(fun <> (): unit { resume_final k (()) }));
+                dequeue()
+            }
+            hdl_1 spawn(t, k) {
+                queue_enqueue::[thread](q, Thread(fun <> (): unit { resume_final k (()) }));
+                rr_handler(t)
+            }
+        }: unit
+    };
+    rr_handler(fun <> [; h: Sched] (): unit / unit => unit {
+        raise h.spawn(fun <> [; h2: Sched] (): unit / unit => unit {
+            c[0] := inc(init, c[0]);
+            raise h2.yield();
+            c[0] := inc(init, c[0]);
+            raise h2.yield()
+        });
+        raise h.spawn(fun <> [; h3: Sched] (): unit / unit => unit {
+            c[0] := inc(init, c[0]);
+            raise h3.yield();
+            c[0] := inc(init, c[0]);
+            raise h3.yield()
+        })
+    });
+    c[0]
 }

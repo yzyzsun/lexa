@@ -1,22 +1,46 @@
-// Migrated from arm/bfs-UNSAT.ml  (NEGATIVE TEST: must FAIL)
-// sqrt search over {2,3} for `squared`; the answer wrongly excludes Success(2),
-// which is the result when squared = 4.
+// Migrated from arm/bfs-UNSAT.ml.
+
+open "../../stdlib/queue.lx"
+
 type result = | Failure | Success of int
-effect Select { select: () -> bool }
+type task = | Task of (<> (bool) -> { z: result | z == Failure || z == Success(2) || z == Success(3) }) * bool
+
+effect Select {
+    select: forall 'dummy. () ->
+        bool
+            / { z: result | z == Failure || z == Success(2) || z == Success(3) }
+            => { z: result | z == Failure || z == Success(2) || z == Success(3) }
+}
+
+def run_next(q: queue::[task]): { z: result | z == Failure || z == Success(2) || z == Success(3) } {
+    if queue_is_empty::[task](q) then Failure
+    else
+        match queue_dequeue::[task](q) with
+        | Task (f, b) -> { f(b) }
+}
+
 def bfs(squared: { z: int | z == 4 || z == 9 }):
     { z: result | z == Failure || z == Success(3) } {
+    val q = queue_make::[task]();
     handle <> { [r, e] =>
-        val b = raise sel.select();
-        (fun <> (): { z: result | z == Failure || z == Success(3) } {
+        val b = raise sel.select[int]();
+        (fun <> (): { z: result | z == Failure || z == Success(2) || z == Success(3) } {
             if b then (if 2 * 2 == squared then Success(2) else Failure)
             else (if 3 * 3 == squared then Success(3) else Failure)
         })()
     } with sel: Select {
-        hdl_s select(k) {
-            val r = resume k true;
-            match r with
-            | Failure -> { resume_final k false }
+        return x: { z: result | z == Failure || z == Success(2) || z == Success(3) } {
+            match x with
             | Success (y) -> { Success(y) }
+            | Failure -> { run_next(q) }
         }
-    }: { z: result | z == Failure || z == Success(3) }
+        hdl_1 select(k) {
+            val kt = fun <> (b: bool): { z: result | z == Failure || z == Success(2) || z == Success(3) } {
+                resume k b
+            };
+            queue_enqueue::[task](q, Task(kt, true));
+            queue_enqueue::[task](q, Task(kt, false));
+            run_next(q)
+        }
+    }: { z: result | z == Failure || z == Success(2) || z == Success(3) }
 }

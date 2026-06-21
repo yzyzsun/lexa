@@ -1,34 +1,64 @@
-// Migrated from arm/modulus-UNSAT.ml.
+// Migrated from arm/modulus-UNSAT.ml  (NEGATIVE TEST: must FAIL)
 
 effect Oracle {
     call: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. (n: int, observed: int) ->
         { z: int | z == observed }
-            / ((<>({ st: int | st == n }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            / ((<>(int) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
             => (<>(int) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
 }
 
-def mu(r: int, sequence: <> (x: int) -> { z: int | x != 10 || z == r }): { z: int | z == 10 } / int => int {
+def max_(a: int, b: int): { z: int | z == a || z == b } {
+    if a >= b then a else b
+}
+
+def mu(
+    f: forall 'rho: Reg.
+        <> [; o: Oracle]
+        (oracle: <o> (x: int) ->['rho] int / (<>(int) ->['rho] int / int => int) => (<>(int) ->['rho] int / int => int))
+        ->['rho] int / (<>(int) ->['rho] int / int => int) => (<>(int) ->['rho] int / int => int),
+    sequence: <> (x: int) -> int
+): int / int => int {
     val run = handle <> { [reg, e] =>
-        val observed = sequence(10);
-        val v = raise o.call[top, Pred(z: Int) { z == 10 }, int](10, observed);
-        val ignored = 0 * v;
-        (fun <> (): int { ignored })()
+        f::[reg]:[; o](fun <o> (x: int): int / (<>(int) ->[reg] int / int => int) => (<>(int) ->[reg] int / int => int) {
+            val observed = sequence(x);
+            raise o.call[[]; reg, Pred(z: Int) { true }, int](x, observed)
+        })
     } with o: Oracle {
         return x {
-            fun <> (st: { z: int | z == 10 }): { z: int | z == 10 } { st }
+            fun <> (st: int): int { st }
         }
         hdl_1 call(n, observed, k) {
-            fun <> (st: int): { z: int | z == 10 } / int => int {
+            fun <> (st: int): int / int => int {
+                val j = max_(st, n);
                 val next = resume_final k observed;
-                next(10)
+                next(j)
             }
         }
-    }: <>(int) -> { z: int | z == 10 } / int => int;
+    }: <>(int) -> int / int => int;
     run(0)
 }
 
-def test(r: int, a: <> (xa: int) -> { z: int | xa != 10 || z == r }, b: <> (xb: int) -> { z: int | xb != 10 || z == r }): { z: bool | z == false } / int => int {
-    val left = mu(r, a);
-    val right = mu(r, b);
-    if left == right then true else true
+def probe :: ['rho: Reg] [; o: Oracle] (
+    oracle: <o> (x: int) ->['rho] int / (<>(int) ->['rho] int / int => int) => (<>(int) ->['rho] int / int => int)
+): int / (<>(int) ->['rho] int / int => int) => (<>(int) ->['rho] int / int => int) {
+    0 * oracle(10)
+}
+
+def test(
+    r: int,
+    a: <> (xa: int) -> { z: int | xa != 10 || z == r },
+    b: <> (xb: int) -> { z: int | xb != 10 || z == r }
+): bool / int => int {
+    val left = mu(probe, a);
+    val right = mu(probe, b);
+    left == right
+}
+
+def test_unsat(
+    r: int,
+    a: <> (xa: int) -> { z: int | xa != 10 || z == r },
+    b: <> (xb: int) -> { z: int | xb != 10 || z == r }
+): { z: bool | z == false } / int => int {
+    val same = test(r, a, b);
+    if same then true else true
 }

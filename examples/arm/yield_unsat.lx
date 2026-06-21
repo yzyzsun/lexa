@@ -1,12 +1,49 @@
-// Migrated from arm/yield-UNSAT.ml  (NEGATIVE TEST: must FAIL)
-// The yielded leaf is incremented to 1, but the answer type wrongly claims 0.
+// Migrated from arm/yield-UNSAT.ml.
 
-effect Gen { yield_leaf: () -> { z: int | z == 1 } }
-def incr_leaf(): { z: int | z == 0 } {
+type tree::['a] = | Leaf of 'a | Node of tree::['a] * tree::['a]
+type iterator = | Result of tree::[{ z: int | z == 1 }] | Susp of int * (<> ({ z: int | z == 1 }) -> iterator)
+
+effect Gen {
+    yield: () -> { z: int | z == 1 }
+}
+
+def one(): { z: int | z == 1 } {
+    1
+}
+
+def run(body: <> [; h: Gen] () -> tree::[{ z: int | z == 1 }] / iterator => iterator): iterator {
     handle <> { [r, e] =>
-        val b = raise g.yield_leaf();
-        (fun <> (): { z: int | z == 0 } { b })()
+        body:[; g]()
     } with g: Gen {
-        hdl_1 yield_leaf(k) { resume_final k 1 }
-    }: { z: int | z == 0 }
+        return x: tree::[{ z: int | z == 1 }] { Result(x) }
+        hdl_1 yield(k) {
+            Susp(0, fun <> (y: { z: int | z == 1 }): iterator { resume k y })
+        }
+    }: iterator
+}
+
+def depthWalk [; g: Gen] (t: tree::[{ z: int | z == 0 }]): tree::[{ z: int | z == 1 }] / iterator => iterator {
+    match t with
+    | Leaf (a) -> {
+        val b = raise g.yield();
+        Leaf::[{ z: int | z == 1 }](b)
+    }
+    | Node (l, r) -> {
+        val l2 = depthWalk:[; g](l);
+        val r2 = depthWalk:[; g](r);
+        Node::[{ z: int | z == 1 }](l2, r2)
+    }
+}
+
+def incr(it: iterator): tree::[{ z: int | z == 1 }] {
+    match it with
+    | Result (t) -> { t }
+    | Susp (x, k) -> { incr(k(one())) }
+}
+
+def incr_tree(t: tree::[{ z: int | z == 0 }]): tree::[{ z: int | z == 0 }] {
+    val iter = run(fun <> [; h: Gen] (): tree::[{ z: int | z == 1 }] / iterator => iterator {
+        depthWalk:[; h](t)
+    });
+    incr(iter)
 }

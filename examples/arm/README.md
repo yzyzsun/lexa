@@ -45,6 +45,11 @@ extended — see `src/sl/translation/{refinement,common,typecheck}.ml`,
    recursive `counter` in `state_easy`. A cross-region `raise` inside such a
    function carries an explicit identity ATC `[[]]`; the region path from the
    function to the handler is otherwise unresolved at that point.
+5. **Effect label parameters with operation signatures.** Functions that take
+   effect labels (`[; h: E]`) now typecheck their bodies with the operations of
+   `E` available, using the function's annotated answer type as the ambient
+   operation answer transformation.  This is what lets `yield` and
+   `round_robin` store ordinary closures that wrap captured resumptions.
 
 ## Per-example faithfulness audit
 
@@ -55,6 +60,8 @@ extended — see `src/sl/translation/{refinement,common,typecheck}.ml`,
   `Failure` or *exactly* `Success(target)`.
 - `amb_3_simpl` — the simplified boolean `amb` variant is exact: the
   multi-shot handler computes boolean disjunction over the explored branches.
+- `bfs` — preserves the original mutable FIFO queue of closure-wrapped
+  resumptions for the `{2,3}` square-root search.
 - `choose_sum`, `choose_max`, `choose_all`, `distribution`, `expectation`,
   `shift` — exact answer-modifying `hdl_s` translations.  The operations carry
   the continuation-answer refinements needed by the non-endomorphic combiners
@@ -70,6 +77,9 @@ extended — see `src/sl/translation/{refinement,common,typecheck}.ml`,
 - `select` — preserves the real choice and test structure.
 - `queue_1/2` — preserves the original `add 42; get; get` stateful queue
   protocol with explicit before/after queue states.
+- `round_robin` — preserves the cooperative scheduler shape: spawned thread
+  bodies and yielded continuations are wrapped in thunks and stored in a
+  mutable FIFO queue; the shared counter ref proves `result >= init`.
 - `state` — preserves the recursive countdown and proves the exact
   `result == init` invariant.
 - `state_easy` — preserves the recursive countdown and proves the original
@@ -80,29 +90,28 @@ extended — see `src/sl/translation/{refinement,common,typecheck}.ml`,
 - `io_write_1/2` — preserve the recursive `go li` write scan; the accumulated
   output list is represented by its count (`0` for empty input, `>=1` for
   non-empty input).
+- `yield` — preserves the original `Result | Susp` iterator shape by storing a
+  closure-wrapped resumption in `Susp`, and proves the original
+  `tree::[{z == 0}] -> tree::[{z == 1}]` assertion.
 
-**B. Faithful observable benchmark, different representation.**
-- `bfs`/`bfs_simpl` preserve the observable nondeterministic search result and
-  exact result datatype invariant, but use Lexa's multi-shot backtracking shape
-  rather than the OCaml ref queue of suspended continuations.
-- `modulus` preserves the concrete benchmark functional `f a = 0 * a 10`: it
-  calls the sequence at `10`, updates the handler state to the queried modulus,
-  and compares the two exact modulus results.  It does not expose the fully
-  general higher-order `mu f sequence` combinator as a reusable function.
-- `round_robin` keeps the concrete benchmark's four scheduled increments and
-  proves the original `result >= init` assertion with exact answer
-  modification, but not the mutable continuation queue scheduler itself.
-
-**C. Still simplified by continuation-storage limits.**
-- `yield` — the original `iterator` is `Result tree | Susp of int * (int ->
-  iterator)`, where the function is a captured continuation.  The current file
-  preserves the single-leaf yield/resume behaviour, but not the full
-  continuation-storing iterator over arbitrary trees.
+**B. Faithful program structure, assertion harness split.**
+- `bfs_simpl` now preserves the OCaml ref queue of `(continue k, choice)` pairs
+  as a mutable FIFO queue of closure-wrapped resumptions.  `test` is the
+  literal square-root check; `test_sat` is the SAT harness wrapper because the
+  current refinement language cannot state the dependent queue invariant that
+  every queued task was created under the same outer `a`.
+- `modulus` now exposes the reusable higher-order `mu f sequence` combinator:
+  `f` receives a first-class oracle, each oracle call performs `Call n`, and
+  the handler resumes with `sequence n` while threading `max state n`.
+  `test` is the literal `mu probe a == mu probe b` benchmark equality;
+  `test_sat` is the SAT harness wrapper because the hidden handler-state invariant
+  "state is the maximum queried index" is not expressible.
 
 ## Handler templates
-- `hdl_s` multi-shot (backtracking / nondeterminism): `amb`, `bfs`, `select`,
+- `hdl_s` multi-shot (backtracking / nondeterminism): `amb`, `select`,
   `choose_*`, `expectation`, `shift`.
-- `hdl_1` value/state: `deferred`, `io_read`, `yield`, `modulus`, `queue`.
+- `hdl_1` queued resumptions / value-state: `bfs`, `bfs_simpl`, `deferred`,
+  `io_read`, `yield`, `modulus`, `queue`.
 - `hdl_1` forward-threaded state (the `tick`/`state` idiom): `io_write`,
   `state`, `state_easy`.
 - `exc` exceptional effect (abort): `safe_div`, `io_read_3`.
@@ -114,6 +123,6 @@ extended — see `src/sl/translation/{refinement,common,typecheck}.ml`,
   function to the handler is not yet inferred automatically.
 - Parametric datatypes (e.g. `list::['a]`) are not yet SMT-encoded; the migrated
   ADTs are monomorphic.
-- Captured continuations can be resumed by handlers, but the ARM programs that
-  store continuations inside long-lived scheduler/iterator data structures
-  still need more surface/typechecker work to translate directly.
+- Dependent invariants over closure queues and hidden handler state are not yet
+  expressible.  This is the remaining reason the Category B examples keep a
+  literal `test` benchmark plus a separate refinement-checkable harness.

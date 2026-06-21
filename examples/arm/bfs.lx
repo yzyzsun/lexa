@@ -1,36 +1,51 @@
 // Migrated from arm/bfs-SAT.ml
 //
-// `bfs` is breadth-first nondeterministic search; the original keeps a
-// ref-based queue of continuations.  Lexa cannot store a continuation in a
-// mutable queue, so this migrates the observable behaviour with the multi-shot
-// backtracking handler (as in amb), over the real `result` datatype.
-//
-// sqrt_for_4_or_9 searches cand in {2,3} for cand*cand = squared (a parameter,
-// = n*n for n in {2,3}).  Select chooses between the two candidates (the two
-// `if b` branches); each branch tests its candidate's square against the real
-// `squared`.  The candidates are kept inline rather than bound to a variable so
-// the result stays in {Success 2, Success 3} (a bound `cand : int` would lose
-// that it is positive).  Invariant: Failure, or Success of a candidate whose
-// square is `squared`.
+// Faithful FIFO breadth-first nondeterministic search.  The OCaml queue of
+// `(continue k, choice)` pairs is represented as a standard mutable queue of
+// `Task(fun b -> resume k b, choice)` values.  The Select operation carries
+// the result invariant as its answer type so queued resumptions remain precise.
+
+open "../../stdlib/queue.lx"
 
 type result = | Failure | Success of int
+type task = | Task of (<> (bool) -> { z: result | z == Failure || z == Success(2) || z == Success(3) }) * bool
 
-effect Select { select: () -> bool }
+effect Select {
+    select: forall 'dummy. () ->
+        bool
+            / { z: result | z == Failure || z == Success(2) || z == Success(3) }
+            => { z: result | z == Failure || z == Success(2) || z == Success(3) }
+}
+
+def run_next(q: queue::[task]): { z: result | z == Failure || z == Success(2) || z == Success(3) } {
+    if queue_is_empty::[task](q) then Failure
+    else
+        match queue_dequeue::[task](q) with
+        | Task (f, b) -> { f(b) }
+}
 
 def bfs(squared: { z: int | z == 4 || z == 9 }):
     { z: result | z == Failure || z == Success(2) || z == Success(3) } {
+    val q = queue_make::[task]();
     handle <> { [r, e] =>
-        val b = raise sel.select();
+        val b = raise sel.select[int]();
         (fun <> (): { z: result | z == Failure || z == Success(2) || z == Success(3) } {
             if b then (if 2 * 2 == squared then Success(2) else Failure)
             else (if 3 * 3 == squared then Success(3) else Failure)
         })()
     } with sel: Select {
-        hdl_s select(k) {
-            val r = resume k true;
-            match r with
-            | Failure -> { resume_final k false }
+        return x: { z: result | z == Failure || z == Success(2) || z == Success(3) } {
+            match x with
             | Success (y) -> { Success(y) }
+            | Failure -> { run_next(q) }
+        }
+        hdl_1 select(k) {
+            val kt = fun <> (b: bool): { z: result | z == Failure || z == Success(2) || z == Success(3) } {
+                resume k b
+            };
+            queue_enqueue::[task](q, Task(kt, true));
+            queue_enqueue::[task](q, Task(kt, false));
+            run_next(q)
         }
     }: { z: result | z == Failure || z == Success(2) || z == Success(3) }
 }

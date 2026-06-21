@@ -1,20 +1,52 @@
-// Migrated from arm/bfs-simpl-UNSAT.ml  (NEGATIVE TEST: must FAIL)
-// The sqrt search may return Success(-a); claiming only Failure/Success(a) is wrong.
+// Migrated from arm/bfs-simpl-SAT.ml  (NEGATIVE TEST: must FAIL)
+// The faithful FIFO search computes the square-root check; this file claims
+// the SAT harness result is false.
+
+open "../../stdlib/queue.lx"
+
 type result = | Failure | Success of int
-effect Select { select: () -> bool }
-def sqrt(a: int): { z: result | z == Failure || z == Success(a) } {
+type task = | Task of (<> (bool) -> result) * bool
+
+effect Select {
+    select: forall 'dummy. () -> bool / result => result
+}
+
+def run_next(q: queue::[task]): result {
+    if queue_is_empty::[task](q) then Failure
+    else
+        match queue_dequeue::[task](q) with
+        | Task (f, b) -> { f(b) }
+}
+
+def sqrt(a: int): result {
+    val q = queue_make::[task]();
     handle <> { [r, e] =>
-        val b = raise sel.select();
+        val b = raise sel.select[int]();
         val cand = if b then a else (0 - a);
-        (fun <> (): { z: result | z == Failure || z == Success(a) } {
-            if cand * cand == a * a then Success(cand) else Failure
-        })()
+        if cand * cand == a * a then Success(cand) else Failure
     } with sel: Select {
-        hdl_s select(k) {
-            val r = resume k true;
-            match r with
-            | Failure -> { resume_final k false }
+        return x: result {
+            match x with
             | Success (y) -> { Success(y) }
+            | Failure -> { run_next(q) }
         }
-    }: { z: result | z == Failure || z == Success(a) }
+        hdl_1 select(k) {
+            val kt = fun <> (b: bool): result {
+                resume k b
+            };
+            queue_enqueue::[task](q, Task(kt, true));
+            queue_enqueue::[task](q, Task(kt, false));
+            run_next(q)
+        }
+    }: result
+}
+
+def test(a: int): bool {
+    match sqrt(a) with
+    | Failure -> { false }
+    | Success (b) -> { b == a || b == 0 - a }
+}
+
+def test_unsat(a: int): { z: bool | z == false } {
+    if test(a) then true else true
 }

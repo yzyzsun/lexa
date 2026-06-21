@@ -1,23 +1,56 @@
 // Migrated from arm/yield-SAT.ml
 //
-// A generator yields each tree leaf and is resumed with that leaf + 1, mapping
-// a tree of 0s to a tree of 1s.  The original reifies the generator as an
-// `iterator` ADT that *captures the continuation* (Susp of int * (int->iterator))
-// and drives it with `incr`.  Lexa cannot store a continuation in a data
-// constructor, so this migrates the per-leaf behaviour: yielding leaf 0 is
-// resumed with its increment, observed here as 1 (faithful for a single leaf).
+// Faithful iterator shape for the original assertion:
+//   tree::[{z:int | z == 0}] -> tree::[{z:int | z == 1}]
+//
+// `run` reifies the generator as Result(t) or Susp(x, k), where k is an
+// ordinary closure wrapping the captured continuation.  `incr` drives the
+// iterator by resuming each suspension with 1.
+
+type tree::['a] = | Leaf of 'a | Node of tree::['a] * tree::['a]
+type iterator = | Result of tree::[{ z: int | z == 1 }] | Susp of int * (<> ({ z: int | z == 1 }) -> iterator)
 
 effect Gen {
-    yield_leaf: () -> { z: int | z == 1 }
+    yield: () -> { z: int | z == 1 }
 }
 
-def incr_leaf(): { z: int | z == 1 } {
+def one(): { z: int | z == 1 } {
+    1
+}
+
+def run(body: <> [; h: Gen] () -> tree::[{ z: int | z == 1 }] / iterator => iterator): iterator {
     handle <> { [r, e] =>
-        val b = raise g.yield_leaf();      // yield 0, resumed with 0 + 1
-        (fun <> (): { z: int | z == 1 } { b })()
+        body:[; g]()
     } with g: Gen {
-        hdl_1 yield_leaf(k) {
-            resume_final k 1
+        return x: tree::[{ z: int | z == 1 }] { Result(x) }
+        hdl_1 yield(k) {
+            Susp(0, fun <> (y: { z: int | z == 1 }): iterator { resume k y })
         }
-    }: { z: int | z == 1 }
+    }: iterator
+}
+
+def depthWalk [; g: Gen] (t: tree::[{ z: int | z == 0 }]): tree::[{ z: int | z == 1 }] / iterator => iterator {
+    match t with
+    | Leaf (a) -> {
+        val b = raise g.yield();
+        Leaf::[{ z: int | z == 1 }](b)
+    }
+    | Node (l, r) -> {
+        val l2 = depthWalk:[; g](l);
+        val r2 = depthWalk:[; g](r);
+        Node::[{ z: int | z == 1 }](l2, r2)
+    }
+}
+
+def incr(it: iterator): tree::[{ z: int | z == 1 }] {
+    match it with
+    | Result (t) -> { t }
+    | Susp (x, k) -> { incr(k(one())) }
+}
+
+def incr_tree(t: tree::[{ z: int | z == 0 }]): tree::[{ z: int | z == 1 }] {
+    val iter = run(fun <> [; h: Gen] (): tree::[{ z: int | z == 1 }] / iterator => iterator {
+        depthWalk:[; h](t)
+    });
+    incr(iter)
 }
