@@ -66,8 +66,6 @@ and typed_expr_desc =
   | ResumeFinal of (typed_expr * typed_expr)
   | Handle of {
     captured_set : SLsyntax.capability;
-    region_binder : var;
-    evidence_binder : var;
     handle_body : typed_expr;
     handler_label : var;
     sig_name : var;

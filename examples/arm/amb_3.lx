@@ -13,7 +13,7 @@ effect Amb {
 }
 
 def amb_find(ep: int, e: int, l: ilist): { z: result | z == Failure || z == Success(e) } {
-    handle <> { [r, ev] =>
+    handle <> {
         rec def select_from <amb> (xs: ilist):
             opt_i
             / { z: result | z == Failure || z == Success(e) }

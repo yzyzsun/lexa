@@ -25,7 +25,7 @@ def read2files :: ['a] [; r1: Reader, r2: Reader] (show: <> ('a) -> string): int
 }
 
 def reader :: ['a, 'b] [c;] (x: 'a, action: <c;> [; h: Reader] () -> 'b / 'b => 'b): 'b {
-    handle <c;> { [r] =>
+    handle <c;> {
         action:[; h]()
     } with h: Reader {
         return y : 'b { y }

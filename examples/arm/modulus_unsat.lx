@@ -18,10 +18,10 @@ def mu(
         ->['rho] int / (<>(int) ->['rho] int / int => int) => (<>(int) ->['rho] int / int => int),
     sequence: <> (x: int) -> int
 ): int / int => int {
-    val run = handle <> { [reg, e] =>
-        f::[reg]:[; o](fun <o> (x: int): int / (<>(int) ->[reg] int / int => int) => (<>(int) ->[reg] int / int => int) {
+    val run = handle <> {
+        f::[o]:[; o](fun <o> (x: int): int / (<>(int) ->[o] int / int => int) => (<>(int) ->[o] int / int => int) {
             val observed = sequence(x);
-            raise o.call[[]; reg, Pred(z: Int) { true }, int](x, observed)
+            raise o.call[[]; o, Pred(z: Int) { true }, int](x, observed)
         })
     } with o: Oracle {
         return x {

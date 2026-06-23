@@ -18,7 +18,7 @@ effect State {
 }
 
 def main(): { z: int | z == 6 } / int => int {
-    val run = handle <> { [r1] =>
+    val run = handle <> {
         raise st.set[top, Pred(z: Int) { z == 6 }, int](5);
         val a = raise st.get[top, Pred(z: Int) { z == 5 }, Pred(z: Int) { z == 6 }, int]();
         raise st.set[top, Pred(z: Int) { z == 6 }, int](a + 1);

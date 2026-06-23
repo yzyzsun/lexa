@@ -11,7 +11,7 @@ effect TickCount {
 }
 
 def main(): { z: int | z == 2 } / int => int {
-    val run = handle <> { [r, e] =>
+    val run = handle <> {
         raise tick.tick[top, Pred(z: Int) { z == 2 }, int](0, 7);
         raise tick.tick[top, Pred(z: Int) { z == 2 }, int](1, 9);
         val n = raise tick.count[top, Pred(z: Int) { z == 2 }, Pred(z: Int) { z == 2 }, int]();

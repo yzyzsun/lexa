@@ -24,7 +24,7 @@ effect Decide {
 
 def choose_all(x: int, y: int):
     { z: ilist | z == Cons(0, Cons(x - y, Cons(y - x, Cons(0, Nil)))) } {
-    handle <> { [r, e] =>
+    handle <> {
         val d1 = raise dec.first[int](x, y);
         val lhs = if d1 then x else y;
         val d2 = raise dec.second[int](lhs, x, y);

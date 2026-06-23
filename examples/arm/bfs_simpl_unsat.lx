@@ -20,7 +20,7 @@ def run_next(q: queue::[task]): result {
 
 def sqrt(a: int): result {
     val q = queue_make::[task]();
-    handle <> { [r, e] =>
+    handle <> {
         val b = raise sel.select[int]();
         val cand = if b then a else (0 - a);
         if cand * cand == a * a then Success(cand) else Failure

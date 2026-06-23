@@ -3,7 +3,7 @@
 type result = | Failure | Success of int
 effect Select { choose: () -> bool }
 def selection(x: int): { z: result | z == Failure || z == Success(x) } {
-    handle <> { [r, e] =>
+    handle <> {
         val b = raise s.choose();
         (fun <> (): { z: result | z == Failure || z == Success(x) } {
             if b then (if x * x == x * x then Success(x) else Failure)

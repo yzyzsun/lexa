@@ -23,8 +23,8 @@ effect File { read_line: () -> int }
 def main(): int {
     val cursor1 = newref {0};
     val cursor2 = newref {0};
-    val res = handle <> { [r1] =>
-        handle <file1> { [r2] =>
+    val res = handle <> {
+        handle <file1> {
             val a = raise file1.read_line();    // file1 (outer): cursor -> 1
             val b = raise file1.read_line();    // file1 again:    cursor -> 2
             val c = raise file2.read_line();    // file2 (inner):  cursor -> 1, independent

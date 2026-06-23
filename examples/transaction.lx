@@ -16,7 +16,7 @@ effect Transaction {
 }
 
 def main(): { z: int | z == 10 } / int => int {
-    val run = handle <> { [r, e] =>
+    val run = handle <> {
         raise tx.put[top, Pred(z: Int) { z == 10 }, int](0);
         raise tx.rollback[top, Pred(z: Int) { z == 10 }, int](10);
         val balance = raise tx.get[top, Pred(z: Int) { z == 10 }, Pred(z: Int) { z == 10 }, int]();

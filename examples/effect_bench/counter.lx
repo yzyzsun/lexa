@@ -23,7 +23,7 @@ effect St {
 
 def main(): int {
     val s = newref {100100100};
-    val res = handle <> { [r1] =>
+    val res = handle <> {
         rec def counter <c> [;] (acc: int): int / int => int {
             val i = raise c.get[[]]();
             if i == 0 then

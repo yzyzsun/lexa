@@ -99,8 +99,6 @@ and expr =
   | ResumeFinal of expr * expr
   | Handle of {
     captured_set : capability;
-    region_binder : var;
-    evidence_binder : var;
     handle_body : expr;
     handler_label : var;
     sig_name : var;

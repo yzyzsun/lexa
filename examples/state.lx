@@ -11,11 +11,11 @@ effect State {
 }
 
 def main(): int / int => int {
-    val f = handle <> { [r1, e1] =>
-        val g = handle <s1> { [r2, e2] =>
+    val f = handle <> {
+        val g = handle <s1> {
             raise s1.set[top, Pred(z: Int) { z == 3 }, int](1);
-            raise s2.set[r1, Pred(z: Int) { z == 3 }, <>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int](2);
-            val a = raise s2.get[r1, Pred(z: Int) { z == 2 }, Pred(z: Int) { z == 3 }, <>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int]();
+            raise s2.set[s1, Pred(z: Int) { z == 3 }, <>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int](2);
+            val a = raise s2.get[s1, Pred(z: Int) { z == 2 }, Pred(z: Int) { z == 3 }, <>({ z: int | z == 1 }) -> { z: int | z == 3 } / int => int]();
             val b = raise s1.get[top, Pred(z: Int) { z == 1 }, Pred(z: Int) { z == 3 }, int]();
             (fun <> (): { x: int | x == 3 } { a + b })()
         } with s2: State {

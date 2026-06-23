@@ -11,7 +11,7 @@ effect Deferred {
 
 def test(n: int): { z: int | z == n + 1 } / int => int {
     val thunk = fun <> (): { z: int | z == n } { n };
-    val run = handle <> { [reg, e] =>
+    val run = handle <> {
         val res = raise d.force[top, Pred(z: Int) { z == n }, int](n);
         (fun <> (): { z: int | z == n } { res })()
     } with d: Deferred {

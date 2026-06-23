@@ -10,7 +10,7 @@ effect Decide {
 }
 
 def main(u: int, v: { z: int | z >= u }, x: int, y: { z: int | z >= x }): { z: int | z == u - y } {
-    handle <> { [r, e] =>
+    handle <> {
         val d1 = raise dec.decide[int](u - x, v - x);
         val a = if d1 then u else (fun <> (): int { v })();
         val d2 = raise dec.decide[int](a - x, a - y);

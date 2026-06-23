@@ -31,7 +31,7 @@ def round_robin(init: int): { z: int | z == init } {
             | Thread (t) -> { t() }
     }
     and rr_handler <> (body: <> [; h: Sched] () -> unit / unit => unit): unit {
-        handle <> { [r, e] =>
+        handle <> {
             body:[; s]()
         } with s: Sched {
             return x: unit { dequeue() }

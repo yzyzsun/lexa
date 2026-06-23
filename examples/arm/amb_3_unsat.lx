@@ -6,7 +6,7 @@ type opt_i  = | NoneI | SomeI of int
 type result = | Failure | Success of int
 effect Amb { select: () -> bool }
 def amb_find(ep: int, e: int, l: ilist): { z: result | z == Failure || z == Success(ep) } {
-    handle <> { [r, ev] =>
+    handle <> {
         rec def select_from <amb> (xs: ilist):
             opt_i
             / { z: result | z == Failure || z == Success(ep) }

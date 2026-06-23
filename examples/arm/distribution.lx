@@ -22,7 +22,7 @@ def distribution(p: { z: int | 0 <= z && z <= 100 }, a: int, b: int):
     { z: plist |
         (a == b && z == Cons(P(a, 100), Nil)) ||
         (a != b && z == Cons(P(a, p), Cons(P(b, 100 - p), Nil))) } {
-    handle <> { [r, e] =>
+    handle <> {
         val d = raise pk.pick[int](p, a, b);
         (fun <> (): { z: plist |
             (d == true && z == Cons(P(a, 100), Nil)) ||

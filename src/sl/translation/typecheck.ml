@@ -2304,10 +2304,10 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
         | _ -> typing_error "App: Function type expected\n\tActual: %s" (type_to_str fun_type)
       )
 
-    | Handle { captured_set; region_binder; evidence_binder; handle_body; handler_label; sig_name; handle_final; return_clause; handler_defs } ->
+    | Handle { captured_set; handle_body; handler_label; sig_name; handle_final; return_clause; handler_defs } ->
       let captured_vars' = check_capture_set_as_unamb captured_set captured_vars cap_vars label_vars in
-      (* Use the explicit region binder for this handler's region. *)
-      let handler_region = RVar region_binder in
+      (* The handler label doubles as this handler's region. *)
+      let handler_region = RVar handler_label in
       let body_rctx = {
         current_region = handler_region;
         subregions = (handler_region, rctx.current_region) :: rctx.subregions;
@@ -2481,10 +2481,10 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
               body_label_vars term_vars handle_body c2
               (Some { initial_binder = return_binder; initial_cty = return_cty })
         in
-        if List.exists (constraint_mentions region_binder) handle_body'.region_constraints then
+        if List.exists (constraint_mentions handler_label) handle_body'.region_constraints then
           typing_error
             "Handle: residual subregion constraints cannot mention local region %s"
-            region_binder;
+            handler_label;
         let body_actual_ty = ty_of handle_body' in
         if not (types_sub body_actual_ty body_ty
                 || types_eq body_actual_ty (erase_refinements_ty body_ty)
@@ -2501,7 +2501,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
             (cty_to_str body_initial_cty)
             (cty_to_str return_cty);
         let handler_defs' = type_handler_defs return_cty in
-        Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; handle_final; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
+        Handle { captured_set; handle_body = handle_body'; handler_label; sig_name; handle_final; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
       end else begin
       let body_ty, initial_ans_binder, initial_ans_cty, typed_return_clause =
         match return_clause with
@@ -2536,11 +2536,11 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
           body_label_vars term_vars
           handle_body body_expected_cty
       in
-      if List.exists (constraint_mentions region_binder) handle_body'.region_constraints then
+      if List.exists (constraint_mentions handler_label) handle_body'.region_constraints then
         typing_error
           "Handle: residual subregion constraints cannot mention local region %s"
-          region_binder;
-      Handle { captured_set; region_binder; evidence_binder; handle_body = handle_body'; handler_label; sig_name; handle_final; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
+          handler_label;
+      Handle { captured_set; handle_body = handle_body'; handler_label; sig_name; handle_final; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
       end
 
     | Raise { raise_label; raise_op; raise_evidence; raise_tylikes; raise_atc; raise_args } ->

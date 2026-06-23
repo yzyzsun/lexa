@@ -467,18 +467,11 @@ expr:
   | RESUMEFINAL k = simple_expr v = app_expr { ResumeFinal (k, v) }
   | HANDLE
     LTS captured_set = capability GTS
-    LCB LSB region_binder = VAR RSB FATARROW handle_body = expr RCB
+    LCB handle_body = expr RCB
     WITH handler_label = VAR COLON sig_name = CAPITALIZED_VAR
     LCB return_clause = option(return_clause) handler_defs = list(hdl_def) RCB
     COLON handle_final = cty_exp
-    { Handle {captured_set; region_binder; evidence_binder = "__unused_evidence__"; handle_body; handler_label; sig_name; handle_final; return_clause; handler_defs} }
-  | HANDLE
-    LTS captured_set = capability GTS
-    LCB LSB region_binder = VAR COMMA evidence_binder = VAR RSB FATARROW handle_body = expr RCB
-    WITH handler_label = VAR COLON sig_name = CAPITALIZED_VAR
-    LCB return_clause = option(return_clause) handler_defs = list(hdl_def) RCB
-    COLON handle_final = cty_exp
-    { Handle {captured_set; region_binder; evidence_binder; handle_body; handler_label; sig_name; handle_final; return_clause; handler_defs} }
+    { Handle {captured_set; handle_body; handler_label; sig_name; handle_final; return_clause; handler_defs} }
   | FUN LTS captured_set = capability GTS
       opt_params = opt_params
       LPAREN params = separated_list(COMMA, parameter) RPAREN

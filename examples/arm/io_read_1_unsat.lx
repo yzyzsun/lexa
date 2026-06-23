@@ -4,7 +4,7 @@ effect IO { read: () -> int }
 // read_n n l: the recursive read loop  go m = if m<=0 then Ok else (perform Read; go (m-1))
 // run under read_from_list.  Reading a non-empty list succeeds; the result is Ok.
 def read_n(n: { z: int | z == 0 }): { z: ioresult | z == Err } {
-    handle <> { [reg, e] =>
+    handle <> {
         rec def go <io> (m: int): { z: ioresult | z == Err }
             / { z: ioresult | z == Err } => { z: ioresult | z == Err } {
             if m <= 0 then Ok

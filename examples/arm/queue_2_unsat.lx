@@ -25,7 +25,7 @@ def snoc(xs: ilist, v: int): ilist {
 }
 
 def queue(init: { z: ilist | z != Nil }): { z: opt | z == None } / int => int {
-    val run = handle <> { [r, e] =>
+    val run = handle <> {
         match init with
         | Nil -> { (fun <> (): { z: opt | z != None } { Some(0) })() }
         | Cons (h, t) -> {

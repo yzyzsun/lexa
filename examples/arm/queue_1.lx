@@ -23,7 +23,7 @@ effect Queue {
 }
 
 def queue(init: { z: ilist | z == Nil }): { z: opt | z == None } / int => int {
-    val run = handle <> { [r, e] =>
+    val run = handle <> {
         raise q.add[top, Pred(_: Unit) { true }, int](Nil, Cons(42, Nil), 42);
         val first = raise q.get_next[top, Pred(_: Unit) { true }, int](Cons(42, Nil), Nil, Some(42));
         val last = raise q.get_next[top, Pred(_: Unit) { true }, int](Nil, Nil, None);

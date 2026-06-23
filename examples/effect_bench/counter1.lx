@@ -21,8 +21,8 @@ effect Ask { ask: () -> int }
 
 def main(): int {
     val s = newref {100100100};
-    val res = handle <> { [r1] =>
-        handle <c_st> { [r2] =>                           // unused intervening handler (region r2)
+    val res = handle <> {
+        handle <c_st> {                           // unused intervening handler (region r2)
             rec def do_get <c_st> [;] (dummy: int): int / int => int { raise c_st.get[[]]() } ;
             rec def do_set <c_st> [;] (v: int): unit / int => int { raise c_st.set[[]](v) } ;
             rec def counter <c_st> [;] (acc: int): int / int => int {

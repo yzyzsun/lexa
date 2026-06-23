@@ -17,8 +17,8 @@
 effect Reader { ask: () -> int }
 
 def main(): int {
-    val res = handle <> { [r1] =>
-        handle <reader1> { [r2] =>
+    val res = handle <> {
+        handle <reader1> {
             val a = raise reader1.ask();        // the OUTER reader, reached across reader2
             val b = raise reader2.ask();        // the inner reader, local
             a + b

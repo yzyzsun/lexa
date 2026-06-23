@@ -10,7 +10,7 @@ effect Decide {
 }
 
 def choose_sum(x: int, y: int): { z: int | z == x + y } {
-    handle <> { [r, e] =>
+    handle <> {
         val d1 = raise dec.decide[int](x - y, y - x);
         val lhs = if d1 then x else y;
         val d2 = raise dec.decide[int](lhs - x, lhs - y);

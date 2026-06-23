@@ -18,7 +18,7 @@ effect Writer {
 }
 
 def write_all_any(l: ilist): { z: int | (l == Nil && z == 0) || (l != Nil && z >= 1) } / int => int {
-    val run = handle <> { [r, e] =>
+    val run = handle <> {
         rec def go <w> (li: ilist, before: { b: int | b >= 0 }):
             unit
             / (<>({ count: int | (li == Nil && count == before) || (li != Nil && count >= before + 1) }) -> { z: int | (l == Nil && z == 0) || (l != Nil && z >= 1) } / int => int)

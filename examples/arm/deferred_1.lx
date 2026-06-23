@@ -14,7 +14,7 @@ effect Deferred {
 }
 
 def lazy_(r: int, thunk: <> () -> { z: int | z == r }): { z: int | z == r } / int => int {
-    val run = handle <> { [reg, e] =>
+    val run = handle <> {
         val res = raise d.force[top, Pred(z: Int) { z == r }, int](r);
         (fun <> (): { z: int | z == r } { res })()
     } with d: Deferred {

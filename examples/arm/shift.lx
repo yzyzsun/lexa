@@ -9,7 +9,7 @@ effect Delim {
 }
 
 def reset_(n: int): { z: int | z == 8 * n + 7 } {
-    handle <> { [r, e] =>
+    handle <> {
         val s = raise d.shift[int](n);
         (fun <> (): { z: int | z == 2 * s + 1 } { s * 2 + 1 })()
     } with d: Delim {

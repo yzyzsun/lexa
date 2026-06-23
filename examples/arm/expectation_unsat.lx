@@ -11,7 +11,7 @@ effect Pick {
 }
 
 def expectation(p: int, x: int, y: int): { z: int | z == (100 - p) * x + p * y } {
-    handle <> { [r, e] =>
+    handle <> {
         val b = raise pick.pick[int](p, x, y);
         (fun <> (): { z: int | (b == true && z == x) || (b == false && z == y) } {
             if b then x else y

@@ -24,7 +24,7 @@ effect Ask { ask: () -> int }
 
 def main(): int {
     val s = newref {100100100};
-    val res = handle <> { [r1] =>
+    val res = handle <> {
         rec def do_get <c_st> [;] (d: int): int / int => int { raise c_st.get[[]]() } ;
         rec def do_set <c_st> [;] (v: int): unit / int => int { raise c_st.set[[]](v) } ;
         rec def counter <c_st> [;] (acc: int): int / int => int {
@@ -36,7 +36,7 @@ def main(): int {
             if n == 0 then
                 counter:[;](0)
             else
-                handle <c_st> { [r] => add_readers:[;](n - 1) }
+                handle <c_st> { add_readers:[;](n - 1) }
                 with a: Ask { return x : int { x }  def ask() { 0 } }: int
         } ;
         add_readers:[;](10)

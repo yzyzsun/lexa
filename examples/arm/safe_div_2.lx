@@ -11,7 +11,7 @@ exceptional effect Div {
 }
 
 def safe_div(n: int, m: { z: int | z != 0 }): { z: opt | z == None || z == Some(n / m) } {
-    handle <> { [reg, e] =>
+    handle <> {
         if m == 0 then raise d.divfail()
         else Some(n / m)
     } with d: Div {

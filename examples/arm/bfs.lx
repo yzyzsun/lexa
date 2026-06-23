@@ -27,7 +27,7 @@ def run_next(q: queue::[task]): { z: result | z == Failure || z == Success(2) ||
 def bfs(squared: { z: int | z == 4 || z == 9 }):
     { z: result | z == Failure || z == Success(2) || z == Success(3) } {
     val q = queue_make::[task]();
-    handle <> { [r, e] =>
+    handle <> {
         val b = raise sel.select[int]();
         (fun <> (): { z: result | z == Failure || z == Success(2) || z == Success(3) } {
             if b then (if 2 * 2 == squared then Success(2) else Failure)

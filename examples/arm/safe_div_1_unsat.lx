@@ -3,7 +3,7 @@
 type opt = | None | Some of int
 exceptional effect Div { divfail: () -> { z: opt | z == None } }
 def safe_div(n: int, m: { z: int | z == 0 }): { z: opt | z != None } {
-    handle <> { [reg, e] =>
+    handle <> {
         if m == 0 then raise d.divfail() else Some(n / m)
     } with d: Div { exc divfail() { None } }: { z: opt | z != None }
 }

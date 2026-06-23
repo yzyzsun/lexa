@@ -49,7 +49,7 @@ def pick_loop(i: int, a: int, size: int, k: cont <> int -> int): int {
 }
 
 def main(): int {
-    val run = handle <> { [r1] =>
+    val run = handle <> {
         // place one queen per column, backtracking via pick/fail.
         // (evidence is inferred; call sites write only the ATC `[]` and the operation's
         //  forall type arguments -- `int` for pick, `queens, int` for fail.)

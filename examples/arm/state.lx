@@ -18,7 +18,7 @@ effect State {
 }
 
 def main(init: { z: int | z >= 0 }): { z: int | z == init } / int => int {
-    val run = handle <> { [r, e] =>
+    val run = handle <> {
         rec def counter <s> (c: { z: int | z >= 0 }):
             { z: int | z == init }
             / (<>(int) -> { z: int | z == init } / int => int)

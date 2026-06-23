@@ -29,7 +29,7 @@ effect Amb {
 }
 
 def amb_find(e: int, l: { z: ilist | z == Nil }): { z: result | z == Failure } {
-    handle <> { [r, ev] =>
+    handle <> {
         rec def select_from <amb> (xs: ilist):
             { z: opt_i | xs != Nil || z == NoneI } / { z: result | z == Failure } => { z: result | z == Failure } {
             match xs with

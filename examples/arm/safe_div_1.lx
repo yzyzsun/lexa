@@ -12,7 +12,7 @@ exceptional effect Div {
 }
 
 def safe_div(n: int, m: { z: int | z == 0 }): { z: opt | z == None } {
-    handle <> { [reg, e] =>
+    handle <> {
         if m == 0 then raise d.divfail()       // None
         else Some(n / m)                       // (unreachable: m == 0)
     } with d: Div {

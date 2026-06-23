@@ -11,7 +11,7 @@ type ioresult = | Ok | Err
 exceptional effect IO { read: () -> int }
 
 def read_n(n: { z: int | z >= 1 }): { z: ioresult | z == Ok } {
-    handle <> { [reg, e] =>
+    handle <> {
         rec def go <io> (m: int): { z: ioresult | z == Ok } / { z: ioresult | z == Ok } => { z: ioresult | z == Ok } {
             if m <= 0 then Err            // unreachable for the empty-list run
             else (val v = raise io.read[[]](); go(m - 1))

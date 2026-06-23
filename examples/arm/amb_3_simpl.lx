@@ -16,7 +16,7 @@ effect Amb {
 }
 
 def amb_find(ep: int, e: int): { z: bool | z == true } {
-    handle <> { [r, ev] =>
+    handle <> {
         rec def select_from <amb> (xs: { z: ilist | z == Nil || z == Cons(e, Nil) || z == Cons(ep, Cons(e, Nil)) }):
             bool
             / { z: bool | (xs == Nil && z == false) || (xs != Nil && z == true) }

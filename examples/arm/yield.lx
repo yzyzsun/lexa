@@ -19,7 +19,7 @@ def one(): { z: int | z == 1 } {
 }
 
 def run(body: <> [; h: Gen] () -> tree::[{ z: int | z == 1 }] / iterator => iterator): iterator {
-    handle <> { [r, e] =>
+    handle <> {
         body:[; g]()
     } with g: Gen {
         return x: tree::[{ z: int | z == 1 }] { Result(x) }

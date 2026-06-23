@@ -24,7 +24,7 @@ effect Transaction {
 }
 
 def main(b: bool): { z: int | z != 2 && (z == 0 || z == 42) } / int => int {
-    val run = handle <> { [r, e] =>
+    val run = handle <> {
         raise tx.update[top, int](1);
         raise tx.update[top, int](2);
         if b then raise tx.abort[top, int](0) else ();

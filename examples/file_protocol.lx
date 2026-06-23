@@ -16,7 +16,7 @@ effect File {
 }
 
 def main(): { z: int | z == 42 } / int => int {
-    val run = handle <> { [r, e] =>
+    val run = handle <> {
         raise file.fopen[top, Pred(z: Int) { z == 42 }, int]();
         val n = raise file.fread[top, Pred(z: Int) { z == 42 }, int]();
         raise file.fclose[top, Pred(z: Int) { z == 42 }, int]();
