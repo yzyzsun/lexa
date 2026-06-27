@@ -90,7 +90,6 @@ and expr =
   | Raise of {
     raise_label : var;
     raise_op : var;
-    raise_evidence : evidence;
     raise_tylikes : typelike list;
     raise_atc : atc option;
     raise_args : expr list
@@ -196,12 +195,6 @@ and region_constraint = {
   rc_outer  : region;
 }
 
-and evidence =
-  | EVar of var
-  | EZero
-  | EPlus of evidence * evidence
-  | ENull
-
 and kind =
   | KTy
   | KCty
@@ -209,7 +202,6 @@ and kind =
   | KReg
   | KDist
   | KATC of distance
-  | KEv of region_constraint
   | KPred of base_ty list
 
 and base_ty =
@@ -238,7 +230,6 @@ and typelike =
   | TLPred of (var * ty) list * pred
   | TLRegion of region
   | TLDist of distance
-  | TLEvidence of evidence
   | TLCty of cty
   | TLEff of eff
   | TLATC of atc

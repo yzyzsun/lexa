@@ -106,7 +106,6 @@ rule read =
   | "Pred" { PRED }
   | "Eff" { EFF }
   | "Dist" { DIST }
-  | "Ev" { EV }
   | "top" { TOP }
   | "Reg" { REG }
 

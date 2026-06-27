@@ -93,7 +93,6 @@
 %token PRED
 %token EFF
 %token DIST
-%token EV
 
 %token EXCEPTION
 %token TOP
@@ -364,16 +363,6 @@ match_clause:
   | con_name = CAPITALIZED_VAR LPAREN con_args = separated_nonempty_list(COMMA, VAR) RPAREN RARROW LCB e = expr RCB 
     { (PTypecon(con_name, con_args), e) }
 
-evidence_atom:
-  | INT { if $1 = 0 then EZero else failwith "evidence: only 0 is a valid integer literal" }
-  | MULT { ENull }
-  | v = VAR { EVar v }
-  | LPAREN e = evidence_exp RPAREN { e }
-
-evidence_exp:
-  | evidence_atom { $1 }
-  | e1 = evidence_exp ADD e2 = evidence_atom { EPlus (e1, e2) }
-
 (* Answer-type conversion (ATC) surface syntax:
      []                identity ATC                          (ATCHole)
      T / C => CC       impure extension                      (ATCAns)
@@ -421,7 +410,6 @@ typelike_arg:
   | PRED LCB p = pred_expr RCB
     { TLPred ([], p) }
   | DIST LPAREN d = dist_exp RPAREN { TLDist d }
-  | EV LPAREN e = evidence_exp RPAREN { TLEvidence e }
   | EFF LPAREN e = eff_exp RPAREN { TLEff e }
   | ATC LPAREN cc = atc_exp RPAREN { TLATC cc }
   | TOP { TLRegion RTop }
@@ -429,21 +417,12 @@ typelike_arg:
   | LPAREN c = cty_exp RPAREN { TLCty c }
 
 raise_inst:
-  | raise_evidence = evidence_exp
-    { (raise_evidence, None, []) }
   | raise_atc = raise_atc_exp
-    { (ENull, Some raise_atc, []) }
+    { (Some raise_atc, []) }
   | raise_tylikes = separated_nonempty_list(COMMA, typelike_arg)
-    { (ENull, None, raise_tylikes) }
+    { (None, raise_tylikes) }
   | raise_atc = raise_atc_exp SEMICOLON raise_tylikes = separated_nonempty_list(COMMA, typelike_arg)
-    { (ENull, Some raise_atc, raise_tylikes) }
-  | raise_evidence = evidence_exp SEMICOLON raise_atc = raise_atc_exp
-    { (raise_evidence, Some raise_atc, []) }
-  | raise_evidence = evidence_exp SEMICOLON raise_tylikes = separated_nonempty_list(COMMA, typelike_arg)
-    { (raise_evidence, None, raise_tylikes) }
-  | raise_evidence = evidence_exp SEMICOLON
-    raise_atc = raise_atc_exp SEMICOLON raise_tylikes = separated_nonempty_list(COMMA, typelike_arg)
-    { (raise_evidence, Some raise_atc, raise_tylikes) }
+    { (Some raise_atc, raise_tylikes) }
 
 app_expr:
   | simple_expr { $1 }
@@ -479,11 +458,11 @@ expr:
   | VALDEF x = VAR EQ t1 = expr SEMICOLON t2 = expr %prec HIGHER_THAN_STMT { Let (x, t1, t2) }
   | IF v = expr THEN t1 = expr ELSE t2 = expr { If (v, t1, t2) }
   | RAISE raise_label = VAR DOT raise_op = VAR LPAREN raise_args = separated_list(COMMA, expr) RPAREN
-    { Raise {raise_label; raise_op; raise_evidence = ENull; raise_tylikes = []; raise_atc = None; raise_args} }
+    { Raise {raise_label; raise_op; raise_tylikes = []; raise_atc = None; raise_args} }
   | RAISE raise_label = VAR DOT raise_op = VAR LSB raise_inst = raise_inst RSB
     LPAREN raise_args = separated_list(COMMA, expr) RPAREN
-    { let (raise_evidence, raise_atc, raise_tylikes) = raise_inst in
-      Raise {raise_label; raise_op; raise_evidence; raise_tylikes; raise_atc; raise_args} }
+    { let (raise_atc, raise_tylikes) = raise_inst in
+      Raise {raise_label; raise_op; raise_tylikes; raise_atc; raise_args} }
   | RESUME k = simple_expr v = app_expr { Resume (k, v) }
   | RESUMEFINAL k = simple_expr v = app_expr { ResumeFinal (k, v) }
   | HANDLE

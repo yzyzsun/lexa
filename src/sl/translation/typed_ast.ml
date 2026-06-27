@@ -57,7 +57,6 @@ and typed_expr_desc =
   | Raise of {
     raise_label : var;
     raise_op : var;
-    raise_evidence : SLsyntax.evidence;
     raise_tylikes : SLsyntax.typelike list;
     raise_atc : SLsyntax.atc;
     raise_args : typed_expr list;

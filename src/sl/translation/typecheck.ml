@@ -1262,15 +1262,8 @@ and check_refinement_wellformed rctx term_vars (ty: ty) =
   in go term_vars ty
 
 and type_raise_expr ?final_answer rctx captured_vars cap_vars label_vars term_vars
-    raise_label raise_op raise_evidence raise_tylikes raise_atc_opt raise_args =
+    raise_label raise_op raise_tylikes raise_atc_opt raise_args =
   let op_cty_info = find_op_cty raise_label raise_op captured_vars label_vars in
-  let raise_evidence, raise_tylikes =
-    match raise_evidence, raise_atc_opt, raise_tylikes, op_cty_info.op_ty_bindings with
-    | ENull, None, [TLTy (TCon (evidence_var, []))], [] ->
-      EVar evidence_var, []
-    | _ ->
-      raise_evidence, raise_tylikes
-  in
   if List.length raise_tylikes <> List.length op_cty_info.op_ty_bindings then
     typing_error
       "Raise: Incorrect number of type/predicate/cty instantiations for %s.%s\n\tExpected: %d\n\tActual: %d\n"
@@ -1292,7 +1285,6 @@ and type_raise_expr ?final_answer rctx captured_vars cap_vars label_vars term_va
         typing_error
           "Raise: ATC instantiation has wrong distance for %s.%s\n"
           raise_label raise_op
-    | KEv _, TLEvidence _ -> ()
     | KReg, _ when region_of_tylike arg <> None -> ()
     | KPred expected_args, TLPred (params, body) ->
       check_pred_tylike rctx term_vars expected_args params body
@@ -1408,7 +1400,6 @@ and type_raise_expr ?final_answer rctx captured_vars cap_vars label_vars term_va
     ( Raise {
         raise_label;
         raise_op;
-        raise_evidence;
         raise_tylikes;
         raise_atc;
         raise_args = raise_args'
@@ -1916,10 +1907,10 @@ and type_expr_with_final rctx (captured_vars: capture_set) cap_vars label_vars
          (CCty (value_ty, eff)) []
      | _ -> typing_error "Match: Pattern type expected, got %s instead\n" (type_to_str match_expr_ty))
 
-  | Raise { raise_label; raise_op; raise_evidence; raise_tylikes; raise_atc; raise_args } ->
+  | Raise { raise_label; raise_op; raise_tylikes; raise_atc; raise_args } ->
     let expr_desc, expr_cty, region_constraints =
       type_raise_expr ~final_answer:final_cty rctx captured_vars cap_vars label_vars
-        term_vars raise_label raise_op raise_evidence raise_tylikes raise_atc raise_args
+        term_vars raise_label raise_op raise_tylikes raise_atc raise_args
     in
     let expr_cty =
       match expr_cty with
@@ -2554,10 +2545,10 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       Handle { captured_set; handle_body = handle_body'; handler_label; sig_name; handle_final; return_clause = typed_return_clause; handler_defs = handler_defs' }, c2
       end
 
-    | Raise { raise_label; raise_op; raise_evidence; raise_tylikes; raise_atc; raise_args } ->
+    | Raise { raise_label; raise_op; raise_tylikes; raise_atc; raise_args } ->
       let expr_desc, expr_cty, region_constraints =
         type_raise_expr rctx captured_vars cap_vars label_vars term_vars
-          raise_label raise_op raise_evidence raise_tylikes raise_atc raise_args
+          raise_label raise_op raise_tylikes raise_atc raise_args
       in
       extra_region_constraints :=
         constraints_union !extra_region_constraints region_constraints;
