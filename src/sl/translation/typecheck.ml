@@ -1282,6 +1282,17 @@ and type_raise_expr ?final_answer rctx captured_vars cap_vars label_vars term_va
     | KTy, TLTy _ -> ()
     | KCty, TLCty _ -> ()
     | KCty, TLTy _ -> ()
+    | KEff, TLEff _ -> ()
+    | KDist, TLDist _ -> ()
+    | KATC expected_dist, TLATC cc ->
+      let actual_dist =
+        check_atc (op_cty_info.op_ty_bindings @ rctx.kind_env) term_vars cc
+      in
+      if not (distance_eq actual_dist expected_dist) then
+        typing_error
+          "Raise: ATC instantiation has wrong distance for %s.%s\n"
+          raise_label raise_op
+    | KEv _, TLEvidence _ -> ()
     | KReg, _ when region_of_tylike arg <> None -> ()
     | KPred expected_args, TLPred (params, body) ->
       check_pred_tylike rctx term_vars expected_args params body

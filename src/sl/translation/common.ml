@@ -1301,6 +1301,63 @@ and substitute_cty_var_to_eff e cty_var replacement =
           substitute_cty_var_to_cty c1 cty_var replacement,
           substitute_cty_var_to_cty c2 cty_var replacement)
 
+let rec substitute_eff_var_to_type ty eff_var replacement =
+  match ty with
+  | TRef t -> TRef (substitute_eff_var_to_type t eff_var replacement)
+  | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
+    TFun {
+      captured_set; cap_params; label_params;
+      params_ty = List.map (fun (name, t) -> (name, substitute_eff_var_to_type t eff_var replacement)) params_ty;
+      region;
+      return_cty = substitute_eff_var_to_cty return_cty eff_var replacement
+    }
+  | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
+    TCont {
+      captured_set;
+      effect_return_var;
+      effect_return_ty = substitute_eff_var_to_type effect_return_ty eff_var replacement;
+      return_cty = substitute_eff_var_to_cty return_cty eff_var replacement
+    }
+  | TNode t -> TNode (substitute_eff_var_to_type t eff_var replacement)
+  | TTree t -> TTree (substitute_eff_var_to_type t eff_var replacement)
+  | TQueue t -> TQueue (substitute_eff_var_to_type t eff_var replacement)
+  | TArray t -> TArray (substitute_eff_var_to_type t eff_var replacement)
+  | TCon (name, args) ->
+    TCon (name, List.map (fun t -> substitute_eff_var_to_type t eff_var replacement) args)
+  | TForall (tv, kind, constraints, body) when tv = eff_var ->
+    TForall (tv, kind, constraints, body)
+  | TForall (tv, kind, constraints, body) ->
+    TForall (tv, kind, constraints, substitute_eff_var_to_type body eff_var replacement)
+  | TRefine (v, inner, p) ->
+    TRefine (v, substitute_eff_var_to_type inner eff_var replacement, p)
+  | TCap (region, opty) ->
+    if List.exists (fun (tv, _) -> tv = eff_var) opty.op_ty_bindings
+    then ty
+    else
+      TCap (region, {
+        opty with
+        op_param_ty = substitute_eff_var_to_type opty.op_param_ty eff_var replacement;
+        op_return_cty = substitute_eff_var_to_cty opty.op_return_cty eff_var replacement;
+      })
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> ty
+
+and substitute_eff_var_to_cty c eff_var replacement =
+  match c with
+  | CTyVar _ -> c
+  | CCty (t, e) ->
+    CCty (substitute_eff_var_to_type t eff_var replacement,
+          substitute_eff_var_to_eff e eff_var replacement)
+  | CFill (v, c') -> CFill (v, substitute_eff_var_to_cty c' eff_var replacement)
+
+and substitute_eff_var_to_eff e eff_var replacement =
+  match e with
+  | EEffVar v when v = eff_var -> replacement
+  | EEffVar _ | EPure -> e
+  | EAns (x, c1, c2) ->
+    EAns (x,
+          substitute_eff_var_to_cty c1 eff_var replacement,
+          substitute_eff_var_to_cty c2 eff_var replacement)
+
 (* A region tylike argument can be written bare in surface syntax: [[top]],
    a VAR (a region binder like [[r1]]), or a TYPE_VAR (a region-kinded
    abstract var like [['rho]]). The first parses as [TLRegion RTop]; the
@@ -1321,6 +1378,7 @@ let substitute_tylike_to_type ty var kind arg =
      | None -> ty)
   | KCty, TLCty c -> substitute_cty_var_to_type ty var c
   | KCty, TLTy t -> substitute_cty_var_to_type ty var (CCty (t, EPure))
+  | KEff, TLEff e -> substitute_eff_var_to_type ty var e
   | KReg, _ ->
     (match region_of_tylike arg with
      | Some r -> substitute_region_to_type ty var r
@@ -1344,6 +1402,7 @@ let substitute_tylike_to_cty c var kind arg =
      | None -> c)
   | KCty, TLCty replacement -> substitute_cty_var_to_cty c var replacement
   | KCty, TLTy t -> substitute_cty_var_to_cty c var (CCty (t, EPure))
+  | KEff, TLEff replacement -> substitute_eff_var_to_cty c var replacement
   | KReg, _ ->
     (match region_of_tylike arg with
      | Some r -> substitute_region_to_cty c var r

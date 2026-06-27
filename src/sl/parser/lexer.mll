@@ -99,10 +99,14 @@ rule read =
   | "tree_t" { TTREE }
   | "queue_t" { TQUEUE }
   | "array_t" { TARRAY }
+  | "Cap" { TCAP }
   | "forall" { FORALL }
   | "ATC" { ATC }
   | "Cty" { CTY }
   | "Pred" { PRED }
+  | "Eff" { EFF }
+  | "Dist" { DIST }
+  | "Ev" { EV }
   | "top" { TOP }
   | "Reg" { REG }
 

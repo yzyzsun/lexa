@@ -86,10 +86,14 @@
 %token TTREE
 %token TQUEUE
 %token TARRAY
+%token TCAP
 %token FORALL
 %token ATC
 %token CTY
 %token PRED
+%token EFF
+%token DIST
+%token EV
 
 %token EXCEPTION
 %token TOP
@@ -167,6 +171,7 @@ type_exp:
   | TTREE COLON COLON LSB ty = type_exp RSB { TTree ty }
   | TQUEUE COLON COLON LSB ty = type_exp RSB { TQueue ty }
   | TARRAY COLON COLON LSB ty = type_exp RSB { TArray ty }
+  | TCAP region = region_lit op = opty_exp { TCap (region, op) }
   | pattern_name = VAR { TCon (pattern_name, []) }
   | pattern_name = VAR COLON COLON LSB type_args = separated_list(COMMA, type_exp) RSB { TCon (pattern_name, type_args) }
   | LPAREN ty = type_exp RPAREN { ty }
@@ -184,6 +189,15 @@ region_lit:
 opt_fun_region:
   | LSB region = region_lit RSB { region }
   | { RTop }
+
+opty_exp:
+  | FORALL bindings = separated_nonempty_list(COMMA, type_param_decl) DOT op = opty_exp
+    { { op with op_ty_bindings = bindings @ op.op_ty_bindings } }
+  | name = VAR COLON param_ty = type_exp RARROW return_cty = cty_exp
+    { { op_ty_bindings = []; op_param_name = name; op_param_ty = param_ty; op_return_cty = return_cty } }
+  | LPAREN name = VAR COLON param_ty = type_exp RPAREN RARROW return_cty = cty_exp
+    { { op_ty_bindings = []; op_param_name = name; op_param_ty = param_ty; op_return_cty = return_cty } }
+  | LPAREN op = opty_exp RPAREN { op }
 
 refine_base_ty:
   | TINT { TInt }
@@ -239,6 +253,7 @@ cty_exp:
   | t = type_exp DIV e = eff_exp { CCty (t, e) }
 
 eff_exp:
+  | tv = TYPE_VAR { EEffVar tv }
   | c1 = cty_exp FATARROW c2 = cty_exp { EAns (None, c1, c2) }
   | LPAREN x = VAR DOT c1 = cty_exp RPAREN FATARROW c2 = cty_exp
     { EAns (Some x, c1, c2) }
@@ -258,7 +273,9 @@ dist_exp:
 kind_anno:
   | ATC LPAREN d = dist_exp RPAREN { KATC d }
   | CTY { KCty }
+  | EFF { KEff }
   | REG { KReg }
+  | DIST { KDist }
   | PRED LSB tys = separated_list(COMMA, pred_base_ty) RSB { KPred tys }
 
 pred_base_ty:
@@ -403,6 +420,10 @@ typelike_arg:
     { TLPred (params, p) }
   | PRED LCB p = pred_expr RCB
     { TLPred ([], p) }
+  | DIST LPAREN d = dist_exp RPAREN { TLDist d }
+  | EV LPAREN e = evidence_exp RPAREN { TLEvidence e }
+  | EFF LPAREN e = eff_exp RPAREN { TLEff e }
+  | ATC LPAREN cc = atc_exp RPAREN { TLATC cc }
   | TOP { TLRegion RTop }
   | ty = type_exp { TLTy ty }
   | LPAREN c = cty_exp RPAREN { TLCty c }
