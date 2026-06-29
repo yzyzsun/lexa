@@ -193,9 +193,9 @@ opty_exp:
   | FORALL bindings = separated_nonempty_list(COMMA, type_param_decl) DOT op = opty_exp
     { { op with op_ty_bindings = bindings @ op.op_ty_bindings } }
   | name = VAR COLON param_ty = type_exp RARROW return_cty = cty_exp
-    { { op_ty_bindings = []; op_param_name = name; op_param_ty = param_ty; op_return_cty = return_cty } }
-  | LPAREN name = VAR COLON param_ty = type_exp RPAREN RARROW return_cty = cty_exp
-    { { op_ty_bindings = []; op_param_name = name; op_param_ty = param_ty; op_return_cty = return_cty } }
+    { { op_ty_bindings = []; op_params = [(Some name, param_ty)]; op_return_cty = return_cty } }
+  | LPAREN params = separated_list(COMMA, op_parameter) RPAREN RARROW return_cty = cty_exp
+    { { op_ty_bindings = []; op_params = params; op_return_cty = return_cty } }
   | LPAREN op = opty_exp RPAREN { op }
 
 refine_base_ty:
@@ -424,6 +424,10 @@ raise_inst:
   | raise_atc = raise_atc_exp SEMICOLON raise_tylikes = separated_nonempty_list(COMMA, typelike_arg)
     { (Some raise_atc, raise_tylikes) }
 
+raise_cap_target:
+  | v = VAR { Var v }
+  | LPAREN e = expr RPAREN { e }
+
 app_expr:
   | simple_expr { $1 }
   | e1 = app_expr 
@@ -463,6 +467,12 @@ expr:
     LPAREN raise_args = separated_list(COMMA, expr) RPAREN
     { let (raise_atc, raise_tylikes) = raise_inst in
       Raise {raise_label; raise_op; raise_tylikes; raise_atc; raise_args} }
+  | RAISE raise_cap = raise_cap_target LPAREN raise_args = separated_list(COMMA, expr) RPAREN
+    { RaiseCap {raise_cap; raise_tylikes = []; raise_atc = None; raise_args} }
+  | RAISE raise_cap = raise_cap_target LSB raise_inst = raise_inst RSB
+    LPAREN raise_args = separated_list(COMMA, expr) RPAREN
+    { let (raise_atc, raise_tylikes) = raise_inst in
+      RaiseCap {raise_cap; raise_tylikes; raise_atc; raise_args} }
   | RESUME k = simple_expr v = app_expr { Resume (k, v) }
   | RESUMEFINAL k = simple_expr v = app_expr { ResumeFinal (k, v) }
   | HANDLE
@@ -492,6 +502,7 @@ expr:
   | LPAREN RPAREN { Unit }
 
 simple_expr:
+  | label = VAR DOT op = VAR { OpRef { op_label = label; op_name = op } }
   | VAR { Var $1 }
   | INT { Int $1 }
   | SUB INT { Int (Int.neg $2) } 

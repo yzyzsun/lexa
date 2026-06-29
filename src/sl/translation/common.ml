@@ -275,7 +275,25 @@ and type_to_str (ty: ty) =
       | _ -> Printf.sprintf "[%s]" (String.concat ", " (List.map constraint_to_str constraints))
     in
     Printf.sprintf "∀%s%s. %s" tvar constraints_str (type_to_str ty')
-  | TCap (_region, _opty) -> "Cap"
+  | TCap (region, opty) ->
+    let region_str = match region with
+      | RTop -> "top"
+      | RVar v -> v
+      | RNull -> "null"
+    in
+    let bindings_str =
+      match opty.op_ty_bindings with
+      | [] -> ""
+      | bindings ->
+        let binding_to_str (tv, _kind) = tv in
+        Printf.sprintf "forall %s. "
+          (String.concat ", " (List.map binding_to_str bindings))
+    in
+    let params_str =
+      String.concat ", " (List.map op_parameter_to_str opty.op_params)
+    in
+    Printf.sprintf "Cap %s %s(%s) -> %s"
+      region_str bindings_str params_str (cty_to_str opty.op_return_cty)
   | TRefine (v, inner, p) ->
     Printf.sprintf "{%s: %s | %s}" v (type_to_str inner) (pred_to_str p)
 
@@ -411,11 +429,31 @@ let alpha_normalize ty =
     | TCon (name, args) -> TCon (name, List.map (fun t -> rename_term_in_type t old_v new_v) args)
     | TForall (tv, kind, constraints, t) ->
       TForall (tv, kind, constraints, rename_term_in_type t old_v new_v)
-    | TRefine (v, inner, p) when v = old_v ->
-      TRefine (v, rename_term_in_type inner old_v new_v, p)
-    | TRefine (v, inner, p) ->
-      TRefine (v, rename_term_in_type inner old_v new_v, rename_var_in_pred p old_v new_v)
-    | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
+	    | TRefine (v, inner, p) when v = old_v ->
+	      TRefine (v, rename_term_in_type inner old_v new_v, p)
+	    | TRefine (v, inner, p) ->
+	      TRefine (v, rename_term_in_type inner old_v new_v, rename_var_in_pred p old_v new_v)
+	    | TCap (region, opty) ->
+	      let rec rename_params = function
+	        | [] -> [], true
+	        | (name, t) :: rest ->
+	          let t' = rename_term_in_type t old_v new_v in
+	          (match name with
+	           | Some x when x = old_v ->
+	             (name, t') :: rest, false
+	           | _ ->
+	             let rest', rename_return = rename_params rest in
+	             (name, t') :: rest', rename_return)
+	      in
+	      let op_params, rename_return = rename_params opty.op_params in
+	      TCap (region, {
+	        opty with
+	        op_params;
+	        op_return_cty =
+	          if rename_return then rename_term_in_cty opty.op_return_cty old_v new_v
+	          else opty.op_return_cty
+	      })
+	    | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> ty
   and rename_term_in_cty c old_v new_v =
     match c with
     | CTyVar _ -> c
@@ -813,6 +851,16 @@ let rec rename_type_var ty var_old var_new =
   | TRefine (v, inner, p) ->
     (* Refinement predicates only mention term variables, not label/cap vars. *)
     TRefine (v, rename_type_var inner var_old var_new, p)
+  | TCap (region, opty) ->
+    let region' = match region with
+      | RVar v when v = var_old -> RVar var_new
+      | _ -> region
+    in
+    TCap (region', {
+      opty with
+      op_params = List.map (fun (name, ty) -> (name, rename_type_var ty var_old var_new)) opty.op_params;
+      op_return_cty = rename_type_var_cty opty.op_return_cty var_old var_new
+    })
   | _ -> ty
 
 and rename_type_var_cty c var_old var_new =
@@ -877,6 +925,19 @@ let rec substitute_label_to_type ty label label_new =
   | TRef ty' -> TRef (substitute_label_to_type ty' label label_new)
   | TRefine (v, inner, p) ->
     TRefine (v, substitute_label_to_type inner label label_new, p)
+  | TCap (region, opty) ->
+    let region' = match region with
+      | RVar v when v = label -> RVar label_new
+      | _ -> region
+    in
+    if List.exists (fun (tv, _) -> tv = label) opty.op_ty_bindings then
+      TCap (region', opty)
+    else
+      TCap (region', {
+        opty with
+        op_params = List.map (fun (name, ty) -> (name, substitute_label_to_type ty label label_new)) opty.op_params;
+        op_return_cty = substitute_label_to_cty opty.op_return_cty label label_new
+      })
   | _ -> ty
 
 and substitute_label_to_cty c label label_new =
@@ -930,6 +991,12 @@ let rec substitute_capability_to_type ty cap_var capability =
   | TRef ty' -> TRef (substitute_capability_to_type ty' cap_var capability)
   | TRefine (v, inner, p) ->
     TRefine (v, substitute_capability_to_type inner cap_var capability, p)
+  | TCap (region, opty) ->
+    TCap (region, {
+      opty with
+      op_params = List.map (fun (name, ty) -> (name, substitute_capability_to_type ty cap_var capability)) opty.op_params;
+      op_return_cty = substitute_capability_to_cty opty.op_return_cty cap_var capability
+    })
   | _ -> ty
 
 and substitute_capability_to_cty c cap_var capability =
@@ -1012,6 +1079,16 @@ let substitute_ty ty type_subs =
       )
     | TRefine (v, inner, p) ->
       TRefine (v, substitute inner type_subs, p)
+    | TCap (region, opty) ->
+      let bound = List.map fst opty.op_ty_bindings in
+      let type_subs' =
+        List.filter (fun (tv, _) -> not (List.mem tv bound)) type_subs
+      in
+      TCap (region, {
+        opty with
+        op_params = List.map (fun (name, t) -> (name, substitute t type_subs')) opty.op_params;
+        op_return_cty = substitute_cty opty.op_return_cty type_subs'
+      })
     | _ -> ty
   and substitute_cty c type_subs =
     match c with
@@ -1077,7 +1154,28 @@ let rec substitute_term_to_type ty var witness =
     (match subst_expr_in_pred p var witness with
      | Some p' -> TRefine (v, inner', p')
      | None -> inner')
-  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
+  | TCap (region, opty) ->
+    let rec subst_params params =
+      match params with
+      | [] -> [], true
+      | (name, t) :: rest ->
+        let t' = substitute_term_to_type t var witness in
+        (match name with
+         | Some x when x = var ->
+           (name, t') :: rest, false
+         | _ ->
+           let rest', subst_return = subst_params rest in
+           (name, t') :: rest', subst_return)
+    in
+    let op_params, subst_return = subst_params opty.op_params in
+    TCap (region, {
+      opty with
+      op_params;
+      op_return_cty =
+        if subst_return then substitute_term_to_cty opty.op_return_cty var witness
+        else opty.op_return_cty
+    })
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> ty
 
 and substitute_term_to_cty c var witness =
   match c with
@@ -1155,7 +1253,16 @@ let rec substitute_pred_to_type ty pred_name pred_params pred_body =
     TRefine (v,
              substitute_pred_to_type inner pred_name pred_params pred_body,
              substitute_pred_in_pred pred_name pred_params pred_body p)
-  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
+  | TCap (region, opty) ->
+    if List.exists (fun (tv, _) -> tv = pred_name) opty.op_ty_bindings
+    then ty
+    else
+      TCap (region, {
+        opty with
+        op_params = List.map (fun (name, t) -> (name, substitute_pred_to_type t pred_name pred_params pred_body)) opty.op_params;
+        op_return_cty = substitute_pred_to_cty opty.op_return_cty pred_name pred_params pred_body
+      })
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> ty
 
 and substitute_pred_to_cty c pred_name pred_params pred_body =
   match c with
@@ -1234,7 +1341,15 @@ let rec substitute_region_to_type ty region_var (replacement: region) =
     )
   | TRefine (v, inner, p) ->
     TRefine (v, substitute_region_to_type inner region_var replacement, p)
-  | TCap (r, opty) -> TCap (subst_region r, opty)
+  | TCap (r, opty) ->
+    if List.exists (fun (tv, _) -> tv = region_var) opty.op_ty_bindings then
+      TCap (subst_region r, opty)
+    else
+      TCap (subst_region r, {
+        opty with
+        op_params = List.map (fun (name, t) -> (name, substitute_region_to_type t region_var replacement)) opty.op_params;
+        op_return_cty = substitute_region_to_cty opty.op_return_cty region_var replacement
+      })
   | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> ty
 
 and substitute_region_to_cty c region_var replacement =
@@ -1282,7 +1397,16 @@ let rec substitute_cty_var_to_type ty cty_var replacement =
     TForall (tv, kind, constraints, substitute_cty_var_to_type body cty_var replacement)
   | TRefine (v, inner, p) ->
     TRefine (v, substitute_cty_var_to_type inner cty_var replacement, p)
-  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
+  | TCap (region, opty) ->
+    if List.exists (fun (tv, _) -> tv = cty_var) opty.op_ty_bindings
+    then ty
+    else
+      TCap (region, {
+        opty with
+        op_params = List.map (fun (name, t) -> (name, substitute_cty_var_to_type t cty_var replacement)) opty.op_params;
+        op_return_cty = substitute_cty_var_to_cty opty.op_return_cty cty_var replacement
+      })
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> ty
 
 and substitute_cty_var_to_cty c cty_var replacement =
   match c with
@@ -1336,7 +1460,7 @@ let rec substitute_eff_var_to_type ty eff_var replacement =
     else
       TCap (region, {
         opty with
-        op_param_ty = substitute_eff_var_to_type opty.op_param_ty eff_var replacement;
+        op_params = List.map (fun (name, t) -> (name, substitute_eff_var_to_type t eff_var replacement)) opty.op_params;
         op_return_cty = substitute_eff_var_to_cty opty.op_return_cty eff_var replacement;
       })
   | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> ty
@@ -1452,7 +1576,13 @@ let promote_cty_vars_in_type kind_env ty =
     | TForall (tv, kind, constraints, body) ->
       TForall (tv, kind, constraints, go_ty body)
     | TRefine (v, inner, p) -> TRefine (v, go_ty inner, p)
-    | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
+    | TCap (region, opty) ->
+      TCap (region, {
+        opty with
+        op_params = List.map (fun (name, t) -> (name, go_ty t)) opty.op_params;
+        op_return_cty = go_cty opty.op_return_cty
+      })
+    | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> ty
   and go_cty c =
     match c with
     | CCty (TVar v, EPure) when is_cty_var v -> CTyVar v

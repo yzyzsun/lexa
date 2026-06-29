@@ -439,6 +439,13 @@ let split_op_cty op_name (cty: cty) =
       "Effect operation %s: unsupported operation cty %s\n"
       op_name (cty_to_str cty)
 
+let opty_of_op_cty (op: op_cty) : opty =
+  {
+    op_ty_bindings = op.op_ty_bindings;
+    op_params = op.op_params;
+    op_return_cty = CCty (op.op_return_ty, EAns (op.op_ans_binder, op.op_c1, op.op_c2));
+  }
+
 let rec erase_refinements_ty ty =
   match ty with
   | TRefine (_, inner, _) -> erase_refinements_ty inner
@@ -463,7 +470,13 @@ let rec erase_refinements_ty ty =
   | TArray t -> TArray (erase_refinements_ty t)
   | TCon (name, args) -> TCon (name, List.map erase_refinements_ty args)
   | TForall (v, k, constraints, t) -> TForall (v, k, constraints, erase_refinements_ty t)
-  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
+  | TCap (region, opty) ->
+    TCap (region, {
+      opty with
+      op_params = List.map (fun (name, t) -> (name, erase_refinements_ty t)) opty.op_params;
+      op_return_cty = erase_refinements_cty opty.op_return_cty;
+    })
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> ty
 
 and erase_refinements_cty c =
   match c with
@@ -511,7 +524,13 @@ let rec replace_empty_fun_capture replacement ty =
   | TForall (v, k, constraints, t) ->
     TForall (v, k, constraints, replace_empty_fun_capture replacement t)
   | TRefine (v, inner, p) -> TRefine (v, replace_empty_fun_capture replacement inner, p)
-  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ty
+  | TCap (region, opty) ->
+    TCap (region, {
+      opty with
+      op_params = List.map (fun (name, t) -> (name, replace_empty_fun_capture replacement t)) opty.op_params;
+      op_return_cty = replace_empty_fun_capture_cty replacement opty.op_return_cty;
+    })
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> ty
 
 and replace_empty_fun_capture_cty replacement c =
   match c with
@@ -628,7 +647,10 @@ let rec ty_contains_pred_app = function
   | TForall (_, _, _, t) -> ty_contains_pred_app t
   | TRefine (_, inner, pred) ->
     ty_contains_pred_app inner || pred_contains_app pred
-  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> false
+  | TCap (_, opty) ->
+    List.exists (fun (_, t) -> ty_contains_pred_app t) opty.op_params
+    || cty_contains_pred_app opty.op_return_cty
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> false
 
 and cty_contains_pred_app = function
   | CTyVar _ -> false
@@ -965,7 +987,12 @@ and ty_mentions_term x = function
   | TRefine (binder, inner, pred) ->
     ty_mentions_term x inner
     || (binder <> x && pred_mentions_term x pred)
-  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> false
+  | TCap (_, opty) ->
+    List.exists (fun (_, ty) -> ty_mentions_term x ty) opty.op_params
+    || if List.exists (fun (param, _) -> param = Some x) opty.op_params
+       then false
+       else cty_mentions_term x opty.op_return_cty
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> false
 
 and cty_mentions_term x = function
   | CTyVar _ -> false
@@ -1237,7 +1264,18 @@ and check_refinement_wellformed rctx term_vars (ty: ty) =
     | TCon (_, t_args) ->
       List.iter (go term_vars) t_args
     | TForall (_, _, _, t) -> go term_vars t
-    | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ | TCap _ -> ()
+    | TCap (_, opty) ->
+      let term_vars' =
+        List.fold_left
+          (fun acc (name, param_ty) ->
+            go acc param_ty;
+            match name with
+            | Some x -> (x, param_ty) :: acc
+            | None -> acc)
+          term_vars opty.op_params
+      in
+      go_cty term_vars' opty.op_return_cty
+    | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> ()
   and go_cty term_vars c = match c with
     | CCty (t, EAns (Some x, c1, c2)) ->
       go term_vars t;
@@ -1260,6 +1298,70 @@ and check_refinement_wellformed rctx term_vars (ty: ty) =
       go_cty term_vars c1;
       go_cty term_vars c2
   in go term_vars ty
+
+and target_region_of_cap rctx = function
+  | RTop -> Some RTop
+  | RVar label -> List.assoc_opt label rctx.label_regions
+  | RNull -> None
+
+and choose_operation_atc ?final_answer rctx term_vars
+    op_label op_name target_region_opt op_c2 raise_atc_opt =
+  match final_answer, target_region_opt, raise_atc_opt with
+  | Some final_cty, Some target_region, None ->
+    (match resolve_subregion_or_flex rctx rctx.current_region target_region [] with
+     | Some (Complete distance) ->
+       (match try_infer_atc_from_answer rctx term_vars final_cty op_c2 distance with
+        | Some inferred_atc -> inferred_atc, []
+        | None ->
+          if distance_eq distance DZero then ATCHole, []
+          else
+            typing_error
+              "Raise: could not infer ATC for %s.%s from final answer\n\tFinal answer: %s\n\tOperation output answer: %s\n\tDistance: %s\n"
+              op_label op_name
+              (cty_to_str final_cty)
+              (cty_to_str op_c2)
+              (distance_to_str distance))
+     | Some (Blocked _) ->
+       typing_error
+         "Raise: cannot infer ATC for %s.%s before the subregion path is resolved\n"
+         op_label op_name
+     | None ->
+       typing_error
+         "Raise: cannot infer ATC for %s.%s without a subregion path\n"
+         op_label op_name)
+  | Some final_cty, Some target_region, Some raise_atc ->
+    (match resolve_subregion_or_flex rctx rctx.current_region target_region [] with
+     | Some (Complete distance) ->
+       (match try_infer_atc_from_answer rctx term_vars final_cty op_c2 distance with
+        | Some inferred_atc ->
+          if not (atcs_eq inferred_atc raise_atc) then
+            typing_error
+              "Raise: supplied ATC does not match the final-answer-inferred context for %s.%s\n\tSupplied: %s\n\tInferred: %s\n"
+              op_label op_name
+              (atc_to_str raise_atc)
+              (atc_to_str inferred_atc);
+          inferred_atc, []
+        | None ->
+          let l_atc = check_atc rctx.kind_env term_vars raise_atc in
+          raise_atc, check_subregion rctx rctx.current_region target_region l_atc)
+     | _ ->
+       let l_atc = check_atc rctx.kind_env term_vars raise_atc in
+       raise_atc, check_subregion rctx rctx.current_region target_region l_atc)
+  | _, Some target_region, Some raise_atc ->
+    let l_atc = check_atc rctx.kind_env term_vars raise_atc in
+    raise_atc, check_subregion rctx rctx.current_region target_region l_atc
+  | _, Some target_region, None ->
+    (match resolve_subregion_or_flex rctx rctx.current_region target_region [] with
+     | Some (Complete DZero) -> ATCHole, []
+     | _ ->
+       typing_error
+         "Raise: omitted ATC for %s.%s requires an expected answer context\n"
+         op_label op_name)
+  | _, None, Some raise_atc ->
+    let _ = check_atc rctx.kind_env term_vars raise_atc in
+    raise_atc, []
+  | _, None, None ->
+    ATCHole, []
 
 and type_raise_expr ?final_answer rctx captured_vars cap_vars label_vars term_vars
     raise_label raise_op raise_tylikes raise_atc_opt raise_args =
@@ -1303,64 +1405,6 @@ and type_raise_expr ?final_answer rctx captured_vars cap_vars label_vars term_va
   let op_return_ty = instantiate_type op_cty_info.op_return_ty in
   let op_c1 = instantiate_cty op_cty_info.op_c1 in
   let op_c2 = instantiate_cty op_cty_info.op_c2 in
-  let choose_atc_and_constraints op_c2 =
-    match final_answer, List.assoc_opt raise_label rctx.label_regions, raise_atc_opt with
-    | Some final_cty, Some target_region, None ->
-      (match resolve_subregion_or_flex rctx rctx.current_region target_region [] with
-       | Some (Complete distance) ->
-         (match try_infer_atc_from_answer rctx term_vars final_cty op_c2 distance with
-          | Some inferred_atc -> inferred_atc, []
-          | None ->
-            if distance_eq distance DZero then ATCHole, []
-            else
-              typing_error
-                "Raise: could not infer ATC for %s.%s from final answer\n\tFinal answer: %s\n\tOperation output answer: %s\n\tDistance: %s\n"
-                raise_label raise_op
-                (cty_to_str final_cty)
-                (cty_to_str op_c2)
-                (distance_to_str distance))
-       | Some (Blocked _) ->
-         typing_error
-           "Raise: cannot infer ATC for %s.%s before the subregion path is resolved\n"
-           raise_label raise_op
-       | None ->
-         typing_error
-           "Raise: cannot infer ATC for %s.%s without a subregion path\n"
-           raise_label raise_op)
-    | Some final_cty, Some target_region, Some raise_atc ->
-      (match resolve_subregion_or_flex rctx rctx.current_region target_region [] with
-       | Some (Complete distance) ->
-         (match try_infer_atc_from_answer rctx term_vars final_cty op_c2 distance with
-          | Some inferred_atc ->
-            if not (atcs_eq inferred_atc raise_atc) then
-              typing_error
-                "Raise: supplied ATC does not match the final-answer-inferred context for %s.%s\n\tSupplied: %s\n\tInferred: %s\n"
-                raise_label raise_op
-                (atc_to_str raise_atc)
-                (atc_to_str inferred_atc);
-            inferred_atc, []
-          | None ->
-            let l_atc = check_atc rctx.kind_env term_vars raise_atc in
-            raise_atc, check_subregion rctx rctx.current_region target_region l_atc)
-       | _ ->
-         let l_atc = check_atc rctx.kind_env term_vars raise_atc in
-         raise_atc, check_subregion rctx rctx.current_region target_region l_atc)
-    | _, Some target_region, Some raise_atc ->
-      let l_atc = check_atc rctx.kind_env term_vars raise_atc in
-      raise_atc, check_subregion rctx rctx.current_region target_region l_atc
-    | _, Some target_region, None ->
-      (match resolve_subregion_or_flex rctx rctx.current_region target_region [] with
-       | Some (Complete DZero) -> ATCHole, []
-       | _ ->
-         typing_error
-           "Raise: omitted ATC for %s.%s requires an expected answer context\n"
-           raise_label raise_op)
-    | _, None, Some raise_atc ->
-      let _ = check_atc rctx.kind_env term_vars raise_atc in
-      raise_atc, []
-    | _, None, None ->
-      ATCHole, []
-  in
   if (List.length raise_args) != (List.length op_params_ty) then
     typing_error
       "Raise: Incorrect number of arguments\n\tExpected: %d\n\tActual: %d\n"
@@ -1386,7 +1430,12 @@ and type_raise_expr ?final_answer rctx captured_vars cap_vars label_vars term_va
         (op_return_ty, op_c1, op_c2)
         op_cty_info.op_params raise_args
     in
-    let raise_atc, subregion_constraints = choose_atc_and_constraints op_c2 in
+    let raise_atc, subregion_constraints =
+      choose_operation_atc ?final_answer rctx term_vars
+        raise_label raise_op
+        (List.assoc_opt raise_label rctx.label_regions)
+        op_c2 raise_atc_opt
+    in
     let kind_env = rctx.kind_env in
     let args_eff =
       List.fold_left
@@ -1402,6 +1451,111 @@ and type_raise_expr ?final_answer rctx captured_vars cap_vars label_vars term_va
         raise_op;
         raise_tylikes;
         raise_atc;
+        raise_args = raise_args'
+      },
+      CCty (op_return_ty, eff),
+      subregion_constraints )
+
+and type_raise_cap_expr ?final_answer rctx captured_vars cap_vars label_vars term_vars
+    raise_cap raise_tylikes raise_atc_opt raise_args =
+  let cap' = type_expr rctx captured_vars cap_vars label_vars term_vars raise_cap in
+  let cap_region, opty =
+    match ty_of_cty cap'.expr_cty with
+    | TCap (cap_region, opty) -> cap_region, opty
+    | ty ->
+      typing_error
+        "Raise: capability value expected\n\tActual: %s\n"
+        (type_to_str ty)
+  in
+  let op_label, op_name =
+    match cap'.expr_desc with
+    | OpRef { op_label; op_name } -> op_label, op_name
+    | Var x -> x, "cap"
+    | _ -> "capability", "raise"
+  in
+  if List.length raise_tylikes <> List.length opty.op_ty_bindings then
+    typing_error
+      "Raise: Incorrect number of type/predicate/cty instantiations for %s.%s\n\tExpected: %d\n\tActual: %d\n"
+      op_label op_name
+      (List.length opty.op_ty_bindings)
+      (List.length raise_tylikes);
+  List.iter2 (fun (_name, kind) arg ->
+    match kind, arg with
+    | KTy, TLTy _ -> ()
+    | KCty, TLCty _ -> ()
+    | KCty, TLTy _ -> ()
+    | KEff, TLEff _ -> ()
+    | KDist, TLDist _ -> ()
+    | KATC expected_dist, TLATC cc ->
+      let actual_dist = check_atc (opty.op_ty_bindings @ rctx.kind_env) term_vars cc in
+      if not (distance_eq actual_dist expected_dist) then
+        typing_error
+          "Raise: ATC instantiation has wrong distance for %s.%s\n"
+          op_label op_name
+    | KReg, _ when region_of_tylike arg <> None -> ()
+    | KPred expected_args, TLPred (params, body) ->
+      check_pred_tylike rctx term_vars expected_args params body
+    | _ ->
+      typing_error
+        "Raise: Type-like instantiation has wrong kind for %s.%s\n"
+        op_label op_name
+  ) opty.op_ty_bindings raise_tylikes;
+  let instantiate_type ty =
+    substitute_tylikes_to_type ty opty.op_ty_bindings raise_tylikes
+  in
+  let instantiate_cty c =
+    substitute_tylikes_to_cty c opty.op_ty_bindings raise_tylikes
+  in
+  let op_params = List.map (fun (name, ty) -> (name, instantiate_type ty)) opty.op_params in
+  let op_return_cty = instantiate_cty opty.op_return_cty in
+  let op_return_ty, op_ans_binder, op_c1, op_c2 =
+    split_op_cty (Printf.sprintf "%s.%s" op_label op_name) op_return_cty
+  in
+  let op_params_ty = op_param_tys op_params in
+  if List.length raise_args <> List.length op_params_ty then
+    typing_error
+      "Raise: Incorrect number of arguments\n\tExpected: %d\n\tActual: %d\n"
+      (List.length op_params_ty)
+      (List.length raise_args)
+  else
+    let raise_args' =
+      List.map2
+        (fun arg ty ->
+          check_ty ~msg:"Raise: Parameter types don't match"
+            rctx captured_vars cap_vars label_vars term_vars arg ty)
+        raise_args op_params_ty
+    in
+    let op_return_ty, op_c1, op_c2 =
+      List.fold_left2
+        (fun (return_ty, c1, c2) (param_name, _) arg ->
+          match param_name with
+          | None -> return_ty, c1, c2
+          | Some x ->
+            ( substitute_term_to_type return_ty x arg,
+              substitute_term_to_cty c1 x arg,
+              substitute_term_to_cty c2 x arg ))
+        (op_return_ty, op_c1, op_c2)
+        op_params raise_args
+    in
+    let cap_atc, subregion_constraints =
+      choose_operation_atc ?final_answer rctx term_vars
+        op_label op_name (target_region_of_cap rctx cap_region) op_c2 raise_atc_opt
+    in
+    let kind_env = rctx.kind_env in
+    let args_eff =
+      List.fold_left
+        (fun acc te -> compose_effs_refined ~kind_env rctx term_vars acc (eff_of_cty te.expr_cty))
+        (eff_of_cty cap'.expr_cty)
+        raise_args'
+    in
+    let c1' = fill_atc cap_atc op_c1 in
+    let c2' = fill_atc cap_atc op_c2 in
+    let cap_eff = EAns (op_ans_binder, c1', c2') in
+    let eff = compose_effs_refined ~kind_env rctx term_vars args_eff cap_eff in
+    ( RaiseCap {
+        raise_cap = cap';
+        raise_tylikes;
+        raise_atc = cap_atc;
         raise_args = raise_args'
       },
       CCty (op_return_ty, eff),
@@ -1660,7 +1814,7 @@ and type_expr_with_final rctx (captured_vars: capture_set) cap_vars label_vars
     body.region_constraints
   in
   let constraints_of_desc = function
-    | Unit | Var _ | Int _ | Float _ | Bool _ | Str _ | Char _ | Prim _ -> []
+    | Unit | Var _ | Int _ | Float _ | Bool _ | Str _ | Char _ | Prim _ | OpRef _ -> []
     | Arith (e1, _, e2)
     | Cmp (e1, _, e2)
     | BArith (e1, _, e2)
@@ -1677,6 +1831,8 @@ and type_expr_with_final rctx (captured_vars: capture_set) cap_vars label_vars
     | If (e1, e2, e3) ->
       constraints_unions [constraints_of_expr e1; constraints_of_expr e2; constraints_of_expr e3]
     | Raise { raise_args; _ } -> constraints_of_exprs raise_args
+    | RaiseCap { raise_cap; raise_args; _ } ->
+      constraints_unions (raise_cap.region_constraints :: List.map constraints_of_expr raise_args)
     | Handle { handle_body; return_clause; handler_defs; _ } ->
       constraints_unions [
         handle_body.region_constraints;
@@ -1920,6 +2076,19 @@ and type_expr_with_final rctx (captured_vars: capture_set) cap_vars label_vars
     in
     mk expr_desc expr_cty region_constraints
 
+  | RaiseCap { raise_cap; raise_tylikes; raise_atc; raise_args } ->
+    let expr_desc, expr_cty, region_constraints =
+      type_raise_cap_expr ~final_answer:final_cty rctx captured_vars cap_vars label_vars
+        term_vars raise_cap raise_tylikes raise_atc raise_args
+    in
+    let expr_cty =
+      match expr_cty with
+      | CCty (t, EAns (binder, initial_cty, _actual_final)) ->
+        CCty (t, EAns (binder, initial_cty, final_cty))
+      | _ -> expr_cty
+    in
+    mk expr_desc expr_cty region_constraints
+
   | _ ->
     let te = type_expr_plain captured_vars cap_vars label_vars term_vars e in
     lift_plain e te
@@ -1987,7 +2156,7 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
     body.region_constraints
   in
   let constraints_of_desc = function
-    | Unit | Var _ | Int _ | Float _ | Bool _ | Str _ | Char _ | Prim _ -> []
+    | Unit | Var _ | Int _ | Float _ | Bool _ | Str _ | Char _ | Prim _ | OpRef _ -> []
     | Arith (e1, _, e2)
     | Cmp (e1, _, e2)
     | BArith (e1, _, e2)
@@ -2004,6 +2173,8 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
     | If (e1, e2, e3) ->
       constraints_unions [constraints_of_expr e1; constraints_of_expr e2; constraints_of_expr e3]
     | Raise { raise_args; _ } -> constraints_of_exprs raise_args
+    | RaiseCap { raise_cap; raise_args; _ } ->
+      constraints_unions (raise_cap.region_constraints :: List.map constraints_of_expr raise_args)
     | Handle { handle_body; return_clause; handler_defs; _ } ->
       constraints_unions [
         handle_body.region_constraints;
@@ -2098,6 +2269,11 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
         | Some t -> Var x, make_pure_cty t
         | None -> typing_error "Var: Variable %s not found\n" x
       )
+
+    | OpRef { op_label; op_name } ->
+      let op_cty_info = find_op_cty op_label op_name captured_vars label_vars in
+      OpRef { op_label; op_name },
+      make_pure_cty (TCap (RVar op_label, opty_of_op_cty op_cty_info))
 
     | Stmt (e1, e2) ->
       let e1' = type_expr captured_vars cap_vars label_vars term_vars e1 in
@@ -2549,6 +2725,15 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       let expr_desc, expr_cty, region_constraints =
         type_raise_expr rctx captured_vars cap_vars label_vars term_vars
           raise_label raise_op raise_tylikes raise_atc raise_args
+      in
+      extra_region_constraints :=
+        constraints_union !extra_region_constraints region_constraints;
+      expr_desc, expr_cty
+
+    | RaiseCap { raise_cap; raise_tylikes; raise_atc; raise_args } ->
+      let expr_desc, expr_cty, region_constraints =
+        type_raise_cap_expr rctx captured_vars cap_vars label_vars term_vars
+          raise_cap raise_tylikes raise_atc raise_args
       in
       extra_region_constraints :=
         constraints_union !extra_region_constraints region_constraints;

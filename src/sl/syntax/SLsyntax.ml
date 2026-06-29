@@ -74,6 +74,10 @@ and expr =
   | Str of string
   | Char of char
   | Prim of string
+  | OpRef of {
+    op_label : var;
+    op_name : var
+  }
   | Arith of expr * arith * expr
   | Cmp of expr * cmp * expr 
   | Neg of expr
@@ -90,6 +94,12 @@ and expr =
   | Raise of {
     raise_label : var;
     raise_op : var;
+    raise_tylikes : typelike list;
+    raise_atc : atc option;
+    raise_args : expr list
+  }
+  | RaiseCap of {
+    raise_cap : expr;
     raise_tylikes : typelike list;
     raise_atc : atc option;
     raise_args : expr list
@@ -173,8 +183,7 @@ and ty = (* Lexaz SL types *)
 
 and opty = {
   op_ty_bindings : (var * kind) list;
-  op_param_name  : var;
-  op_param_ty    : ty;
+  op_params      : op_parameter list;
   op_return_cty  : cty;
 }
 

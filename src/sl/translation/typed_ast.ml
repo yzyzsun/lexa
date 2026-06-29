@@ -41,6 +41,10 @@ and typed_expr_desc =
   | Str of string
   | Char of char
   | Prim of string
+  | OpRef of {
+    op_label : var;
+    op_name : var
+  }
   | Arith of typed_expr * arith * typed_expr
   | Cmp of typed_expr * cmp * typed_expr
   | Neg of typed_expr
@@ -57,6 +61,12 @@ and typed_expr_desc =
   | Raise of {
     raise_label : var;
     raise_op : var;
+    raise_tylikes : SLsyntax.typelike list;
+    raise_atc : SLsyntax.atc;
+    raise_args : typed_expr list;
+  }
+  | RaiseCap of {
+    raise_cap : typed_expr;
     raise_tylikes : SLsyntax.typelike list;
     raise_atc : SLsyntax.atc;
     raise_args : typed_expr list;
