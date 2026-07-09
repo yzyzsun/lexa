@@ -661,6 +661,178 @@ and eff_contains_pred_app = function
   | EPure | EEffVar _ -> false
   | EAns (_, c1, c2) -> cty_contains_pred_app c1 || cty_contains_pred_app c2
 
+(** Erases exactly the refinements whose predicate still contains a predicate
+    variable application, keeping every concrete refinement intact. Used as
+    the per-position fallback when a full-op signature's predicate binders
+    cannot all be solved from the handler's annotation. *)
+let rec erase_pred_app_refinements_ty ty =
+  match ty with
+  | TRefine (v, inner, p) ->
+    let inner' = erase_pred_app_refinements_ty inner in
+    if pred_contains_app p then inner' else TRefine (v, inner', p)
+  | TRef t -> TRef (erase_pred_app_refinements_ty t)
+  | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
+    TFun {
+      captured_set; cap_params; label_params;
+      params_ty = List.map (fun (name, t) -> (name, erase_pred_app_refinements_ty t)) params_ty;
+      region;
+      return_cty = erase_pred_app_refinements_cty return_cty
+    }
+  | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
+    TCont {
+      captured_set;
+      effect_return_var;
+      effect_return_ty = erase_pred_app_refinements_ty effect_return_ty;
+      return_cty = erase_pred_app_refinements_cty return_cty
+    }
+  | TNode t -> TNode (erase_pred_app_refinements_ty t)
+  | TTree t -> TTree (erase_pred_app_refinements_ty t)
+  | TQueue t -> TQueue (erase_pred_app_refinements_ty t)
+  | TArray t -> TArray (erase_pred_app_refinements_ty t)
+  | TCon (name, args) -> TCon (name, List.map erase_pred_app_refinements_ty args)
+  | TForall (v, k, constraints, t) ->
+    TForall (v, k, constraints, erase_pred_app_refinements_ty t)
+  | TCap (region, opty) ->
+    TCap (region, {
+      opty with
+      op_params = List.map (fun (name, t) -> (name, erase_pred_app_refinements_ty t)) opty.op_params;
+      op_return_cty = erase_pred_app_refinements_cty opty.op_return_cty;
+    })
+  | TUnit | TInt | TBool | TFloat | TChar | TStr | TVar _ -> ty
+
+and erase_pred_app_refinements_cty c =
+  match c with
+  | CTyVar _ -> c
+  | CCty (t, e) ->
+    CCty (erase_pred_app_refinements_ty t, erase_pred_app_refinements_eff e)
+  | CFill (v, c') -> CFill (v, erase_pred_app_refinements_cty c')
+
+and erase_pred_app_refinements_eff e =
+  match e with
+  | EPure | EEffVar _ -> e
+  | EAns (x, c1, c2) ->
+    EAns (x, erase_pred_app_refinements_cty c1, erase_pred_app_refinements_cty c2)
+
+(** After predicate-binder solving, a position that still mentions an unsolved
+    predicate variable takes the handler's concrete type at the aligned
+    position — the pre-existing wholesale fallback, applied per-position so
+    the declared refinements elsewhere (e.g. on the answer function's state
+    argument) survive. Unaligned positions drop the residual refinement. *)
+let rec merge_residual_pred_apps_ty declared concrete =
+  if not (ty_contains_pred_app declared) then declared
+  else
+    match declared, concrete with
+    | TRefine (_, _, p), _ when pred_contains_app p -> concrete
+    | TRefine (v, inner, p), TRefine (_, concrete_inner, _) ->
+      TRefine (v, merge_residual_pred_apps_ty inner concrete_inner, p)
+    | TRefine (v, inner, p), _ ->
+      TRefine (v, merge_residual_pred_apps_ty inner concrete, p)
+    | TFun f1, TFun f2 when List.length f1.params_ty = List.length f2.params_ty ->
+      TFun {
+        f1 with
+        params_ty =
+          List.map2
+            (fun (name, t1) (_, t2) -> (name, merge_residual_pred_apps_ty t1 t2))
+            f1.params_ty f2.params_ty;
+        return_cty = merge_residual_pred_apps_cty f1.return_cty f2.return_cty
+      }
+    | TCont c1, TCont c2 ->
+      TCont {
+        c1 with
+        effect_return_ty =
+          merge_residual_pred_apps_ty c1.effect_return_ty c2.effect_return_ty;
+        return_cty = merge_residual_pred_apps_cty c1.return_cty c2.return_cty
+      }
+    | TRef t1, TRef t2 -> TRef (merge_residual_pred_apps_ty t1 t2)
+    | TNode t1, TNode t2 -> TNode (merge_residual_pred_apps_ty t1 t2)
+    | TTree t1, TTree t2 -> TTree (merge_residual_pred_apps_ty t1 t2)
+    | TQueue t1, TQueue t2 -> TQueue (merge_residual_pred_apps_ty t1 t2)
+    | TArray t1, TArray t2 -> TArray (merge_residual_pred_apps_ty t1 t2)
+    | TCon (n1, a1), TCon (n2, a2)
+      when n1 = n2 && List.length a1 = List.length a2 ->
+      TCon (n1, List.map2 merge_residual_pred_apps_ty a1 a2)
+    | _ -> erase_pred_app_refinements_ty declared
+
+and merge_residual_pred_apps_cty declared concrete =
+  if not (cty_contains_pred_app declared) then declared
+  else
+    match declared, concrete with
+    | CCty (t1, e1), CCty (t2, e2) ->
+      CCty (merge_residual_pred_apps_ty t1 t2, merge_residual_pred_apps_eff e1 e2)
+    | CFill (v, c1), CFill (_, c2) ->
+      CFill (v, merge_residual_pred_apps_cty c1 c2)
+    | _ -> erase_pred_app_refinements_cty declared
+
+and merge_residual_pred_apps_eff declared concrete =
+  if not (eff_contains_pred_app declared) then declared
+  else
+    match declared, concrete with
+    | EAns (x, a1, b1), EAns (_, a2, b2) ->
+      EAns (x, merge_residual_pred_apps_cty a1 a2, merge_residual_pred_apps_cty b1 b2)
+    | _ -> erase_pred_app_refinements_eff declared
+
+(** Best-effort solving of a full-op signature's predicate binders against the
+    handler's concrete answer types. Each [(declared, concrete)] pair is
+    walked structurally; wherever the declared side has [{v: T | 'p(x)}] and
+    the concrete side has [{w: T | P}], the binder ['p] is solved as
+    [Pred(x: T) { P[w := x] }]. Positions that don't align are skipped —
+    residual applications are erased by the caller. *)
+let solve_op_pred_binders bindings pairs =
+  let pred_arity f =
+    List.find_map
+      (fun (name, kind) ->
+         match kind with
+         | KPred args when name = f -> Some (List.length args)
+         | _ -> None)
+      bindings
+  in
+  let solutions = ref [] in
+  let try_solve f args concrete_binder concrete_inner concrete_pred =
+    match pred_arity f, args with
+    | Some 1, [PTVar x]
+      when not (List.mem_assoc f !solutions)
+        && not (pred_contains_app concrete_pred) ->
+      let body = subst_var_in_pred concrete_pred concrete_binder (PTVar x) in
+      solutions := (f, ([(x, concrete_inner)], body)) :: !solutions
+    | _ -> ()
+  in
+  let rec go_ty declared concrete =
+    match declared, concrete with
+    | TRefine (_, inner, PApp (f, args)), TRefine (w, concrete_inner, p) ->
+      try_solve f args w concrete_inner p;
+      go_ty inner concrete_inner
+    | TRefine (_, inner1, _), TRefine (_, inner2, _) -> go_ty inner1 inner2
+    | TRefine (_, inner, _), _ -> go_ty inner concrete
+    | _, TRefine (_, inner, _) -> go_ty declared inner
+    | TRef t1, TRef t2
+    | TNode t1, TNode t2
+    | TTree t1, TTree t2
+    | TQueue t1, TQueue t2
+    | TArray t1, TArray t2 -> go_ty t1 t2
+    | TFun f1, TFun f2 ->
+      if List.length f1.params_ty = List.length f2.params_ty then
+        List.iter2 (fun (_, t1) (_, t2) -> go_ty t1 t2) f1.params_ty f2.params_ty;
+      go_cty f1.return_cty f2.return_cty
+    | TCont c1, TCont c2 ->
+      go_ty c1.effect_return_ty c2.effect_return_ty;
+      go_cty c1.return_cty c2.return_cty
+    | TCon (n1, a1), TCon (n2, a2)
+      when n1 = n2 && List.length a1 = List.length a2 ->
+      List.iter2 go_ty a1 a2
+    | _ -> ()
+  and go_cty declared concrete =
+    match declared, concrete with
+    | CCty (t1, e1), CCty (t2, e2) -> go_ty t1 t2; go_eff e1 e2
+    | CFill (_, c1), CFill (_, c2) -> go_cty c1 c2
+    | _ -> ()
+  and go_eff declared concrete =
+    match declared, concrete with
+    | EAns (_, a1, b1), EAns (_, a2, b2) -> go_cty a1 a2; go_cty b1 b2
+    | _ -> ()
+  in
+  List.iter (fun (declared, concrete) -> go_cty declared concrete) pairs;
+  !solutions
+
 let nullary_constructor_type con_name =
   List.find_map
     (fun (type_name, (type_params, type_cons)) ->
@@ -870,9 +1042,22 @@ and compatible_answer_cty rctx term_vars c1 c2 =
 
 and compatible_pure_function_answer rctx term_vars c1 c2 =
   match c1, c2 with
-  | ( CCty (TFun { return_cty = rc1; _ }, EPure),
-      CCty (TFun { return_cty = rc2; _ }, EPure) ) ->
-    compatible_answer_cty rctx term_vars rc1 rc2
+  | ( CCty (TFun { params_ty = pt1; return_cty = rc1; _ }, EPure),
+      CCty (TFun { params_ty = pt2; return_cty = rc2; _ }, EPure) ) ->
+    (* The answer functions' parameters carry the threaded state (e.g.
+       [{st | st == 0}] after an fclose); two answers whose parameter
+       refinements are incomparable must not be deemed compatible, or a
+       protocol violation like read-after-close composes silently. An
+       unrefined parameter on either side still matches its refined
+       counterpart (refinement dropping). *)
+    List.length pt1 = List.length pt2
+    && List.for_all2
+         (fun (_, t1) (_, t2) ->
+            types_eq t1 t2
+            || refined_type_sub ~kind_env:rctx.kind_env rctx term_vars t1 t2
+            || refined_type_sub ~kind_env:rctx.kind_env rctx term_vars t2 t1)
+         pt1 pt2
+    && compatible_answer_cty rctx term_vars rc1 rc2
   | _ -> false
 
 and compatible_pure_function_final rctx term_vars inner outer =
@@ -1313,7 +1498,40 @@ and choose_operation_atc ?final_answer rctx term_vars
        (match try_infer_atc_from_answer rctx term_vars final_cty op_c2 distance with
         | Some inferred_atc -> inferred_atc, []
         | None ->
-          if distance_eq distance DZero then ATCHole, []
+          if distance_eq distance DZero then
+            (* At distance zero, when both answers are functions whose
+               parameters — the threaded state — are provably incomparable,
+               the operation's declared final answer cannot meet the answer
+               the context expects: e.g. an fread whose C2 needs
+               [{st | st == 1}] raised right after an fclose that leaves
+               [{st | st == 0}]. Silently accepting the hole here let such
+               state-threading protocol violations pass. Every other
+               inference failure keeps the lenient fallback: value-typed
+               answers may agree only under path facts the raise site can't
+               discharge (choose_sum's [lhs = if d1 then x else y]), and
+               nested-handler answers can differ in region or answer
+               layering without being wrong (state.lx). *)
+            let params_incomparable =
+              match final_cty, op_c2 with
+              | CCty (TFun { params_ty = pt1; _ }, _),
+                CCty (TFun { params_ty = pt2; _ }, _)
+                when List.length pt1 = List.length pt2 ->
+                not
+                  (List.for_all2
+                     (fun (_, t1) (_, t2) ->
+                        types_eq t1 t2
+                        || refined_type_sub ~kind_env:rctx.kind_env rctx term_vars t1 t2
+                        || refined_type_sub ~kind_env:rctx.kind_env rctx term_vars t2 t1)
+                     pt1 pt2)
+              | _ -> false
+            in
+            if params_incomparable then
+              typing_error
+                "Raise: %s.%s's final answer type doesn't match the expected answer\n\tExpected: %s\n\tOperation output answer: %s\n"
+                op_label op_name
+                (cty_to_str final_cty)
+                (cty_to_str op_c2)
+            else ATCHole, []
           else
             typing_error
               "Raise: could not infer ATC for %s.%s from final answer\n\tFinal answer: %s\n\tOperation output answer: %s\n\tDistance: %s\n"
@@ -2577,11 +2795,34 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
             let op_c1 = substitute_op_params_cty op_c1 in
             let op_c2 = substitute_op_params_cty op_c2 in
             let effect_return_ty = substitute_op_params_ty effect_return_ty in
-            let op_c1 =
-              if cty_contains_pred_app op_c1 then handler_initial_cty else op_c1
-            in
-            let op_c2 =
-              if cty_contains_pred_app op_c2 then c2 else op_c2
+            (* Instantiate the signature's predicate binders (e.g. 'beta in
+               [{z: int | 'beta(z)}]) from the handler's concrete answer types
+               instead of discarding the declared C1/C2 wholesale. Discarding
+               them also dropped the concrete refinements on the answer
+               function's argument — the threaded state, e.g. [{st | st == 1}]
+               — so [resume_final]'s continuation answer and the clause's
+               expected final answer degenerated to the handler annotation's
+               unrefined types and state-threading protocols went unchecked.
+               Positions still mentioning an unsolved predicate variable after
+               matching (e.g. a Pred[Unit] applied as ['beta(())], which has no
+               inverse) fall back to the handler's concrete type at the aligned
+               position — the old behaviour, but per-position. *)
+            let op_c1, op_c2 =
+              if cty_contains_pred_app op_c1 || cty_contains_pred_app op_c2 then
+                let pred_solutions =
+                  solve_op_pred_binders op_bindings
+                    [ (op_c1, handler_initial_cty); (op_c2, c2) ]
+                in
+                let instantiate c concrete =
+                  merge_residual_pred_apps_cty
+                    (List.fold_left
+                       (fun acc (f, (params, body)) ->
+                          substitute_pred_to_cty acc f params body)
+                       c pred_solutions)
+                    concrete
+                in
+                instantiate op_c1 handler_initial_cty, instantiate op_c2 c2
+              else op_c1, op_c2
             in
             let cont_type = TCont {
               captured_set;

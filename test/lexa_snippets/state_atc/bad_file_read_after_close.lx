@@ -1,0 +1,56 @@
+// Negative: read-after-close protocol violation.
+// Same as examples/file_protocol.lx, but a second fread is raised after
+// fclose. fread's final answer requires the threaded state to satisfy
+// st == 1 while fclose leaves it at st == 0, so the composition of the
+// two answer types must be rejected.
+effect File {
+    fopen: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. () ->
+        unit
+            / ((<>({ st: int | st == 1 }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ st: int | st == 0 }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+
+    fread: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. () ->
+        { n: int | n == 42 }
+            / ((<>({ st: int | st == 1 }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ st: int | st == 1 }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+
+    fclose: forall 'rho: Reg, 'beta: Pred[int], 'gamma: Cty. () ->
+        unit
+            / ((<>({ st: int | st == 0 }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma) / 'gamma => 'gamma)
+            => (<>({ st: int | st == 1 }) ->['rho] { z: int | 'beta(z) } / 'gamma => 'gamma)
+}
+
+def main(): { z: int | z == 42 } / int => int {
+    val run = handle <> {
+        raise file.fopen[top, Pred(z: Int) { z == 42 }, int]();
+        val n = raise file.fread[top, Pred(z: Int) { z == 42 }, int]();
+        raise file.fclose[top, Pred(z: Int) { z == 42 }, int]();
+        raise file.fread[top, Pred(z: Int) { z == 42 }, int]();
+        (fun <> (): { z: int | z == 42 } {
+            n
+        })()
+    } with file: File {
+        return x {
+            fun <> (st: int): { z: int | z == 42 } { x }
+        }
+        hdl_1 fopen(k) {
+            fun <> (st: int): { z: int | z == 42 } / int => int {
+                val r = resume_final k (());
+                r(1)
+            }
+        }
+        hdl_1 fread(k) {
+            fun <> (st: int): { z: int | z == 42 } / int => int {
+                val r = resume_final k 42;
+                r(1)
+            }
+        }
+        hdl_1 fclose(k) {
+            fun <> (st: int): { z: int | z == 42 } / int => int {
+                val r = resume_final k (());
+                r(0)
+            }
+        }
+    }: <>(int) -> { z: int | z == 42 } / int => int;
+    run(0)
+}
