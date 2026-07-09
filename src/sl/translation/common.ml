@@ -1493,6 +1493,75 @@ let region_of_tylike = function
   | TLTy (TVar tv) -> Some (RVar tv)
   | _ -> None
 
+let rec substitute_dist_in_distance d var replacement =
+  match d with
+  | DVar v when v = var -> replacement
+  | DPlus (d1, d2) ->
+    DPlus (
+      substitute_dist_in_distance d1 var replacement,
+      substitute_dist_in_distance d2 var replacement)
+  | _ -> d
+
+let substitute_dist_in_constraint c var replacement =
+  { c with rc_dist = substitute_dist_in_distance c.rc_dist var replacement }
+
+(** Substitutes a distance variable throughout a type: in [KATC] kind
+    annotations of inner foralls and in the distances of captured forall
+    constraints. Distances do not occur in ctys or effects themselves, so the
+    traversal only rewrites those positions. *)
+let rec substitute_dist_to_type ty var replacement =
+  let subst_ty t = substitute_dist_to_type t var replacement in
+  let subst_cty c = substitute_dist_to_cty c var replacement in
+  let subst_constraints cs =
+    List.map (fun c -> substitute_dist_in_constraint c var replacement) cs
+  in
+  match ty with
+  | TFun { captured_set; cap_params; label_params; params_ty; region; return_cty } ->
+    TFun {
+      captured_set; cap_params; label_params;
+      params_ty = List.map (fun (name, t) -> (name, subst_ty t)) params_ty;
+      region;
+      return_cty = subst_cty return_cty
+    }
+  | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
+    TCont {
+      captured_set; effect_return_var;
+      effect_return_ty = subst_ty effect_return_ty;
+      return_cty = subst_cty return_cty
+    }
+  | TRef t -> TRef (subst_ty t)
+  | TNode t -> TNode (subst_ty t)
+  | TTree t -> TTree (subst_ty t)
+  | TQueue t -> TQueue (subst_ty t)
+  | TArray t -> TArray (subst_ty t)
+  | TCon (name, args) -> TCon (name, List.map subst_ty args)
+  | TRefine (v, inner, p) -> TRefine (v, subst_ty inner, p)
+  | TForall (tv, kind, constraints, t) ->
+    if tv = var then ty
+    else
+      let kind' =
+        match kind with
+        | KATC d -> KATC (substitute_dist_in_distance d var replacement)
+        | k -> k
+      in
+      TForall (tv, kind', subst_constraints constraints, subst_ty t)
+  | _ -> ty
+
+and substitute_dist_to_cty c var replacement =
+  match c with
+  | CTyVar _ -> c
+  | CCty (t, e) ->
+    CCty (substitute_dist_to_type t var replacement,
+          substitute_dist_to_eff e var replacement)
+  | CFill (x, c') -> CFill (x, substitute_dist_to_cty c' var replacement)
+
+and substitute_dist_to_eff e var replacement =
+  match e with
+  | EAns (x, c1, c2) ->
+    EAns (x, substitute_dist_to_cty c1 var replacement,
+          substitute_dist_to_cty c2 var replacement)
+  | _ -> e
+
 let substitute_tylike_to_type ty var kind arg =
   match kind, arg with
   | KTy, TLTy replacement -> substitute_ty ty [(var, replacement)]
@@ -1507,6 +1576,11 @@ let substitute_tylike_to_type ty var kind arg =
     (match region_of_tylike arg with
      | Some r -> substitute_region_to_type ty var r
      | None -> ty)
+  | KDist, TLDist d -> substitute_dist_to_type ty var d
+  (* ATC-kinded variables occur only in expression-level raise annotations,
+     which are checked where the function body is typed; nothing to rewrite
+     in the type itself. *)
+  | KATC _, TLATC _ -> ty
   | _ -> ty
 
 let substitute_tylike_to_cty c var kind arg =

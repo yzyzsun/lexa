@@ -132,7 +132,7 @@ and expr =
     match_expr : expr;
     pattern_matching : (pattern * expr) list
   }
-  | TypeApp of ty * expr
+  | TypeApp of typelike * expr
 
 and pred_term =
   | PTUnit

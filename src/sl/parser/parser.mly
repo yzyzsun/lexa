@@ -436,7 +436,7 @@ app_expr:
     { let (cap_insts, label_args) = opt_args in
       App { func = e1; cap_insts; label_args; args } }
   | v = app_expr LSB v2 = expr RSB { Get (v, v2) }
-  | e = app_expr COLON COLON LSB t_args = separated_list(COMMA, type_exp) RSB 
+  | e = app_expr COLON COLON LSB t_args = separated_list(COMMA, typelike_arg) RSB
   { List.fold_left (fun e t_arg -> TypeApp (t_arg, e)) e t_args }
 
 expr:

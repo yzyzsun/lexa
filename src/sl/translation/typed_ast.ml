@@ -99,4 +99,4 @@ and typed_expr_desc =
     match_expr : typed_expr;
     pattern_matching : (pattern * typed_expr) list
   }
-  | TypeApp of ty * typed_expr
+  | TypeApp of typelike * typed_expr

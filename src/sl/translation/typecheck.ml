@@ -3109,10 +3109,17 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       let te_ty = ty_of te in
       let instantiated_ty = (match te_ty with
         | TForall (tv, kind, constraints, t') ->
-          let tylike_arg = TLTy t_arg in
+          let tylike_arg = t_arg in
           (match kind, tylike_arg with
           | KTy, TLTy _ -> ()
           | KReg, _ when region_of_tylike tylike_arg <> None -> ()
+          | KDist, TLDist _ -> ()
+          | KATC expected_dist, TLATC cc ->
+            let actual_dist = check_atc rctx.kind_env term_vars cc in
+            if not (distance_eq actual_dist expected_dist) then
+              typing_error
+                "TypeApp: ATC instantiation has wrong distance for %s"
+                tv
           | _ ->
             typing_error
               "TypeApp: type argument has wrong kind for %s"
