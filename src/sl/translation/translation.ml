@@ -69,23 +69,47 @@ let infer_top_level_type top_level_fun_types
   closed_ty
 
 let enrich_top_level_types tls top_level_fun_types =
-  List.fold_left
-    (fun env tl ->
-      match tl with
-      | TLPolyAbs (name, type_params, cap_params, label_params, params, return_cty, body) ->
-        let ty =
-          infer_top_level_type env
-            name type_params cap_params label_params params return_cty body
-        in
-        (name, ty) :: remove_assoc name env
-      | TLAbs (name, cap_params, label_params, params, return_cty, body) ->
-        let ty =
-          infer_top_level_type env
-            name [] cap_params label_params params return_cty body
-        in
-        (name, ty) :: remove_assoc name env
-      | _ -> env)
-    top_level_fun_types tls
+  let infer_once env =
+    List.fold_left
+      (fun env tl ->
+        match tl with
+        | TLPolyAbs (name, type_params, cap_params, label_params, params, return_cty, body) ->
+          let ty =
+            infer_top_level_type env
+              name type_params cap_params label_params params return_cty body
+          in
+          (name, ty) :: remove_assoc name env
+        | TLAbs (name, cap_params, label_params, params, return_cty, body) ->
+          let ty =
+            infer_top_level_type env
+              name [] cap_params label_params params return_cty body
+          in
+          (name, ty) :: remove_assoc name env
+        | _ -> env)
+      env tls
+  in
+  let same_top_level_types left right =
+    List.length left = List.length right
+    && List.for_all
+         (fun (name, left_ty) ->
+           match List.assoc_opt name right with
+           | Some right_ty -> types_eq left_ty right_ty
+           | None -> false)
+         left
+  in
+  let function_count =
+    List.fold_left
+      (fun count -> function
+        | TLPolyAbs _ | TLAbs _ -> count + 1
+        | _ -> count)
+      0 tls
+  in
+  let rec stabilize remaining env =
+    let inferred = infer_once env in
+    if remaining = 0 || same_top_level_types env inferred then inferred
+    else stabilize (remaining - 1) inferred
+  in
+  stabilize function_count top_level_fun_types
 
 let typecheck_toplevels (tls : top_level list) : unit =
   let top_level_fun_types = gen_top_level_types tls in

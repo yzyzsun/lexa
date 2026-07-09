@@ -275,6 +275,30 @@ and type_to_str (ty: ty) =
       | _ -> Printf.sprintf "[%s]" (String.concat ", " (List.map constraint_to_str constraints))
     in
     Printf.sprintf "∀%s%s. %s" tvar constraints_str (type_to_str ty')
+  | TNabla (rvar, constraints, ty') ->
+    let region_to_str = function
+      | RTop -> "⊤"
+      | RVar v -> v
+      | RNull -> "null"
+    in
+    let rec distance_to_str = function
+      | DZero -> "lzero"
+      | DOne -> "lone"
+      | DVar v -> v
+      | DPlus (d1, d2) -> Printf.sprintf "(%s + %s)" (distance_to_str d1) (distance_to_str d2)
+    in
+    let constraint_to_str { rc_inner; rc_dist; rc_outer } =
+      Printf.sprintf "%s <=[%s] %s"
+        (region_to_str rc_inner)
+        (distance_to_str rc_dist)
+        (region_to_str rc_outer)
+    in
+    let constraints_str =
+      match constraints with
+      | [] -> ""
+      | _ -> Printf.sprintf "[%s]" (String.concat ", " (List.map constraint_to_str constraints))
+    in
+    Printf.sprintf "∇%s%s. %s" rvar constraints_str (type_to_str ty')
   | TCap (region, opty) ->
     let region_str = match region with
       | RTop -> "top"
@@ -429,6 +453,8 @@ let alpha_normalize ty =
     | TCon (name, args) -> TCon (name, List.map (fun t -> rename_term_in_type t old_v new_v) args)
     | TForall (tv, kind, constraints, t) ->
       TForall (tv, kind, constraints, rename_term_in_type t old_v new_v)
+	  | TNabla (rv, constraints, t) ->
+	    TNabla (rv, constraints, rename_term_in_type t old_v new_v)
 	    | TRefine (v, inner, p) when v = old_v ->
 	      TRefine (v, rename_term_in_type inner old_v new_v, p)
 	    | TRefine (v, inner, p) ->
@@ -525,6 +551,10 @@ let alpha_normalize ty =
       let tv_new = fresh_var() in
       let env' = Varmap.add tv tv_new env in
       TForall (tv_new, kind, List.map (rename_constraint env') constraints, (normalize ty' env'))
+    | TNabla (rv, constraints, ty') ->
+      let rv_new = fresh_var() in
+      let env' = Varmap.add rv rv_new env in
+      TNabla (rv_new, List.map (rename_constraint env') constraints, normalize ty' env')
     | TRefine (v, inner, p) ->
       (* Alpha-rename the value binder to a stable fresh name; rename free
          occurrences of [v] inside the predicate. Capture/label envs don't
@@ -603,6 +633,8 @@ let types_eq t1 t2 =
       (tv1 = tv2) && (List.equal normalized_types_eq t1_args t2_args)
     | (TForall (v1, k1, c1, t1'), TForall (v2, k2, c2, t2')) ->
       v1 = v2 && k1 = k2 && constraints_eq c1 c2 && (normalized_types_eq t1' t2')
+    | (TNabla (v1, c1, t1'), TNabla (v2, c2, t2')) ->
+      v1 = v2 && constraints_eq c1 c2 && normalized_types_eq t1' t2'
     | (TRefine (v1, t1', p1), TRefine (v2, t2', p2)) ->
       (* alpha_normalize already renamed both binders via the same fresh
          counter, so equal-shape refinements have v1 = v2 and the predicate
@@ -725,6 +757,10 @@ and types_sub ?(kind_env=[]) t1 t2 =
            && types_sub ~kind_env expected_param actual_param
          ) pt1 pt2
       && cty_sub ~kind_env rc1 rc2
+    | TNabla (rv1, constraints1, body1), TNabla (rv2, constraints2, body2) ->
+      rv1 = rv2
+      && List.equal (=) (List.sort_uniq compare constraints1) (List.sort_uniq compare constraints2)
+      && types_sub ~kind_env body1 body2
     | TCont { captured_set = cs1; effect_return_var = erv1; effect_return_ty = et1; return_cty = rc1 },
       TCont { captured_set = cs2; effect_return_var = erv2; effect_return_ty = et2; return_cty = rc2 } ->
       captured_set_sub cs1 cs2
@@ -818,6 +854,22 @@ let fresh_label_var =
     incr counter;
     var
 
+let rename_region_var_in_constraint var_old var_new { rc_inner; rc_dist; rc_outer } =
+  let rename_region = function
+    | RVar v when v = var_old -> RVar var_new
+    | region -> region
+  in
+  let rec rename_distance = function
+    | DVar v when v = var_old -> DVar var_new
+    | DPlus (d1, d2) -> DPlus (rename_distance d1, rename_distance d2)
+    | distance -> distance
+  in
+  {
+    rc_inner = rename_region rc_inner;
+    rc_dist = rename_distance rc_dist;
+    rc_outer = rename_region rc_outer;
+  }
+
 let rec rename_type_var ty var_old var_new =
   let rename_captured_set captured_set var_old var_new =
     let (cap_opt, labels) = captured_set in
@@ -861,6 +913,14 @@ let rec rename_type_var ty var_old var_new =
       op_params = List.map (fun (name, ty) -> (name, rename_type_var ty var_old var_new)) opty.op_params;
       op_return_cty = rename_type_var_cty opty.op_return_cty var_old var_new
     })
+  | TNabla (rv, constraints, body) when rv = var_old ->
+    TNabla (rv, constraints, body)
+  | TNabla (rv, constraints, body) ->
+    TNabla (
+      rv,
+      List.map (rename_region_var_in_constraint var_old var_new) constraints,
+      rename_type_var body var_old var_new
+    )
   | _ -> ty
 
 and rename_type_var_cty c var_old var_new =
@@ -891,6 +951,26 @@ let substitute_cap_to_captured_set (captured_set: capability) cap_var capability
       | None, labels' -> None, (Varset.union labels labels')
       | Some cap', labels' -> Some cap', (Varset.union labels labels')
 
+(** The region denoted by a capability argument: a singleton label set stands
+    for that label's region; a named capability variable stands for its own
+    region. Multi-label capability sets have no single region. *)
+let region_of_capability ((cap_name, labels): capability) : region option =
+  match cap_name, Varset.to_list labels with
+  | None, [single] -> Some (RVar single)
+  | Some name, _ -> Some (RVar name)
+  | _ -> None
+
+let substitute_region_var_in_constraint var replacement { rc_inner; rc_dist; rc_outer } =
+  let substitute = function
+    | RVar v when v = var -> replacement
+    | region -> region
+  in
+  {
+    rc_inner = substitute rc_inner;
+    rc_dist;
+    rc_outer = substitute rc_outer;
+  }
+
 (** Makes a single label subsitution on the given type. *)
 let rec substitute_label_to_type ty label label_new =
   match ty with
@@ -911,7 +991,10 @@ let rec substitute_label_to_type ty label label_new =
           cap_params;
           label_params = label_params';
           params_ty = List.map (fun (name, ty) -> (name, substitute_label_to_type ty label label_new)) params_ty';
-          region;
+          region =
+            (match region with
+             | RVar v when v = label -> RVar label_new
+             | _ -> region);
           return_cty = substitute_label_to_cty return_cty' label label_new
         })
   | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
@@ -938,6 +1021,17 @@ let rec substitute_label_to_type ty label label_new =
         op_params = List.map (fun (name, ty) -> (name, substitute_label_to_type ty label label_new)) opty.op_params;
         op_return_cty = substitute_label_to_cty opty.op_return_cty label label_new
       })
+  | TNabla (rv, constraints, (TFun { label_params; _ } as body))
+    when List.mem_assoc label label_params ->
+    TNabla (rv, constraints, body)
+  | TNabla (rv, constraints, body) when rv = label ->
+    TNabla (rv, constraints, body)
+  | TNabla (rv, constraints, body) ->
+    TNabla (
+      rv,
+      List.map (rename_region_var_in_constraint label label_new) constraints,
+      substitute_label_to_type body label label_new
+    )
   | _ -> ty
 
 and substitute_label_to_cty c label label_new =
@@ -977,7 +1071,13 @@ let rec substitute_capability_to_type ty cap_var capability =
             cap_params;
             label_params = label_params';
             params_ty = List.map (fun (name, ty) -> (name, substitute_capability_to_type ty cap_var capability)) params_ty';
-            region;
+            region =
+              (match region with
+               | RVar v when v = cap_var ->
+                 (match region_of_capability capability with
+                  | Some r -> r
+                  | None -> region)
+               | _ -> region);
             return_cty = substitute_capability_to_cty return_cty' cap_var capability
           }
   | TCont { captured_set; effect_return_var; effect_return_ty; return_cty } ->
@@ -997,6 +1097,19 @@ let rec substitute_capability_to_type ty cap_var capability =
       op_params = List.map (fun (name, ty) -> (name, substitute_capability_to_type ty cap_var capability)) opty.op_params;
       op_return_cty = substitute_capability_to_cty opty.op_return_cty cap_var capability
     })
+  | TNabla (rv, constraints, (TFun { cap_params; _ } as body))
+    when List.mem cap_var cap_params ->
+    TNabla (rv, constraints, body)
+  | TNabla (rv, constraints, body) ->
+    let constraints =
+      match region_of_capability capability with
+      | Some replacement ->
+        List.map
+          (substitute_region_var_in_constraint cap_var replacement)
+          constraints
+      | None -> constraints
+    in
+    TNabla (rv, constraints, substitute_capability_to_type body cap_var capability)
   | _ -> ty
 
 and substitute_capability_to_cty c cap_var capability =
@@ -1028,22 +1141,6 @@ let substitute_ty ty type_subs =
       let var = "'__t" ^ (string_of_int !counter) in
       incr counter;
       var
-  in
-  let rename_region_var_in_constraint var_old var_new { rc_inner; rc_dist; rc_outer } =
-    let rename_region = function
-      | RVar v when v = var_old -> RVar var_new
-      | r -> r
-    in
-    let rec rename_distance = function
-      | DVar v when v = var_old -> DVar var_new
-      | DPlus (d1, d2) -> DPlus (rename_distance d1, rename_distance d2)
-      | d -> d
-    in
-    {
-      rc_inner = rename_region rc_inner;
-      rc_dist = rename_distance rc_dist;
-      rc_outer = rename_region rc_outer;
-    }
   in
   let rec substitute ty type_subs =
     match ty with
@@ -1077,6 +1174,8 @@ let substitute_ty ty type_subs =
         List.map (rename_region_var_in_constraint tv tv_new) constraints,
         substitute ty' type_subs'
       )
+    | TNabla (rv, constraints, body) ->
+      TNabla (rv, constraints, substitute body type_subs)
     | TRefine (v, inner, p) ->
       TRefine (v, substitute inner type_subs, p)
     | TCap (region, opty) ->
@@ -1147,6 +1246,8 @@ let rec substitute_term_to_type ty var witness =
   | TCon (name, args) -> TCon (name, List.map (fun t -> substitute_term_to_type t var witness) args)
   | TForall (tv, kind, constraints, t) ->
     TForall (tv, kind, constraints, substitute_term_to_type t var witness)
+  | TNabla (rv, constraints, t) ->
+    TNabla (rv, constraints, substitute_term_to_type t var witness)
   | TRefine (v, inner, p) when v = var ->
     TRefine (v, substitute_term_to_type inner var witness, p)
   | TRefine (v, inner, p) ->
@@ -1249,6 +1350,8 @@ let rec substitute_pred_to_type ty pred_name pred_params pred_body =
     TForall (tv, kind, constraints, body)
   | TForall (tv, kind, constraints, body) ->
     TForall (tv, kind, constraints, substitute_pred_to_type body pred_name pred_params pred_body)
+  | TNabla (rv, constraints, body) ->
+    TNabla (rv, constraints, substitute_pred_to_type body pred_name pred_params pred_body)
   | TRefine (v, inner, p) ->
     TRefine (v,
              substitute_pred_to_type inner pred_name pred_params pred_body,
@@ -1339,6 +1442,14 @@ let rec substitute_region_to_type ty region_var (replacement: region) =
       List.map (substitute_region_to_constraint region_var replacement) constraints,
       substitute_region_to_type body region_var replacement
     )
+  | TNabla (rv, constraints, body) when rv = region_var ->
+    TNabla (rv, constraints, body)
+  | TNabla (rv, constraints, body) ->
+    TNabla (
+      rv,
+      List.map (substitute_region_to_constraint region_var replacement) constraints,
+      substitute_region_to_type body region_var replacement
+    )
   | TRefine (v, inner, p) ->
     TRefine (v, substitute_region_to_type inner region_var replacement, p)
   | TCap (r, opty) ->
@@ -1395,6 +1506,8 @@ let rec substitute_cty_var_to_type ty cty_var replacement =
     TForall (tv, kind, constraints, body)
   | TForall (tv, kind, constraints, body) ->
     TForall (tv, kind, constraints, substitute_cty_var_to_type body cty_var replacement)
+  | TNabla (rv, constraints, body) ->
+    TNabla (rv, constraints, substitute_cty_var_to_type body cty_var replacement)
   | TRefine (v, inner, p) ->
     TRefine (v, substitute_cty_var_to_type inner cty_var replacement, p)
   | TCap (region, opty) ->
@@ -1452,6 +1565,8 @@ let rec substitute_eff_var_to_type ty eff_var replacement =
     TForall (tv, kind, constraints, body)
   | TForall (tv, kind, constraints, body) ->
     TForall (tv, kind, constraints, substitute_eff_var_to_type body eff_var replacement)
+  | TNabla (rv, constraints, body) ->
+    TNabla (rv, constraints, substitute_eff_var_to_type body eff_var replacement)
   | TRefine (v, inner, p) ->
     TRefine (v, substitute_eff_var_to_type inner eff_var replacement, p)
   | TCap (region, opty) ->
@@ -1506,9 +1621,9 @@ let substitute_dist_in_constraint c var replacement =
   { c with rc_dist = substitute_dist_in_distance c.rc_dist var replacement }
 
 (** Substitutes a distance variable throughout a type: in [KATC] kind
-    annotations of inner foralls and in the distances of captured forall
-    constraints. Distances do not occur in ctys or effects themselves, so the
-    traversal only rewrites those positions. *)
+    annotations of inner foralls and in the distances of captured region
+    constraints (forall and nabla). Distances do not occur in ctys or
+    effects themselves, so the traversal only rewrites those positions. *)
 let rec substitute_dist_to_type ty var replacement =
   let subst_ty t = substitute_dist_to_type t var replacement in
   let subst_cty c = substitute_dist_to_cty c var replacement in
@@ -1545,6 +1660,8 @@ let rec substitute_dist_to_type ty var replacement =
         | k -> k
       in
       TForall (tv, kind', subst_constraints constraints, subst_ty t)
+  | TNabla (rv, constraints, t) ->
+    TNabla (rv, subst_constraints constraints, subst_ty t)
   | _ -> ty
 
 and substitute_dist_to_cty c var replacement =
@@ -1649,6 +1766,8 @@ let promote_cty_vars_in_type kind_env ty =
     | TCon (name, args) -> TCon (name, List.map go_ty args)
     | TForall (tv, kind, constraints, body) ->
       TForall (tv, kind, constraints, go_ty body)
+    | TNabla (rv, constraints, body) ->
+      TNabla (rv, constraints, go_ty body)
     | TRefine (v, inner, p) -> TRefine (v, go_ty inner, p)
     | TCap (region, opty) ->
       TCap (region, {

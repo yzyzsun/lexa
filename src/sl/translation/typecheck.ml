@@ -234,55 +234,6 @@ let region_requirement_sub rctx actual_req expected_req =
   || regions_eq actual_req RTop
   || Option.is_some (resolve_subregion_path rctx.subregions expected_req actual_req [])
 
-let infer_function_region rctx fun_region constraints =
-  let is_fun_region = regions_eq fun_region in
-  let fun_constraints, residual =
-    List.partition
-      (fun c -> is_fun_region c.rc_inner || is_fun_region c.rc_outer)
-      constraints
-  in
-  let candidates =
-    List.filter_map
-      (fun c ->
-        if is_fun_region c.rc_inner then
-          if is_fun_region c.rc_outer then None else Some c.rc_outer
-        else
-          typing_error
-            "Fun: cannot infer invocation region from residual constraint %s <= %s"
-            (region_to_str c.rc_inner)
-            (region_to_str c.rc_outer))
-      fun_constraints
-  in
-  let choose_stricter r1 r2 =
-    if regions_eq r1 r2 then r1
-    else if regions_eq r1 RTop then r2
-    else if regions_eq r2 RTop then r1
-    else
-      match resolve_subregion_path rctx.subregions r1 r2 [],
-            resolve_subregion_path rctx.subregions r2 r1 [] with
-      | Some _, _ -> r1
-      | _, Some _ -> r2
-      | None, None ->
-        typing_error
-          "Fun: cannot choose a single invocation region from incomparable requirements %s and %s"
-          (region_to_str r1)
-          (region_to_str r2)
-  in
-  let inferred_region =
-    List.fold_left choose_stricter RTop candidates
-  in
-  List.iter
-    (fun c ->
-      if is_fun_region c.rc_inner
-         && not (region_requirement_sub rctx inferred_region c.rc_outer)
-      then
-        typing_error
-          "Fun: inferred region %s does not satisfy residual requirement %s"
-          (region_to_str inferred_region)
-          (region_to_str c.rc_outer))
-    fun_constraints;
-  inferred_region, residual
-
 let rec fv_distance = function
   | DVar v -> [v]
   | DPlus (d1, d2) -> constraints_union (fv_distance d1) (fv_distance d2)
@@ -345,6 +296,58 @@ let substitute_tylike_to_constraint constraint_ var kind arg =
     rc_dist = substitute_tylike_to_distance constraint_.rc_dist var kind arg;
     rc_outer = substitute_tylike_to_region constraint_.rc_outer var kind arg;
   }
+
+let substitute_regions_in_constraints substitutions constraints =
+  List.fold_left
+    (fun constraints (var, replacement) ->
+      List.map
+        (fun constraint_ ->
+          substitute_tylike_to_constraint constraint_ var KReg
+            (TLRegion replacement))
+        constraints)
+    constraints substitutions
+
+let rec nabla_body = function
+  | TNabla (_, _, body) -> nabla_body body
+  | ty -> ty
+
+let instantiate_nabla ?(region_substitutions = []) rctx region ty =
+  let rec go ty =
+    match ty with
+    | TNabla (region_var, constraints, body) ->
+      let instantiated_constraints =
+        List.map
+          (fun constraint_ ->
+            substitute_tylike_to_constraint constraint_ region_var KReg
+              (TLRegion region))
+          constraints
+        |> substitute_regions_in_constraints region_substitutions
+      in
+      let residual_constraints =
+        constraints_unions
+          (List.map (check_subregion_constraint rctx) instantiated_constraints)
+      in
+      let body = substitute_region_to_type body region_var region in
+      let body, nested_constraints = go body in
+      body, constraints_union residual_constraints nested_constraints
+    | _ -> ty, []
+  in
+  go ty
+
+let nabla_interface_vars ty =
+  match nabla_body ty with
+  | TFun { cap_params; label_params; _ } -> cap_params @ List.map fst label_params
+  | _ -> []
+
+let reject_interface_dependent_nabla_constraints ty constraints =
+  let interface_vars = nabla_interface_vars ty in
+  if List.exists
+       (fun constraint_ ->
+         List.exists (fun var -> constraint_mentions var constraint_) interface_vars)
+       constraints
+  then
+    typing_error
+      "Cannot coerce a nabla function with interface-dependent region constraints to a plain function type"
 
 (** Infers the level of an ATC, checking well-formedness per the ott rules at
     lex_algeff_atm.ott:1281-1295 (ATCHole/ATCImpure/ATCFill). Type- and
@@ -470,6 +473,7 @@ let rec erase_refinements_ty ty =
   | TArray t -> TArray (erase_refinements_ty t)
   | TCon (name, args) -> TCon (name, List.map erase_refinements_ty args)
   | TForall (v, k, constraints, t) -> TForall (v, k, constraints, erase_refinements_ty t)
+  | TNabla (v, constraints, t) -> TNabla (v, constraints, erase_refinements_ty t)
   | TCap (region, opty) ->
     TCap (region, {
       opty with
@@ -523,6 +527,8 @@ let rec replace_empty_fun_capture replacement ty =
   | TCon (name, args) -> TCon (name, List.map (replace_empty_fun_capture replacement) args)
   | TForall (v, k, constraints, t) ->
     TForall (v, k, constraints, replace_empty_fun_capture replacement t)
+  | TNabla (v, constraints, t) ->
+    TNabla (v, constraints, replace_empty_fun_capture replacement t)
   | TRefine (v, inner, p) -> TRefine (v, replace_empty_fun_capture replacement inner, p)
   | TCap (region, opty) ->
     TCap (region, {
@@ -644,7 +650,8 @@ let rec ty_contains_pred_app = function
   | TCont { effect_return_ty; return_cty; _ } ->
     ty_contains_pred_app effect_return_ty || cty_contains_pred_app return_cty
   | TCon (_, args) -> List.exists ty_contains_pred_app args
-  | TForall (_, _, _, t) -> ty_contains_pred_app t
+  | TForall (_, _, _, t)
+  | TNabla (_, _, t) -> ty_contains_pred_app t
   | TRefine (_, inner, pred) ->
     ty_contains_pred_app inner || pred_contains_app pred
   | TCap (_, opty) ->
@@ -692,6 +699,8 @@ let rec erase_pred_app_refinements_ty ty =
   | TCon (name, args) -> TCon (name, List.map erase_pred_app_refinements_ty args)
   | TForall (v, k, constraints, t) ->
     TForall (v, k, constraints, erase_pred_app_refinements_ty t)
+  | TNabla (v, constraints, t) ->
+    TNabla (v, constraints, erase_pred_app_refinements_ty t)
   | TCap (region, opty) ->
     TCap (region, {
       opty with
@@ -736,6 +745,8 @@ let rec merge_residual_pred_apps_ty declared concrete =
             f1.params_ty f2.params_ty;
         return_cty = merge_residual_pred_apps_cty f1.return_cty f2.return_cty
       }
+    | TNabla (region_var, constraints, body1), TNabla (_, _, body2) ->
+      TNabla (region_var, constraints, merge_residual_pred_apps_ty body1 body2)
     | TCont c1, TCont c2 ->
       TCont {
         c1 with
@@ -813,6 +824,8 @@ let solve_op_pred_binders bindings pairs =
       if List.length f1.params_ty = List.length f2.params_ty then
         List.iter2 (fun (_, t1) (_, t2) -> go_ty t1 t2) f1.params_ty f2.params_ty;
       go_cty f1.return_cty f2.return_cty
+    | TNabla (_, _, body1), TNabla (_, _, body2) ->
+      go_ty body1 body2
     | TCont c1, TCont c2 ->
       go_ty c1.effect_return_ty c2.effect_return_ty;
       go_cty c1.return_cty c2.return_cty
@@ -867,15 +880,35 @@ let handler_cty_var_default handle_final =
 let rec check_ty ?(msg = "") rctx captured_vars cap_vars label_vars term_vars (e: expr) ty =
   let te = type_expr rctx captured_vars cap_vars label_vars term_vars e in
   let actual = ty_of_cty te.expr_cty in
-  if types_eq ty actual || types_sub actual ty then te
-  else if refined_type_sub rctx term_vars actual ty then te
-  else if check_refined_subtype rctx term_vars (Some e) actual ty then te
-  else
+  let fail actual =
     typing_error
       "%s\n\tExpected: %s\n\tActual: %s\n"
       msg
       (type_to_str ty)
       (type_to_str actual)
+  in
+  match actual, ty with
+  | TNabla _, TFun { region; _ } ->
+    let specialized, nabla_constraints = instantiate_nabla rctx region actual in
+    let () =
+      reject_interface_dependent_nabla_constraints actual nabla_constraints
+    in
+    if types_eq ty specialized
+       || types_sub specialized ty
+       || refined_type_sub rctx term_vars specialized ty
+       || check_refined_subtype rctx term_vars (Some e) specialized ty
+    then
+      { te with
+        expr_cty = CCty (ty, eff_of_cty te.expr_cty);
+        region_constraints = constraints_union te.region_constraints nabla_constraints;
+      }
+    else
+      fail specialized
+  | _ ->
+    if types_eq ty actual || types_sub actual ty then te
+    else if refined_type_sub rctx term_vars actual ty then te
+    else if check_refined_subtype rctx term_vars (Some e) actual ty then te
+    else fail actual
 
 (** Refinement-aware subtype check. Two non-trivial directions handled here
     (the "drop refinement" direction is already covered by [types_sub]):
@@ -1167,7 +1200,8 @@ and ty_mentions_term x = function
         | _ -> cty_mentions_term x return_cty)
   | TCon (_, args) ->
     List.exists (ty_mentions_term x) args
-  | TForall (_, _, _, body) ->
+  | TForall (_, _, _, body)
+  | TNabla (_, _, body) ->
     ty_mentions_term x body
   | TRefine (binder, inner, pred) ->
     ty_mentions_term x inner
@@ -1239,6 +1273,27 @@ and try_infer_atc_from_answer rctx term_vars inherited op_c1 distance =
              | _ -> None)
   in
   go inherited distance
+
+and infer_atc_from_answer rctx term_vars inherited op_c1 =
+  let rec go inherited =
+    if compatible_answer_cty rctx term_vars inherited op_c1 then
+      Some ATCHole
+    else
+      let continue_with_frame t frame_initial frame_final =
+        Option.map
+          (fun rest_atc -> ATCAns (t, frame_initial, rest_atc))
+          (go frame_final)
+      in
+      match peel_one_answer_layer inherited with
+      | Some (t, frame_initial, frame_final) ->
+        continue_with_frame t frame_initial frame_final
+      | None ->
+        (match peel_pure_function_answer_layer inherited with
+         | Some (t, frame_initial, frame_final) ->
+           continue_with_frame t frame_initial frame_final
+         | None -> None)
+  in
+  go inherited
 
 and lift_expr_to_answer rctx term_vars seed source_expr te =
   match te.expr_cty with
@@ -1448,7 +1503,8 @@ and check_refinement_wellformed rctx term_vars (ty: ty) =
       go term_vars t
     | TCon (_, t_args) ->
       List.iter (go term_vars) t_args
-    | TForall (_, _, _, t) -> go term_vars t
+    | TForall (_, _, _, t)
+    | TNabla (_, _, t) -> go term_vars t
     | TCap (_, opty) ->
       let term_vars' =
         List.fold_left
@@ -1540,9 +1596,15 @@ and choose_operation_atc ?final_answer rctx term_vars
               (cty_to_str op_c2)
               (distance_to_str distance))
      | Some (Blocked _) ->
-       typing_error
-         "Raise: cannot infer ATC for %s.%s before the subregion path is resolved\n"
-         op_label op_name
+       (match infer_atc_from_answer rctx term_vars final_cty op_c2 with
+        | Some inferred_atc ->
+          let distance = check_atc rctx.kind_env term_vars inferred_atc in
+          inferred_atc,
+          check_subregion rctx rctx.current_region target_region distance
+        | None ->
+          typing_error
+            "Raise: cannot infer ATC for %s.%s before the subregion path is resolved\n"
+            op_label op_name)
      | None ->
        typing_error
          "Raise: cannot infer ATC for %s.%s without a subregion path\n"
@@ -1571,6 +1633,8 @@ and choose_operation_atc ?final_answer rctx term_vars
   | _, Some target_region, None ->
     (match resolve_subregion_or_flex rctx rctx.current_region target_region [] with
      | Some (Complete DZero) -> ATCHole, []
+     | Some (Blocked _) ->
+       ATCHole, check_subregion rctx rctx.current_region target_region DZero
      | _ ->
        typing_error
          "Raise: omitted ATC for %s.%s requires an expected answer context\n"
@@ -1931,6 +1995,18 @@ and check_cty ?(msg = "") rctx captured_vars cap_vars label_vars term_vars (e: e
         e expected_final (Some seed)
     in
     let actual_ty = ty_of_cty te.expr_cty in
+    let te, actual_ty =
+      match actual_ty, expected_ty with
+      | TNabla _, TFun { region; _ } ->
+        let specialized, nabla_constraints = instantiate_nabla rctx region actual_ty in
+        let () =
+          reject_interface_dependent_nabla_constraints actual_ty nabla_constraints
+        in
+        { te with
+          region_constraints = constraints_union te.region_constraints nabla_constraints;
+        }, specialized
+      | _ -> te, actual_ty
+    in
     let actual_initial_binder, actual_initial =
       initial_answer_family_of_threaded te
     in
@@ -1999,11 +2075,32 @@ and check_cty ?(msg = "") rctx captured_vars cap_vars label_vars term_vars (e: e
       in
       if refinement_ok then { te with expr_cty = expected }
       else
-        typing_error
-          "%s\n\tExpected: %s\n\tActual: %s\n"
-          msg
-          (cty_to_str expected)
-          (cty_to_str actual)
+        match actual, expected with
+        | CCty (TNabla _, actual_eff), CCty (TFun { region; _ }, expected_eff) ->
+          let actual_ty = ty_of_cty actual in
+          let specialized, nabla_constraints = instantiate_nabla rctx region actual_ty in
+          let () =
+            reject_interface_dependent_nabla_constraints actual_ty nabla_constraints
+          in
+          if refined_type_sub rctx term_vars specialized (ty_of_cty expected)
+             && refined_eff_sub rctx term_vars actual_eff expected_eff
+          then
+            { te with
+              expr_cty = expected;
+              region_constraints = constraints_union te.region_constraints nabla_constraints;
+            }
+          else
+            typing_error
+              "%s\n\tExpected: %s\n\tActual: %s\n"
+              msg
+              (cty_to_str expected)
+              (cty_to_str actual)
+        | _ ->
+          typing_error
+            "%s\n\tExpected: %s\n\tActual: %s\n"
+            msg
+            (cty_to_str expected)
+            (cty_to_str actual)
     end)
 
 and type_expr_with_final rctx (captured_vars: capture_set) cap_vars label_vars
@@ -2600,6 +2697,9 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       let body_rctx = {
         rctx with
         current_region = fun_region;
+        label_regions =
+          List.map (fun (label, _) -> label, RVar label) label_params
+          @ rctx.label_regions;
         flex_regions = constraints_union rctx.flex_regions [fun_region];
       } in
       let body' =
@@ -2607,18 +2707,28 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
           body_rctx captured_vars' body_cap_vars body_label_vars
           (params@term_vars) body return_cty
       in
-      let inferred_region, residual_constraints =
-        infer_function_region rctx fun_region body'.region_constraints
+      let region_var =
+        match fun_region with
+        | RVar var -> var
+        | RTop | RNull -> assert false
+      in
+      let nabla_constraints, residual_constraints =
+        partition_constraints_by_var region_var body'.region_constraints
       in
       let body' = { body' with region_constraints = residual_constraints } in
-      let ty = TFun {
+      let fun_ty region = TFun {
         captured_set;
         cap_params;
         label_params;
         params_ty;
-        region = inferred_region;
+        region;
         return_cty
       } in
+      let ty =
+        match nabla_constraints with
+        | [] -> fun_ty RTop
+        | _ -> TNabla (region_var, nabla_constraints, fun_ty fun_region)
+      in
       Fun {
         captured_set;
         cap_params;
@@ -2630,7 +2740,36 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
 
     | App { func; cap_insts; label_args; args = app_args } ->
       let func' = type_expr captured_vars cap_vars label_vars term_vars func in
-      let fun_type = ty_of func' in
+      let raw_fun_type = ty_of func' in
+      let label_subs =
+        match nabla_body raw_fun_type with
+        | TFun { label_params; _ }
+          when List.length label_params = List.length label_args ->
+          List.map2 (fun (formal, _) actual -> formal, actual) label_params label_args
+        | _ -> []
+      in
+      (* Capability parameters can appear as arrow regions (e.g. [a] in a
+         higher-order parameter type); nabla constraints mentioning them must
+         be re-based onto the actual capability's region before checking. *)
+      let cap_region_subs =
+        match nabla_body raw_fun_type with
+        | TFun { cap_params; _ }
+          when List.length cap_params = List.length cap_insts ->
+          List.filter_map
+            (fun (formal, cap_inst) ->
+              Option.map (fun r -> formal, r) (region_of_capability cap_inst))
+            (List.combine cap_params cap_insts)
+        | _ -> []
+      in
+      let region_substitutions =
+        List.map (fun (formal, actual) -> formal, RVar actual) label_subs
+        @ cap_region_subs
+      in
+      let fun_type, nabla_constraints =
+        instantiate_nabla ~region_substitutions rctx rctx.current_region raw_fun_type
+      in
+      extra_region_constraints :=
+        constraints_union !extra_region_constraints nabla_constraints;
       (match fun_type with
         | TFun {captured_set; cap_params; label_params; params_ty; region = fun_region; return_cty;_} ->
           (* Function regions are requirements: the current evaluation region
@@ -2675,7 +2814,6 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
               else if not ((List.length cap_insts) = (List.length cap_params)) then
                 typing_error "App: Capability length don't match\n"
               else
-                let label_subs = List.map2 (fun x y -> (x, y)) (List.map fst label_params) label_args in
                 let cap_subs = List.map2 (fun x y -> (x, y)) cap_params cap_insts in
                 let args_ty_expected = List.map (fun (name, ty) -> (name, substitute_to_type ty label_subs cap_subs)) params_ty in
                 if not ((List.length app_args) = (List.length args_ty_expected)) then
@@ -3015,24 +3153,61 @@ and type_expr rctx (captured_vars: capture_set) cap_vars label_vars (term_vars: 
       )
 
     | Recdef (fundefs, e) ->
-      let fun_vars = (List.map (fun ({ name; captured_set; cap_params; label_params; params; body=_; return_cty }: SLsyntax.fundef) ->
-        let fun_ty = TFun {
-          captured_set;
-          cap_params;
-          label_params;
-          params_ty = List.map (fun (x, ty) -> (Some x, ty)) params;
-          region = rctx.current_region;
-          return_cty
-        } in
-        (name, fun_ty)) fundefs) in
-      let fundefs' = List.map2 (fun ({ name; captured_set; cap_params; label_params; params; body; return_cty }: SLsyntax.fundef) fun_ty ->
-        let fun_expr = SLsyntax.Fun { captured_set; cap_params; label_params; params; return_cty; body } in
-        let fundef_expr = check_ty captured_vars cap_vars label_vars (fun_vars@term_vars) fun_expr fun_ty in
-        match fundef_expr with
-        | { expr_desc = Fun { body = body'; _ }; _} -> { name; captured_set; cap_params; label_params; params; body = body'; return_cty }
-        | _ -> typing_error "Recdef: Incorrect typed_expr\n" (* Shouldn't happen *)
-        ) fundefs (List.map snd fun_vars)
+      let provisional_fun_vars =
+        List.map
+          (fun ({ name; captured_set; cap_params; label_params; params; body = _; return_cty } : SLsyntax.fundef) ->
+            let fun_ty = TFun {
+              captured_set;
+              cap_params;
+              label_params;
+              params_ty = List.map (fun (x, ty) -> (Some x, ty)) params;
+              region = RTop;
+              return_cty
+            } in
+            name, fun_ty)
+          fundefs
       in
+      let infer_fundefs fun_vars =
+        List.map
+          (fun ({ name; captured_set; cap_params; label_params; params; body; return_cty } : SLsyntax.fundef) ->
+            let fun_expr = SLsyntax.Fun {
+              captured_set;
+              cap_params;
+              label_params;
+              params;
+              return_cty;
+              body;
+            } in
+            let typed_fun =
+              type_expr captured_vars cap_vars label_vars
+                (fun_vars @ term_vars) fun_expr
+            in
+            match typed_fun with
+            | { expr_desc = Fun { body = body'; _ }; expr_cty; _ } ->
+              ({ name; captured_set; cap_params; label_params; params; body = body'; return_cty },
+               ty_of_cty expr_cty)
+            | _ -> typing_error "Recdef: Incorrect typed_expr\n")
+          fundefs
+      in
+      let same_fun_types left right =
+        List.for_all2
+          (fun (_, left_ty) (_, right_ty) -> types_eq left_ty right_ty)
+          left right
+      in
+      let rec stabilize remaining fun_vars =
+        let inferred_fundefs = infer_fundefs fun_vars in
+        let inferred_fun_vars =
+          List.map (fun ({ name; _ }, ty) -> name, ty) inferred_fundefs
+        in
+        if remaining = 0 || same_fun_types fun_vars inferred_fun_vars then
+          inferred_fundefs, inferred_fun_vars
+        else
+          stabilize (remaining - 1) inferred_fun_vars
+      in
+      let inferred_fundefs, fun_vars =
+        stabilize (List.length fundefs) provisional_fun_vars
+      in
+      let fundefs' = List.map fst inferred_fundefs in
       let e' = type_expr captured_vars cap_vars label_vars (fun_vars@term_vars) e in
       Recdef (fundefs', e'), e'.expr_cty
 
@@ -3172,6 +3347,7 @@ let check_type_defs (defs: typedef list) =
       if List.exists (fun tv' -> tv = tv') type_vars
         then () else typing_error "Type Definition: type variable %s not defined" tv
     | TForall (tv, _kind, _constraints, ty') -> check_typedef_ty type_names (tv::type_vars) ty'
+    | TNabla (rv, _constraints, ty') -> check_typedef_ty type_names (rv::type_vars) ty'
     | TRefine (_, inner, _) -> check_typedef_ty type_names type_vars inner
     | _ -> ()
   and check_typedef_cty type_names type_vars cty =

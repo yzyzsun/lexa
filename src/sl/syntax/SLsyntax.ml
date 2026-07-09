@@ -178,6 +178,10 @@ and ty = (* Lexaz SL types *)
   | TCon of var * ty list
   | TVar of var
   | TForall of var * kind * region_constraint list * ty
+  (* An implicitly instantiated region quantifier.  The binder is always a
+     region variable; its constraints describe the capabilities required by
+     an inferred function body. *)
+  | TNabla of var * region_constraint list * ty
   | TCap of region * opty
   | TRefine of var * ty * pred  (* { var: ty | pred } *)
 
